@@ -1,0 +1,145 @@
+@page "/"
+@inject TradingResearchEngine.Core.Persistence.IRepository<BacktestResult> ResultRepo
+@inject StrategyRegistry StrategyRegistry
+
+<PageTitle>Dashboard — TradingResearchEngine</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Dashboard</MudText>
+
+@if (_loading)
+{
+    <MudProgressCircular Indeterminate="true" />
+}
+else
+{
+    <MudGrid>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.caption">Total Runs</MudText>
+                <MudText Typo="Typo.h4">@_results.Count</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.caption">Best Sharpe</MudText>
+                <MudText Typo="Typo.h4">@(_bestSharpe?.ToString("F2") ?? "N/A")</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.caption">Worst Drawdown</MudText>
+                <MudText Typo="Typo.h4">@(_worstDrawdown?.ToString("P2") ?? "N/A")</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.caption">Strategies</MudText>
+                <MudText Typo="Typo.h4">@StrategyRegistry.KnownNames.Count</MudText>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    @if (_latestResult is not null && _latestResult.EquityCurve.Count > 1)
+    {
+        <MudText Typo="Typo.h6" Class="mt-6 mb-2">Latest Run — @_latestResult.ScenarioConfig.ScenarioId</MudText>
+        <MudPaper Class="pa-2" Elevation="1">
+            <EquityCurveChart Data="_latestResult.EquityCurve" />
+        </MudPaper>
+    }
+
+    <MudText Typo="Typo.h6" Class="mt-6 mb-2">Recent Runs</MudText>
+
+    @if (_results.Count == 0)
+    {
+        <MudAlert Severity="Severity.Info">
+            No backtest results yet. Run your first backtest from the CLI or the
+            <MudLink Href="/backtests/new">New Run</MudLink> page.
+        </MudAlert>
+    }
+    else
+    {
+        <MudTable Items="_recentResults" Dense="true" Hover="true" Striped="true">
+            <HeaderContent>
+                <MudTh>Scenario</MudTh>
+                <MudTh>Strategy</MudTh>
+                <MudTh>Status</MudTh>
+                <MudTh>Sharpe</MudTh>
+                <MudTh>Max DD</MudTh>
+                <MudTh>Trades</MudTh>
+                <MudTh>End Equity</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>
+                    <MudLink Href="@($"/backtests/{context.Id}")">
+                        @context.ScenarioConfig.ScenarioId
+                    </MudLink>
+                </MudTd>
+                <MudTd>@context.ScenarioConfig.StrategyType</MudTd>
+                <MudTd>
+                    <MudChip T="string" Size="Size.Small"
+                             Color="@(context.Status == BacktestStatus.Completed ? Color.Success : Color.Error)">
+                        @context.Status
+                    </MudChip>
+                </MudTd>
+                <MudTd>@(context.SharpeRatio?.ToString("F2") ?? "N/A")</MudTd>
+                <MudTd>@context.MaxDrawdown.ToString("P2")</MudTd>
+                <MudTd>@context.TotalTrades</MudTd>
+                <MudTd>$@context.EndEquity.ToString("F2")</MudTd>
+            </RowTemplate>
+        </MudTable>
+    }
+
+    <MudGrid Class="mt-4">
+        <MudItem xs="12" sm="4">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                       Href="/backtests/new" FullWidth="true"
+                       StartIcon="@Icons.Material.Filled.PlayArrow">
+                New Backtest
+            </MudButton>
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudButton Variant="Variant.Outlined" Color="Color.Secondary"
+                       Href="/research/sweep" FullWidth="true"
+                       StartIcon="@Icons.Material.Filled.GridOn">
+                Parameter Sweep
+            </MudButton>
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudButton Variant="Variant.Outlined" Color="Color.Secondary"
+                       Href="/research/montecarlo" FullWidth="true"
+                       StartIcon="@Icons.Material.Filled.Casino">
+                Monte Carlo
+            </MudButton>
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    private List<BacktestResult> _results = new();
+    private List<BacktestResult> _recentResults = new();
+    private BacktestResult? _latestResult;
+    private decimal? _bestSharpe;
+    private decimal? _worstDrawdown;
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var all = await ResultRepo.ListAsync();
+        _results = all.ToList();
+        _recentResults = _results
+            .OrderByDescending(r => r.RunId)
+            .Take(10)
+            .ToList();
+        _latestResult = _recentResults.FirstOrDefault();
+
+        if (_results.Count > 0)
+        {
+            _bestSharpe = _results
+                .Where(r => r.SharpeRatio.HasValue)
+                .Max(r => r.SharpeRatio);
+            _worstDrawdown = _results.Max(r => r.MaxDrawdown);
+        }
+
+        _loading = false;
+    }
+}

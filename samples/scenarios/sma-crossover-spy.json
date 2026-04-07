@@ -1,0 +1,27 @@
+{
+  "ScenarioId": "sma-crossover-spy-daily",
+  "Description": "SMA 10/30 crossover on SPY daily bars",
+  "ReplayMode": "Bar",
+  "DataProviderType": "csv",
+  "DataProviderOptions": {
+    "Symbol": "SPY",
+    "Interval": "1D",
+    "FilePath": "samples/data/spy-daily.csv"
+  },
+  "StrategyType": "sma-crossover",
+  "StrategyParameters": {
+    "FastPeriod": 10,
+    "SlowPeriod": 30
+  },
+  "RiskParameters": {
+    "MaxExposurePercent": 20
+  },
+  "SlippageModelType": "ZeroSlippageModel",
+  "CommissionModelType": "ZeroCommissionModel",
+  "InitialCash": 100000,
+  "AnnualRiskFreeRate": 0.05,
+  "RandomSeed": 42,
+  "ResearchWorkflowType": null,
+  "ResearchWorkflowOptions": null,
+  "PropFirmOptions": null
+}

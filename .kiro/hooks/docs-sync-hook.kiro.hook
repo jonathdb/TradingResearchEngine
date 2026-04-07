@@ -1,0 +1,18 @@
+{
+  "enabled": true,
+  "name": "Docs Sync",
+  "description": "Watches all C# source files, project files, and the solution file for changes, then prompts the agent to update the README and docs/ folder to reflect the latest code changes.",
+  "version": "1",
+  "when": {
+    "type": "fileEdited",
+    "patterns": [
+      "src/**/*.cs",
+      "src/**/*.csproj",
+      "TradingResearchEngine.sln"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "Source files in the repository have changed. Review the recent changes and determine if the documentation needs updating. Check README.md and all files under docs/ (BacktestingEngineImplementationNotes.md, BacktestingEngineOriginalNotes.md, EventDrivenArchitectureNotes.md, PropFirmSuiteReference.md). Update any documentation that is now outdated, inaccurate, or missing coverage for the changed code. This includes new public APIs, changed module boundaries, updated configuration, new or removed features, and architectural changes. Only modify docs that actually need updating — don't touch files that are still accurate."
+  }
+}

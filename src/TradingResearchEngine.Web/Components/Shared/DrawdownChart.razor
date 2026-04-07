@@ -1,0 +1,59 @@
+@using ApexCharts
+@if (_drawdownData is not null && _drawdownData.Count > 0)
+{
+    <ApexChart TItem="DrawdownPoint"
+               Title="Drawdown"
+               Options="_options"
+               Height="250">
+        <ApexPointSeries TItem="DrawdownPoint"
+                         Items="_drawdownData"
+                         SeriesType="SeriesType.Area"
+                         Name="Drawdown"
+                         XValue="@(p => p.Timestamp.DateTime)"
+                         YValue="@(p => p.DrawdownPercent)" />
+    </ApexChart>
+}
+
+@code {
+    [Parameter] public IReadOnlyList<EquityCurvePoint>? Data { get; set; }
+
+    private List<DrawdownPoint>? _drawdownData;
+
+    protected override void OnParametersSet()
+    {
+        if (Data is null || Data.Count < 2) { _drawdownData = null; return; }
+
+        _drawdownData = new List<DrawdownPoint>(Data.Count);
+        decimal peak = Data[0].TotalEquity;
+
+        foreach (var point in Data)
+        {
+            if (point.TotalEquity > peak) peak = point.TotalEquity;
+            decimal dd = peak > 0 ? -((peak - point.TotalEquity) / peak) * 100m : 0m;
+            _drawdownData.Add(new DrawdownPoint(point.Timestamp, dd));
+        }
+    }
+
+    private ApexChartOptions<DrawdownPoint> _options = new()
+    {
+        Chart = new Chart
+        {
+            Toolbar = new Toolbar { Show = false },
+        },
+        Stroke = new Stroke { Curve = Curve.Smooth, Width = 2 },
+        Xaxis = new XAxis { Type = XAxisType.Datetime },
+        Yaxis = new List<YAxis>
+        {
+            new()
+            {
+                Labels = new YAxisLabels { Formatter = "function(val) { return val.toFixed(2) + '%'; }" },
+                Max = 0
+            }
+        },
+        Fill = new Fill { Opacity = new List<double> { 0.3 } },
+        Colors = new List<string> { "#F44336" },
+        Tooltip = new Tooltip { X = new TooltipX { Format = "yyyy-MM-dd" } }
+    };
+
+    public record DrawdownPoint(DateTimeOffset Timestamp, decimal DrawdownPercent);
+}

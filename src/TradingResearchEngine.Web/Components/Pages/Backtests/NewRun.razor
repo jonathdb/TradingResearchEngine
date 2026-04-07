@@ -1,0 +1,317 @@
+@page "/backtests/new"
+@inject StrategyRegistry Registry
+@inject RunScenarioUseCase UseCase
+@inject TradingResearchEngine.Core.Persistence.IRepository<ScenarioConfig> ConfigRepo
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+
+<PageTitle>New Backtest — TradingResearchEngine</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">New Backtest Run</MudText>
+
+<MudGrid>
+    @* Left column: Configuration *@
+    <MudItem xs="12" md="8">
+        <MudPaper Class="pa-4" Elevation="2">
+            <MudText Typo="Typo.h6" Class="mb-3">Strategy</MudText>
+
+            <MudSelect T="string" Label="Strategy Type" @bind-Value="_strategyType"
+                       Variant="Variant.Outlined" Class="mb-3">
+                @foreach (var name in Registry.KnownNames)
+                {
+                    <MudSelectItem Value="@name">@name</MudSelectItem>
+                }
+            </MudSelect>
+
+            @if (!string.IsNullOrEmpty(_strategyType))
+            {
+                var parms = Registry.GetParameterInfo(_strategyType);
+                @foreach (var p in parms)
+                {
+                    <MudTextField T="string" Label="@($"{p.Name} ({p.TypeName})")"
+                                  Value="@GetParam(p.Name)"
+                                  ValueChanged="@(v => SetParam(p.Name, v))"
+                                  Placeholder="@(p.DefaultValue?.ToString() ?? "")"
+                                  Variant="Variant.Outlined" Class="mb-2" />
+                }
+            }
+
+            <MudDivider Class="my-4" />
+            <MudText Typo="Typo.h6" Class="mb-3">Data Source</MudText>
+
+            <MudSelect T="string" Label="Provider Type" @bind-Value="_dataProviderType"
+                       Variant="Variant.Outlined" Class="mb-2">
+                <MudSelectItem Value="@("csv")">CSV File</MudSelectItem>
+                <MudSelectItem Value="@("dukascopy")">Dukascopy (free forex/gold/indices)</MudSelectItem>
+            </MudSelect>
+
+            @if (_dataProviderType == "csv")
+            {
+                <MudTextField T="string" Label="File Path" @bind-Value="_filePath"
+                              Variant="Variant.Outlined" Class="mb-2"
+                              HelperText="Path to CSV file (Timestamp,Open,High,Low,Close,Volume)" />
+            }
+
+            <MudTextField T="string" Label="Symbol" @bind-Value="_symbol"
+                          Variant="Variant.Outlined" Class="mb-2"
+                          HelperText="@(_dataProviderType == "dukascopy" ? "e.g. EURUSD, GBPUSD, XAUUSD" : "e.g. SPY, AAPL")" />
+            <MudTextField T="string" Label="Interval" @bind-Value="_interval"
+                          Variant="Variant.Outlined" Class="mb-2"
+                          HelperText="e.g. 1D, 1H, 5m" />
+
+            @if (_dataProviderType == "dukascopy")
+            {
+                <MudDatePicker Label="From Date" @bind-Date="_fromDate"
+                               Variant="Variant.Outlined" Class="mb-2" />
+                <MudDatePicker Label="To Date" @bind-Date="_toDate"
+                               Variant="Variant.Outlined" Class="mb-2" />
+                <MudAlert Severity="Severity.Info" Dense="true" Class="mb-2">
+                    Free historical data. Downloads per day — keep date ranges reasonable (weeks, not years).
+                </MudAlert>
+            }
+
+            <MudDivider Class="my-4" />
+            <MudText Typo="Typo.h6" Class="mb-3">Execution Assumptions</MudText>
+
+            <MudNumericField T="decimal" Label="Initial Cash" @bind-Value="_initialCash"
+                             Variant="Variant.Outlined" Class="mb-2" Min="1" />
+            <MudNumericField T="decimal" Label="Annual Risk-Free Rate"
+                             @bind-Value="_riskFreeRate"
+                             Variant="Variant.Outlined" Class="mb-2"
+                             Step="0.01M" Format="P2" />
+
+            <MudSelect T="string" Label="Slippage Model" @bind-Value="_slippageModel"
+                       Variant="Variant.Outlined" Class="mb-2">
+                <MudSelectItem Value="@("ZeroSlippageModel")">Zero Slippage</MudSelectItem>
+                <MudSelectItem Value="@("FixedSpreadSlippageModel")">Fixed Spread</MudSelectItem>
+            </MudSelect>
+
+            <MudSelect T="string" Label="Commission Model" @bind-Value="_commissionModel"
+                       Variant="Variant.Outlined" Class="mb-2">
+                <MudSelectItem Value="@("ZeroCommissionModel")">Zero Commission</MudSelectItem>
+                <MudSelectItem Value="@("PerTradeCommissionModel")">Per Trade</MudSelectItem>
+                <MudSelectItem Value="@("PerShareCommissionModel")">Per Share</MudSelectItem>
+            </MudSelect>
+
+            <MudTextField T="string" Label="Scenario ID" @bind-Value="_scenarioId"
+                          Variant="Variant.Outlined" Class="mb-2" />
+            <MudTextField T="string" Label="Description" @bind-Value="_description"
+                          Variant="Variant.Outlined" Class="mb-2" />
+        </MudPaper>
+    </MudItem>
+
+    @* Right column: Actions + Status *@
+    <MudItem xs="12" md="4">
+        <MudPaper Class="pa-4" Elevation="2">
+            <MudText Typo="Typo.h6" Class="mb-3">Actions</MudText>
+
+            <MudButton Variant="Variant.Filled" Color="MudBlazor.Color.Primary"
+                       FullWidth="true" Class="mb-2"
+                       Disabled="_running"
+                       OnClick="RunBacktest"
+                       StartIcon="@Icons.Material.Filled.PlayArrow">
+                @(_running ? "Running..." : "Run Backtest")
+            </MudButton>
+
+            @if (_running)
+            {
+                <MudProgressLinear Indeterminate="true" Color="MudBlazor.Color.Primary" Class="mb-2" />
+                <MudButton Variant="Variant.Outlined" Color="MudBlazor.Color.Warning"
+                           FullWidth="true" Class="mb-2"
+                           OnClick="Cancel">
+                    Cancel
+                </MudButton>
+            }
+
+            <MudButton Variant="Variant.Outlined" Color="MudBlazor.Color.Secondary"
+                       FullWidth="true" Class="mb-2"
+                       OnClick="SaveConfig"
+                       StartIcon="@Icons.Material.Filled.Save">
+                Save Config
+            </MudButton>
+
+            @if (_errors is not null && _errors.Count > 0)
+            {
+                <MudAlert Severity="Severity.Error" Class="mt-3">
+                    @foreach (var err in _errors)
+                    {
+                        <div>@err</div>
+                    }
+                </MudAlert>
+            }
+
+            @if (_result is not null)
+            {
+                <MudAlert Severity="Severity.Success" Class="mt-3">
+                    Completed in @(_result.RunDurationMs)ms
+                </MudAlert>
+                <MudButton Variant="Variant.Filled" Color="MudBlazor.Color.Success"
+                           FullWidth="true" Class="mt-2"
+                           Href="@($"/backtests/{_result.Id}")"
+                           StartIcon="@Icons.Material.Filled.Visibility">
+                    View Results
+                </MudButton>
+            }
+        </MudPaper>
+
+        @if (_result is not null)
+        {
+            <MudPaper Class="pa-4 mt-4" Elevation="2">
+                <MudText Typo="Typo.h6" Class="mb-2">Quick Summary</MudText>
+                <MetricCard Label="Sharpe" Value="@(_result.SharpeRatio?.ToString("F2") ?? "N/A")" />
+                <MetricCard Label="Max DD" Value="@($"{_result.MaxDrawdown:P2}")" />
+                <MetricCard Label="Trades" Value="@_result.TotalTrades.ToString()" />
+                <MetricCard Label="End Equity" Value="@($"${_result.EndEquity:F2}")" />
+            </MudPaper>
+        }
+    </MudItem>
+</MudGrid>
+
+@code {
+    [SupplyParameterFromQuery] public string? Strategy { get; set; }
+    [SupplyParameterFromQuery] public string? Config { get; set; }
+
+    private string _strategyType = "";
+    private string _dataProviderType = "csv";
+    private string _filePath = "samples/data/spy-daily.csv";
+    private string _symbol = "SPY";
+    private string _interval = "1D";
+    private decimal _initialCash = 100_000m;
+    private decimal _riskFreeRate = 0.05m;
+    private string _slippageModel = "ZeroSlippageModel";
+    private string _commissionModel = "ZeroCommissionModel";
+    private string _scenarioId = "";
+    private string _description = "";
+    private Dictionary<string, string> _strategyParams = new();
+    private DateTime? _fromDate = new DateTime(2024, 1, 1);
+    private DateTime? _toDate = DateTime.Today;
+
+    private bool _running;
+    private BacktestResult? _result;
+    private IReadOnlyList<string>? _errors;
+    private CancellationTokenSource? _cts;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!string.IsNullOrEmpty(Strategy))
+            _strategyType = Strategy;
+
+        if (!string.IsNullOrEmpty(Config))
+        {
+            var saved = await ConfigRepo.GetByIdAsync(Config);
+            if (saved is not null) LoadFromConfig(saved);
+        }
+
+        if (string.IsNullOrEmpty(_scenarioId))
+            _scenarioId = $"run-{DateTime.Now:yyyyMMdd-HHmmss}";
+    }
+
+    private void LoadFromConfig(ScenarioConfig config)
+    {
+        _scenarioId = config.ScenarioId;
+        _description = config.Description;
+        _strategyType = config.StrategyType;
+        _dataProviderType = config.DataProviderType;
+        _initialCash = config.InitialCash;
+        _riskFreeRate = config.AnnualRiskFreeRate;
+        _slippageModel = config.SlippageModelType;
+        _commissionModel = config.CommissionModelType;
+        _symbol = config.DataProviderOptions.TryGetValue("Symbol", out var s) ? s?.ToString() ?? "" : "";
+        _interval = config.DataProviderOptions.TryGetValue("Interval", out var i) ? i?.ToString() ?? "1D" : "1D";
+        _filePath = config.DataProviderOptions.TryGetValue("FilePath", out var f) ? f?.ToString() ?? "" : "";
+
+        _strategyParams.Clear();
+        foreach (var kv in config.StrategyParameters)
+            _strategyParams[kv.Key] = kv.Value?.ToString() ?? "";
+    }
+
+    private string GetParam(string name) =>
+        _strategyParams.TryGetValue(name, out var v) ? v : "";
+
+    private void SetParam(string name, string value) =>
+        _strategyParams[name] = value;
+
+    private ScenarioConfig BuildConfig()
+    {
+        var dataOpts = new Dictionary<string, object>
+        {
+            ["Symbol"] = _symbol,
+            ["Interval"] = _interval,
+        };
+        if (_dataProviderType == "csv")
+            dataOpts["FilePath"] = _filePath;
+        if (_dataProviderType == "dukascopy" && _fromDate.HasValue && _toDate.HasValue)
+        {
+            dataOpts["From"] = new DateTimeOffset(_fromDate.Value, TimeSpan.Zero);
+            dataOpts["To"] = new DateTimeOffset(_toDate.Value, TimeSpan.Zero);
+        }
+
+        var stratParams = new Dictionary<string, object>();
+        foreach (var kv in _strategyParams)
+        {
+            if (decimal.TryParse(kv.Value, out var d)) stratParams[kv.Key] = d;
+            else if (int.TryParse(kv.Value, out var n)) stratParams[kv.Key] = n;
+            else stratParams[kv.Key] = kv.Value;
+        }
+
+        return new ScenarioConfig(
+            _scenarioId, _description,
+            TradingResearchEngine.Core.Engine.ReplayMode.Bar,
+            _dataProviderType, dataOpts,
+            _strategyType, stratParams,
+            new Dictionary<string, object>(),
+            _slippageModel, _commissionModel,
+            _initialCash, _riskFreeRate,
+            null, null, null, null);
+    }
+
+    private async Task RunBacktest()
+    {
+        _running = true;
+        _result = null;
+        _errors = null;
+        _cts = new CancellationTokenSource();
+        StateHasChanged();
+
+        try
+        {
+            var config = BuildConfig();
+            var runResult = await Task.Run(() => UseCase.RunAsync(config, _cts.Token));
+
+            if (runResult.IsSuccess && runResult.Result is not null)
+            {
+                _result = runResult.Result;
+                Snackbar.Add($"Backtest completed: {_result.TotalTrades} trades, Sharpe {_result.SharpeRatio?.ToString("F2") ?? "N/A"}",
+                    Severity.Success);
+            }
+            else
+            {
+                _errors = runResult.Errors;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            Snackbar.Add("Backtest cancelled.", Severity.Warning);
+        }
+        catch (Exception ex)
+        {
+            _errors = new[] { ex.Message };
+        }
+        finally
+        {
+            _running = false;
+            _cts?.Dispose();
+            _cts = null;
+            StateHasChanged();
+        }
+    }
+
+    private void Cancel() => _cts?.Cancel();
+
+    private async Task SaveConfig()
+    {
+        var config = BuildConfig();
+        await ConfigRepo.SaveAsync(config);
+        Snackbar.Add($"Config '{_scenarioId}' saved.", Severity.Info);
+    }
+}

@@ -1,0 +1,135 @@
+@page "/backtests/{Id}"
+@inject TradingResearchEngine.Core.Persistence.IRepository<BacktestResult> ResultRepo
+
+<PageTitle>Result — TradingResearchEngine</PageTitle>
+
+@if (_loading)
+{
+    <MudProgressCircular Indeterminate="true" />
+}
+else if (_result is null)
+{
+    <MudAlert Severity="Severity.Error">Result not found: @Id</MudAlert>
+}
+else
+{
+    <MudText Typo="Typo.h4" Class="mb-2">@_result.ScenarioConfig.ScenarioId</MudText>
+    <MudText Typo="Typo.subtitle1" Class="mb-4" Style="opacity:0.7">
+        @_result.ScenarioConfig.Description — @_result.ScenarioConfig.StrategyType
+    </MudText>
+
+    <MudChip T="string" Color="@(_result.Status == BacktestStatus.Completed ? Color.Success : Color.Error)"
+             Class="mb-4">@_result.Status</MudChip>
+
+    @* Metrics Grid *@
+    <MudGrid>
+        <MudItem xs="6" sm="4" md="2"><MetricCard Label="Start Equity" Value="@($"${_result.StartEquity:F2}")" /></MudItem>
+        <MudItem xs="6" sm="4" md="2"><MetricCard Label="End Equity" Value="@($"${_result.EndEquity:F2}")" /></MudItem>
+        <MudItem xs="6" sm="4" md="2"><MetricCard Label="Max Drawdown" Value="@($"{_result.MaxDrawdown:P2}")" /></MudItem>
+        <MudItem xs="6" sm="4" md="2"><MetricCard Label="Sharpe" Value="@(_result.SharpeRatio?.ToString("F2") ?? "N/A")" /></MudItem>
+        <MudItem xs="6" sm="4" md="2"><MetricCard Label="Sortino" Value="@(_result.SortinoRatio?.ToString("F2") ?? "N/A")" /></MudItem>
+        <MudItem xs="6" sm="4" md="2"><MetricCard Label="Calmar" Value="@(_result.CalmarRatio?.ToString("F2") ?? "N/A")" /></MudItem>
+    </MudGrid>
+    <MudGrid Class="mt-2">
+        <MudItem xs="6" sm="4" md="2"><MetricCard Label="RoMaD" Value="@(_result.ReturnOnMaxDrawdown?.ToString("F2") ?? "N/A")" /></MudItem>
+        <MudItem xs="6" sm="4" md="2"><MetricCard Label="Win Rate" Value="@(_result.WinRate?.ToString("P1") ?? "N/A")" /></MudItem>
+        <MudItem xs="6" sm="4" md="2"><MetricCard Label="Profit Factor" Value="@(_result.ProfitFactor?.ToString("F2") ?? "N/A")" /></MudItem>
+        <MudItem xs="6" sm="4" md="2"><MetricCard Label="Expectancy" Value="@($"${_result.Expectancy?.ToString("F2") ?? "N/A"}")" /></MudItem>
+        <MudItem xs="6" sm="4" md="2"><MetricCard Label="Smoothness R²" Value="@(_result.EquityCurveSmoothness?.ToString("F4") ?? "N/A")" /></MudItem>
+        <MudItem xs="6" sm="4" md="2"><MetricCard Label="Trades" Value="@_result.TotalTrades.ToString()" /></MudItem>
+    </MudGrid>
+    <MudGrid Class="mt-2 mb-4">
+        <MudItem xs="6" sm="3"><MetricCard Label="Avg Win" Value="@($"${_result.AverageWin?.ToString("F2") ?? "N/A"}")" /></MudItem>
+        <MudItem xs="6" sm="3"><MetricCard Label="Avg Loss" Value="@($"${_result.AverageLoss?.ToString("F2") ?? "N/A"}")" /></MudItem>
+        <MudItem xs="6" sm="3"><MetricCard Label="Max Consec Losses" Value="@_result.MaxConsecutiveLosses.ToString()" /></MudItem>
+        <MudItem xs="6" sm="3"><MetricCard Label="Max Consec Wins" Value="@_result.MaxConsecutiveWins.ToString()" /></MudItem>
+    </MudGrid>
+
+    @* Tabbed content: Charts + Trades *@
+    <MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-4">
+        <MudTabPanel Text="Equity Curve">
+            <EquityCurveChart Data="_result.EquityCurve" />
+        </MudTabPanel>
+
+        <MudTabPanel Text="Drawdown">
+            <DrawdownChart Data="_result.EquityCurve" />
+        </MudTabPanel>
+
+        <MudTabPanel Text="P&L Distribution">
+            <MudGrid>
+                <MudItem xs="12" md="8">
+                    <TradePnlHistogram Trades="_result.Trades" />
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <WinLossDonut TotalTrades="_result.TotalTrades" WinRate="_result.WinRate" />
+                </MudItem>
+            </MudGrid>
+        </MudTabPanel>
+
+        <MudTabPanel Text="Trades">
+            <MudTable Items="_result.Trades" Dense="true" Hover="true" Striped="true">
+                <HeaderContent>
+                    <MudTh>Symbol</MudTh>
+                    <MudTh>Direction</MudTh>
+                    <MudTh>Entry</MudTh>
+                    <MudTh>Exit</MudTh>
+                    <MudTh>Qty</MudTh>
+                    <MudTh>Entry Price</MudTh>
+                    <MudTh>Exit Price</MudTh>
+                    <MudTh>Gross P&amp;L</MudTh>
+                    <MudTh>Commission</MudTh>
+                    <MudTh>Net P&amp;L</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.Symbol</MudTd>
+                    <MudTd>@context.Direction</MudTd>
+                    <MudTd>@context.EntryTime.ToString("yyyy-MM-dd HH:mm")</MudTd>
+                    <MudTd>@context.ExitTime.ToString("yyyy-MM-dd HH:mm")</MudTd>
+                    <MudTd>@context.Quantity</MudTd>
+                    <MudTd>$@context.EntryPrice.ToString("F2")</MudTd>
+                    <MudTd>$@context.ExitPrice.ToString("F2")</MudTd>
+                    <MudTd>$@context.GrossPnl.ToString("F2")</MudTd>
+                    <MudTd>$@context.Commission.ToString("F2")</MudTd>
+                    <MudTd Style="@(context.NetPnl >= 0 ? "color: #4CAF50" : "color: #F44336")">
+                        $@context.NetPnl.ToString("F2")
+                    </MudTd>
+                </RowTemplate>
+                <PagerContent>
+                    <MudTablePager />
+                </PagerContent>
+            </MudTable>
+        </MudTabPanel>
+
+        <MudTabPanel Text="Config">
+            <MudSimpleTable Dense="true" Hover="true" Striped="true">
+                <thead><tr><th>Field</th><th>Value</th></tr></thead>
+                <tbody>
+                    <tr><td>Scenario ID</td><td>@_result.ScenarioConfig.ScenarioId</td></tr>
+                    <tr><td>Strategy</td><td>@_result.ScenarioConfig.StrategyType</td></tr>
+                    <tr><td>Replay Mode</td><td>@_result.ScenarioConfig.ReplayMode</td></tr>
+                    <tr><td>Data Provider</td><td>@_result.ScenarioConfig.DataProviderType</td></tr>
+                    <tr><td>Initial Cash</td><td>$@_result.ScenarioConfig.InitialCash.ToString("F2")</td></tr>
+                    <tr><td>Risk-Free Rate</td><td>@_result.ScenarioConfig.AnnualRiskFreeRate.ToString("P2")</td></tr>
+                    <tr><td>Slippage Model</td><td>@_result.ScenarioConfig.SlippageModelType</td></tr>
+                    <tr><td>Commission Model</td><td>@_result.ScenarioConfig.CommissionModelType</td></tr>
+                    <tr><td>Random Seed</td><td>@(_result.ScenarioConfig.RandomSeed?.ToString() ?? "None")</td></tr>
+                    <tr><td>Run Duration</td><td>@(_result.RunDurationMs)ms</td></tr>
+                    <tr><td>Equity Points</td><td>@_result.EquityCurve.Count</td></tr>
+                </tbody>
+            </MudSimpleTable>
+        </MudTabPanel>
+    </MudTabs>
+}
+
+@code {
+    [Parameter] public string Id { get; set; } = "";
+
+    private BacktestResult? _result;
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _result = await ResultRepo.GetByIdAsync(Id);
+        _loading = false;
+    }
+}

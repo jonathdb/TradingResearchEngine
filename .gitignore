@@ -1,0 +1,34 @@
+# .NET build output
+bin/
+obj/
+out/
+
+# IDE
+.vs/
+.vscode/
+*.user
+*.suo
+*.userprefs
+launchSettings.json
+
+# NuGet
+*.nupkg
+packages/
+
+# Test results
+TestResults/
+coverlet/
+
+# OS files
+Thumbs.db
+.DS_Store
+
+# Dukascopy cache (downloaded data — regenerated on first run)
+# Uncomment the next line if you don't want to commit cached data
+# **/DukascopyCache/
+
+# Auto-saved backtest results (local user data)
+# These are in %LOCALAPPDATA%/TradingResearchEngine/ so not in the repo
+
+# Generated reports
+samples/reports/*.md

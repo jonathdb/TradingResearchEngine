@@ -1,0 +1,92 @@
+@page "/strategies"
+@inject StrategyRegistry Registry
+@inject TradingResearchEngine.Core.Persistence.IRepository<ScenarioConfig> ConfigRepo
+@inject NavigationManager Nav
+
+<PageTitle>Strategies — TradingResearchEngine</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Strategies</MudText>
+
+<MudText Typo="Typo.h6" Class="mb-2">Available Strategy Types</MudText>
+<MudTable Items="Registry.KnownNames" Dense="true" Hover="true">
+    <HeaderContent>
+        <MudTh>Strategy Name</MudTh>
+        <MudTh>Parameters</MudTh>
+        <MudTh>Actions</MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd>@context</MudTd>
+        <MudTd>
+            @{
+                var parms = Registry.GetParameterInfo(context);
+                @string.Join(", ", parms.Select(p => $"{p.Name}: {p.TypeName} = {p.DefaultValue ?? "required"}"))
+            }
+        </MudTd>
+        <MudTd>
+            <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Outlined"
+                       Color="MudBlazor.Color.Primary"
+                       OnClick="@(() => Nav.NavigateTo($"/backtests/new?strategy={context}"))">
+                New Run
+            </MudButton>
+        </MudTd>
+    </RowTemplate>
+</MudTable>
+
+<MudText Typo="Typo.h6" Class="mt-6 mb-2">Saved Scenario Configs</MudText>
+
+@if (_loading)
+{
+    <MudProgressCircular Indeterminate="true" />
+}
+else if (_configs.Count == 0)
+{
+    <MudAlert Severity="Severity.Info">No saved configs yet. Create one from the New Run page.</MudAlert>
+}
+else
+{
+    <MudTable Items="_configs" Dense="true" Hover="true" Striped="true">
+        <HeaderContent>
+            <MudTh>Scenario ID</MudTh>
+            <MudTh>Strategy</MudTh>
+            <MudTh>Symbol</MudTh>
+            <MudTh>Initial Cash</MudTh>
+            <MudTh>Actions</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.ScenarioId</MudTd>
+            <MudTd>@context.StrategyType</MudTd>
+            <MudTd>@(context.DataProviderOptions.TryGetValue("Symbol", out var s) ? s : "—")</MudTd>
+            <MudTd>$@context.InitialCash.ToString("F0")</MudTd>
+            <MudTd>
+                <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Outlined"
+                           Color="MudBlazor.Color.Primary"
+                           OnClick="@(() => Nav.NavigateTo($"/backtests/new?config={context.ScenarioId}"))">
+                    Run
+                </MudButton>
+                <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Text"
+                           Color="MudBlazor.Color.Error"
+                           OnClick="@(() => DeleteConfig(context.ScenarioId))">
+                    Delete
+                </MudButton>
+            </MudTd>
+        </RowTemplate>
+    </MudTable>
+}
+
+@code {
+    private List<ScenarioConfig> _configs = new();
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var all = await ConfigRepo.ListAsync();
+        _configs = all.ToList();
+        _loading = false;
+    }
+
+    private async Task DeleteConfig(string id)
+    {
+        await ConfigRepo.DeleteAsync(id);
+        _configs.RemoveAll(c => c.ScenarioId == id);
+    }
+}

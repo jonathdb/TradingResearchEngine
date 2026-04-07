@@ -1,0 +1,28 @@
+{
+  "ScenarioId": "sma-crossover-spy-yahoo",
+  "Description": "SMA 10/30 crossover on SPY daily bars from Yahoo Finance",
+  "ReplayMode": "Bar",
+  "DataProviderType": "yahoo",
+  "DataProviderOptions": {
+    "Symbol": "SPY",
+    "Interval": "1D",
+    "From": "2023-01-01T00:00:00+00:00",
+    "To": "2024-12-31T00:00:00+00:00"
+  },
+  "StrategyType": "sma-crossover",
+  "StrategyParameters": {
+    "FastPeriod": 10,
+    "SlowPeriod": 30
+  },
+  "RiskParameters": {
+    "MaxExposurePercent": 20
+  },
+  "SlippageModelType": "ZeroSlippageModel",
+  "CommissionModelType": "ZeroCommissionModel",
+  "InitialCash": 100000,
+  "AnnualRiskFreeRate": 0.05,
+  "RandomSeed": 42,
+  "ResearchWorkflowType": null,
+  "ResearchWorkflowOptions": null,
+  "PropFirmOptions": null
+}

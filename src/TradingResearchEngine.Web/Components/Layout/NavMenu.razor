@@ -1,0 +1,33 @@
+﻿<MudNavMenu>
+    <MudNavLink Href="/" Match="NavLinkMatch.All"
+                Icon="@Icons.Material.Filled.Dashboard">Dashboard</MudNavLink>
+
+    <MudNavGroup Title="Strategies" Icon="@Icons.Material.Filled.Psychology" Expanded="false">
+        <MudNavLink Href="/strategies">Strategy List</MudNavLink>
+        <MudNavLink Href="/strategies/new">New Strategy</MudNavLink>
+    </MudNavGroup>
+
+    <MudNavGroup Title="Backtests" Icon="@Icons.Material.Filled.PlayArrow" Expanded="false">
+        <MudNavLink Href="/backtests/new">New Run</MudNavLink>
+        <MudNavLink Href="/backtests/history">Run History</MudNavLink>
+    </MudNavGroup>
+
+    <MudNavGroup Title="Research" Icon="@Icons.Material.Filled.Science" Expanded="false">
+        <MudNavLink Href="/research/sweep">Parameter Sweep</MudNavLink>
+        <MudNavLink Href="/research/montecarlo">Monte Carlo</MudNavLink>
+        <MudNavLink Href="/research/walkforward">Walk-Forward</MudNavLink>
+        <MudNavLink Href="/research/variance">Variance Testing</MudNavLink>
+        <MudNavLink Href="/research/perturbation">Perturbation</MudNavLink>
+        <MudNavLink Href="/research/benchmark">Benchmark</MudNavLink>
+    </MudNavGroup>
+
+    <MudNavGroup Title="Prop-Firm" Icon="@Icons.Material.Filled.AccountBalance" Expanded="false">
+        <MudNavLink Href="/propfirm/challenge">Challenge</MudNavLink>
+        <MudNavLink Href="/propfirm/funding">Instant Funding</MudNavLink>
+        <MudNavLink Href="/propfirm/variance">Variance</MudNavLink>
+    </MudNavGroup>
+
+    <MudNavLink Href="/compare" Icon="@Icons.Material.Filled.CompareArrows">Compare</MudNavLink>
+    <MudNavLink Href="/data" Icon="@Icons.Material.Filled.Storage">Data</MudNavLink>
+    <MudNavLink Href="/settings" Icon="@Icons.Material.Filled.Settings">Settings</MudNavLink>
+</MudNavMenu>

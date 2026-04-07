@@ -1,0 +1,26 @@
+{
+  "ScenarioId": "sma-crossover-eurusd-dukascopy",
+  "Description": "SMA 10/30 crossover on EURUSD daily bars from Dukascopy",
+  "ReplayMode": "Bar",
+  "DataProviderType": "dukascopy",
+  "DataProviderOptions": {
+    "Symbol": "EURUSD",
+    "Interval": "1D",
+    "From": "2024-01-01T00:00:00+00:00",
+    "To": "2024-06-30T00:00:00+00:00"
+  },
+  "StrategyType": "sma-crossover",
+  "StrategyParameters": {
+    "FastPeriod": 10,
+    "SlowPeriod": 30
+  },
+  "RiskParameters": {},
+  "SlippageModelType": "ZeroSlippageModel",
+  "CommissionModelType": "ZeroCommissionModel",
+  "InitialCash": 100000,
+  "AnnualRiskFreeRate": 0.05,
+  "RandomSeed": null,
+  "ResearchWorkflowType": null,
+  "ResearchWorkflowOptions": null,
+  "PropFirmOptions": null
+}

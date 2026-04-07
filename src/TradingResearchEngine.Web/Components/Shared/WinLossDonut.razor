@@ -1,0 +1,42 @@
+@using ApexCharts
+@if (_data is not null && _data.Count > 0)
+{
+    <ApexChart TItem="WinLossSlice"
+               Title="Win / Loss"
+               Options="_options"
+               Height="250">
+        <ApexPointSeries TItem="WinLossSlice"
+                         Items="_data"
+                         SeriesType="SeriesType.Donut"
+                         Name="Outcome"
+                         XValue="@(s => s.Label)"
+                         YAggregate="@(s => (decimal)s.Sum(x => x.Count))" />
+    </ApexChart>
+}
+
+@code {
+    [Parameter] public int TotalTrades { get; set; }
+    [Parameter] public decimal? WinRate { get; set; }
+
+    private List<WinLossSlice>? _data;
+
+    protected override void OnParametersSet()
+    {
+        if (TotalTrades == 0 || !WinRate.HasValue) { _data = null; return; }
+        int wins = (int)Math.Round(TotalTrades * WinRate.Value);
+        int losses = TotalTrades - wins;
+        _data = new List<WinLossSlice>
+        {
+            new("Wins", wins),
+            new("Losses", losses)
+        };
+    }
+
+    private ApexChartOptions<WinLossSlice> _options = new()
+    {
+        Colors = new List<string> { "#4CAF50", "#F44336" },
+        Legend = new Legend { Position = LegendPosition.Bottom }
+    };
+
+    public record WinLossSlice(string Label, int Count);
+}
