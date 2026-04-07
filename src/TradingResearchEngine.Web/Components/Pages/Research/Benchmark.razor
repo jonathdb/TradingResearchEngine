@@ -1,0 +1,47 @@
+@page "/research/benchmark"
+@inject TradingResearchEngine.Application.Research.BenchmarkComparisonWorkflow BenchWorkflow
+@inject ISnackbar Snackbar
+
+<PageTitle>Benchmark Comparison — TradingResearchEngine</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Benchmark Comparison</MudText>
+<MudText Typo="Typo.body2" Class="mb-4">
+    Compares your strategy against a buy-and-hold benchmark on the same data.
+</MudText>
+
+<MudGrid>
+    <MudItem xs="12" md="6">
+        <MudPaper Class="pa-4" Elevation="2">
+            <ScenarioConfigEditor @ref="_configEditor" />
+
+            <WorkflowRunner TResult="TradingResearchEngine.Application.Research.Results.BenchmarkComparisonResult"
+                            ButtonText="Run Benchmark Comparison"
+                            OnExecute="Execute">
+                <ResultContent Context="result">
+                    <MudGrid>
+                        <MudItem xs="4"><MetricCard Label="Strategy Return" Value="@($"{result.StrategyReturn:P2}")" /></MudItem>
+                        <MudItem xs="4"><MetricCard Label="Benchmark Return" Value="@($"{result.BenchmarkReturn:P2}")" /></MudItem>
+                        <MudItem xs="4"><MetricCard Label="Alpha" Value="@($"{result.Alpha:P2}")" /></MudItem>
+                        <MudItem xs="4"><MetricCard Label="Beta" Value="@(result.Beta?.ToString("F3") ?? "N/A")" /></MudItem>
+                        <MudItem xs="4"><MetricCard Label="Info Ratio" Value="@(result.InformationRatio?.ToString("F3") ?? "N/A")" /></MudItem>
+                        <MudItem xs="4"><MetricCard Label="Tracking Error" Value="@($"{result.TrackingError:F4}")" /></MudItem>
+                    </MudGrid>
+                </ResultContent>
+            </WorkflowRunner>
+        </MudPaper>
+    </MudItem>
+</MudGrid>
+
+@code {
+    private ScenarioConfigEditor? _configEditor;
+
+    private async Task<TradingResearchEngine.Application.Research.Results.BenchmarkComparisonResult> Execute(CancellationToken ct)
+    {
+        var config = _configEditor!.BuildConfig();
+        var options = new TradingResearchEngine.Application.Research.BenchmarkOptions
+        {
+            InitialCash = config.InitialCash
+        };
+        return await BenchWorkflow.RunAsync(config, options, ct);
+    }
+}

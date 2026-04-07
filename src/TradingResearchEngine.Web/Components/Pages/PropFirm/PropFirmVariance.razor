@@ -1,0 +1,87 @@
+@page "/propfirm/variance"
+@using TradingResearchEngine.Application.PropFirm
+@using TradingResearchEngine.Application.PropFirm.Results
+@inject PropFirmVarianceWorkflow VarWorkflow
+@inject ISnackbar Snackbar
+
+<PageTitle>Prop-Firm Variance — TradingResearchEngine</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Prop-Firm Variance Presets</MudText>
+<MudText Typo="Typo.body2" Class="mb-4">
+    Runs Conservative, Base, and Strong presets on instant-funding economics.
+</MudText>
+
+<MudGrid>
+    <MudItem xs="12" md="6">
+        <MudPaper Class="pa-4" Elevation="2">
+            <FirmRuleSetEditor @ref="_ruleSetEditor" />
+
+            <MudDivider Class="my-4" />
+            <MudText Typo="Typo.h6" Class="mb-3">Base Funding Config</MudText>
+
+            <MudNumericField T="decimal" Label="Direct Funded Probability %" @bind-Value="_fundedProb"
+                             Variant="Variant.Outlined" Class="mb-2" />
+            <MudNumericField T="decimal" Label="Account Fee USD" @bind-Value="_accountFee"
+                             Variant="Variant.Outlined" Class="mb-2" />
+            <MudNumericField T="decimal" Label="Notional Size USD" @bind-Value="_notional"
+                             Variant="Variant.Outlined" Class="mb-2" />
+            <MudNumericField T="decimal" Label="Gross Monthly Return %" @bind-Value="_grossReturn"
+                             Variant="Variant.Outlined" Class="mb-2" />
+            <MudNumericField T="decimal" Label="Payout Split %" @bind-Value="_payoutSplit"
+                             Variant="Variant.Outlined" Class="mb-2" />
+            <MudNumericField T="decimal" Label="Friction Factor" @bind-Value="_friction"
+                             Variant="Variant.Outlined" Class="mb-2" />
+            <MudNumericField T="int" Label="Expected Months" @bind-Value="_months"
+                             Variant="Variant.Outlined" Class="mb-2" />
+
+            <MudButton Variant="Variant.Filled" Color="MudBlazor.Color.Primary"
+                       FullWidth="true" Class="mt-3" OnClick="RunVariance"
+                       StartIcon="@Icons.Material.Filled.CompareArrows">
+                Run Variance Analysis
+            </MudButton>
+        </MudPaper>
+    </MudItem>
+
+    <MudItem xs="12" md="6">
+        @if (_result is not null)
+        {
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudTable Items="_result.Variants" Dense="true" Hover="true">
+                    <HeaderContent>
+                        <MudTh>Preset</MudTh>
+                        <MudTh>Monthly Payout</MudTh>
+                        <MudTh>Lifetime EV</MudTh>
+                        <MudTh>Breakeven</MudTh>
+                        <MudTh>Challenge Prob</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd><MudChip T="string" Size="MudBlazor.Size.Small">@context.PresetName</MudChip></MudTd>
+                        <MudTd>$@context.MonthlyPayoutExpectancy.ToString("F2")</MudTd>
+                        <MudTd>$@context.LifetimeEV.ToString("F2")</MudTd>
+                        <MudTd>@(context.BreakevenMonths?.ToString() ?? "Never")</MudTd>
+                        <MudTd>@context.ChallengeProbability.ToString("P2")</MudTd>
+                    </RowTemplate>
+                </MudTable>
+            </MudPaper>
+        }
+    </MudItem>
+</MudGrid>
+
+@code {
+    private FirmRuleSetEditor? _ruleSetEditor;
+    private PropFirmVarianceResult? _result;
+    private decimal _fundedProb = 80m, _accountFee = 500m, _notional = 100_000m;
+    private decimal _grossReturn = 5m, _payoutSplit = 80m, _friction = 0.9m;
+    private int _months = 12;
+
+    private void RunVariance()
+    {
+        if (_ruleSetEditor is null) return;
+        var rules = _ruleSetEditor.BuildRuleSet();
+        var config = new InstantFundingConfig(
+            _fundedProb, _accountFee, _notional, _grossReturn,
+            _payoutSplit, _friction, _months, rules);
+        _result = VarWorkflow.Run(config);
+        Snackbar.Add($"Variance analysis: {_result.Variants.Count} presets", Severity.Success);
+    }
+}

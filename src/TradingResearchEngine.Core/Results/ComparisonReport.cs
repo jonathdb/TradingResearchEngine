@@ -11,8 +11,12 @@ public sealed record ComparisonRow(
     string ScenarioId,
     decimal? SharpeRatio,
     decimal? SortinoRatio,
+    decimal? CalmarRatio,
     decimal MaxDrawdown,
     decimal? WinRate,
     decimal? ProfitFactor,
+    decimal? Expectancy,
+    decimal? EquityCurveSmoothness,
+    int MaxConsecutiveLosses,
     int TotalTrades,
     decimal EndEquity);

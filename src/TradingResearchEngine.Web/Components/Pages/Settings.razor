@@ -1,0 +1,71 @@
+@page "/settings"
+@inject Microsoft.Extensions.Options.IOptions<TradingResearchEngine.Application.Configuration.RiskOptions> RiskOpts
+@inject Microsoft.Extensions.Options.IOptions<TradingResearchEngine.Application.Configuration.MonteCarloOptions> McOpts
+@inject Microsoft.Extensions.Options.IOptions<TradingResearchEngine.Application.Configuration.ReportingOptions> ReportOpts
+@inject Microsoft.Extensions.Options.IOptions<TradingResearchEngine.Application.Configuration.SweepOptions> SweepOpts
+@inject Microsoft.Extensions.Options.IOptions<TradingResearchEngine.Application.Configuration.RepositoryOptions> RepoOpts
+@inject TradingResearchEngine.Infrastructure.DataProviders.DataFileService DataService
+@inject StrategyRegistry Registry
+
+<PageTitle>Settings — TradingResearchEngine</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Settings</MudText>
+<MudText Typo="Typo.body2" Class="mb-4" Style="opacity:0.6">
+    Current configuration values. Edit appsettings.json to change defaults.
+</MudText>
+
+<MudGrid>
+    <MudItem xs="12" md="6">
+        <MudPaper Class="pa-4" Elevation="2">
+            <MudText Typo="Typo.h6" Class="mb-3">Risk Defaults</MudText>
+            <MudSimpleTable Dense="true">
+                <tbody>
+                    <tr><td>Max Exposure %</td><td>@RiskOpts.Value.MaxExposurePercent%</td></tr>
+                </tbody>
+            </MudSimpleTable>
+
+            <MudText Typo="Typo.h6" Class="mt-4 mb-3">Monte Carlo Defaults</MudText>
+            <MudSimpleTable Dense="true">
+                <tbody>
+                    <tr><td>Simulation Count</td><td>@McOpts.Value.SimulationCount</td></tr>
+                    <tr><td>Ruin Threshold</td><td>@McOpts.Value.RuinThresholdPercent.ToString("P0")</td></tr>
+                    <tr><td>Seed</td><td>@(McOpts.Value.Seed?.ToString() ?? "Random")</td></tr>
+                </tbody>
+            </MudSimpleTable>
+
+            <MudText Typo="Typo.h6" Class="mt-4 mb-3">Sweep Options</MudText>
+            <MudSimpleTable Dense="true">
+                <tbody>
+                    <tr><td>Max Parallelism</td><td>@SweepOpts.Value.MaxDegreeOfParallelism</td></tr>
+                </tbody>
+            </MudSimpleTable>
+        </MudPaper>
+    </MudItem>
+
+    <MudItem xs="12" md="6">
+        <MudPaper Class="pa-4" Elevation="2">
+            <MudText Typo="Typo.h6" Class="mb-3">Reporting</MudText>
+            <MudSimpleTable Dense="true">
+                <tbody>
+                    <tr><td>Decimal Places</td><td>@ReportOpts.Value.DecimalPlaces</td></tr>
+                </tbody>
+            </MudSimpleTable>
+
+            <MudText Typo="Typo.h6" Class="mt-4 mb-3">Storage Paths</MudText>
+            <MudSimpleTable Dense="true">
+                <tbody>
+                    <tr><td>Repository</td><td style="word-break:break-all">@(string.IsNullOrEmpty(RepoOpts.Value.BaseDirectory) ? "(default: LocalAppData)" : RepoOpts.Value.BaseDirectory)</td></tr>
+                    <tr><td>Data Directory</td><td style="word-break:break-all">@DataService.DataDirectory</td></tr>
+                </tbody>
+            </MudSimpleTable>
+
+            <MudText Typo="Typo.h6" Class="mt-4 mb-3">Registered Strategies</MudText>
+            <MudList T="string" Dense="true">
+                @foreach (var name in Registry.KnownNames)
+                {
+                    <MudListItem T="string" Icon="@Icons.Material.Filled.Code">@name</MudListItem>
+                }
+            </MudList>
+        </MudPaper>
+    </MudItem>
+</MudGrid>

@@ -1,5 +1,6 @@
 @page "/backtests/{Id}"
 @inject TradingResearchEngine.Core.Persistence.IRepository<BacktestResult> ResultRepo
+@inject ISnackbar Snackbar
 
 <PageTitle>Result — TradingResearchEngine</PageTitle>
 
@@ -118,7 +119,18 @@ else
                 </tbody>
             </MudSimpleTable>
         </MudTabPanel>
+
+        <MudTabPanel Text="Monthly Returns">
+            <MonthlyReturnHeatmap EquityCurve="_result.EquityCurve" />
+        </MudTabPanel>
     </MudTabs>
+
+    @* Export button *@
+    <MudButton Variant="Variant.Outlined" Color="MudBlazor.Color.Secondary"
+               Class="mt-4" StartIcon="@Icons.Material.Filled.Download"
+               OnClick="ExportMarkdown">
+        Export Markdown Report
+    </MudButton>
 }
 
 @code {
@@ -131,5 +143,22 @@ else
     {
         _result = await ResultRepo.GetByIdAsync(Id);
         _loading = false;
+    }
+
+    private async Task ExportMarkdown()
+    {
+        if (_result is null) return;
+        var reporter = new TradingResearchEngine.Infrastructure.Reporting.MarkdownReporter(
+            Microsoft.Extensions.Options.Options.Create(
+                new TradingResearchEngine.Application.Configuration.ReportingOptions()));
+        var md = reporter.RenderToMarkdown(_result);
+
+        var fileName = $"{_result.ScenarioConfig.ScenarioId}-report.md";
+        var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "TradingResearchEngine", "Reports");
+        if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+        var path = Path.Combine(dir, fileName);
+        await File.WriteAllTextAsync(path, md);
+        Snackbar.Add($"Report saved to {path}", Severity.Success);
     }
 }

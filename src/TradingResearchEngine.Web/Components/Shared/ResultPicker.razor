@@ -1,0 +1,35 @@
+@inject TradingResearchEngine.Core.Persistence.IRepository<BacktestResult> ResultRepo
+
+<MudSelect T="string" Label="@Label" Value="_selectedId" ValueChanged="OnSelectionChanged"
+           Variant="Variant.Outlined" Class="@Class">
+    <MudSelectItem T="string" Value="@("")">— Select a result —</MudSelectItem>
+    @foreach (var r in _results)
+    {
+        <MudSelectItem T="string" Value="@r.Id">
+            @r.ScenarioConfig.ScenarioId — @r.ScenarioConfig.StrategyType
+            (Sharpe: @(r.SharpeRatio?.ToString("F2") ?? "N/A"), Trades: @r.TotalTrades)
+        </MudSelectItem>
+    }
+</MudSelect>
+
+@code {
+    [Parameter] public string Label { get; set; } = "Select Result";
+    [Parameter] public string Class { get; set; } = "mb-3";
+    [Parameter] public EventCallback<BacktestResult?> SelectedResultChanged { get; set; }
+
+    private List<BacktestResult> _results = new();
+    private string _selectedId = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var all = await ResultRepo.ListAsync();
+        _results = all.OrderByDescending(r => r.RunId).ToList();
+    }
+
+    private async Task OnSelectionChanged(string id)
+    {
+        _selectedId = id;
+        var result = string.IsNullOrEmpty(id) ? null : _results.FirstOrDefault(r => r.Id == id);
+        await SelectedResultChanged.InvokeAsync(result);
+    }
+}

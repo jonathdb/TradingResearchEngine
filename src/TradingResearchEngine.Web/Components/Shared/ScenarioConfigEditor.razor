@@ -1,0 +1,138 @@
+@inject StrategyRegistry Registry
+
+<MudText Typo="Typo.h6" Class="mb-3">Strategy</MudText>
+
+<MudSelect T="string" Label="Strategy Type" Value="StrategyType" ValueChanged="OnStrategyTypeChanged"
+           Variant="Variant.Outlined" Class="mb-3">
+    @foreach (var name in Registry.KnownNames)
+    {
+        <MudSelectItem Value="@name">@name</MudSelectItem>
+    }
+</MudSelect>
+
+@if (!string.IsNullOrEmpty(StrategyType))
+{
+    var parms = Registry.GetParameterInfo(StrategyType);
+    @foreach (var p in parms)
+    {
+        <MudTextField T="string" Label="@($"{p.Name} ({p.TypeName})")"
+                      Value="@GetParam(p.Name)"
+                      ValueChanged="@(v => SetParam(p.Name, v))"
+                      Placeholder="@(p.DefaultValue?.ToString() ?? "")"
+                      Variant="Variant.Outlined" Class="mb-2" />
+    }
+}
+
+<MudDivider Class="my-4" />
+<MudText Typo="Typo.h6" Class="mb-3">Data Source</MudText>
+
+<MudSelect T="string" Label="Provider Type" @bind-Value="DataProviderType"
+           Variant="Variant.Outlined" Class="mb-2">
+    <MudSelectItem Value="@("csv")">CSV File</MudSelectItem>
+    <MudSelectItem Value="@("dukascopy")">Dukascopy</MudSelectItem>
+</MudSelect>
+
+@if (DataProviderType == "csv")
+{
+    <MudTextField T="string" Label="File Path" @bind-Value="FilePath"
+                  Variant="Variant.Outlined" Class="mb-2" />
+}
+
+<MudTextField T="string" Label="Symbol" @bind-Value="Symbol"
+              Variant="Variant.Outlined" Class="mb-2" />
+<MudTextField T="string" Label="Interval" @bind-Value="Interval"
+              Variant="Variant.Outlined" Class="mb-2" HelperText="e.g. 1D, 1H, 5m" />
+
+@if (DataProviderType == "dukascopy")
+{
+    <MudDatePicker Label="From Date" @bind-Date="FromDate" Variant="Variant.Outlined" Class="mb-2" />
+    <MudDatePicker Label="To Date" @bind-Date="ToDate" Variant="Variant.Outlined" Class="mb-2" />
+}
+
+<MudDivider Class="my-4" />
+<MudText Typo="Typo.h6" Class="mb-3">Execution</MudText>
+
+<MudNumericField T="decimal" Label="Initial Cash" @bind-Value="InitialCash"
+                 Variant="Variant.Outlined" Class="mb-2" Min="1" />
+<MudNumericField T="decimal" Label="Risk-Free Rate" @bind-Value="RiskFreeRate"
+                 Variant="Variant.Outlined" Class="mb-2" Step="0.01M" />
+
+@code {
+    [Parameter] public string StrategyType { get; set; } = "";
+    [Parameter] public EventCallback<string> StrategyTypeChanged { get; set; }
+    [Parameter] public string DataProviderType { get; set; } = "csv";
+    [Parameter] public string FilePath { get; set; } = "samples/data/spy-daily.csv";
+    [Parameter] public string Symbol { get; set; } = "SPY";
+    [Parameter] public string Interval { get; set; } = "1D";
+    [Parameter] public DateTime? FromDate { get; set; } = new DateTime(2024, 1, 1);
+    [Parameter] public DateTime? ToDate { get; set; } = DateTime.Today;
+    [Parameter] public decimal InitialCash { get; set; } = 100_000m;
+    [Parameter] public decimal RiskFreeRate { get; set; } = 0.05m;
+
+    private Dictionary<string, string> _strategyParams = new();
+
+    private string GetParam(string name) =>
+        _strategyParams.TryGetValue(name, out var v) ? v : "";
+
+    private void SetParam(string name, string value) =>
+        _strategyParams[name] = value;
+
+    private async Task OnStrategyTypeChanged(string value)
+    {
+        StrategyType = value;
+        _strategyParams.Clear();
+        await StrategyTypeChanged.InvokeAsync(value);
+    }
+
+    /// <summary>Builds a ScenarioConfig from the current form state.</summary>
+    public ScenarioConfig BuildConfig(string scenarioId = "", string description = "")
+    {
+        var dataOpts = new Dictionary<string, object>
+        {
+            ["Symbol"] = Symbol,
+            ["Interval"] = Interval,
+        };
+        if (DataProviderType == "csv") dataOpts["FilePath"] = FilePath;
+        if (DataProviderType == "dukascopy" && FromDate.HasValue && ToDate.HasValue)
+        {
+            dataOpts["From"] = new DateTimeOffset(FromDate.Value, TimeSpan.Zero);
+            dataOpts["To"] = new DateTimeOffset(ToDate.Value, TimeSpan.Zero);
+        }
+
+        var stratParams = new Dictionary<string, object>();
+        foreach (var kv in _strategyParams)
+        {
+            if (int.TryParse(kv.Value, out var n)) stratParams[kv.Key] = n;
+            else if (decimal.TryParse(kv.Value, out var d)) stratParams[kv.Key] = d;
+            else stratParams[kv.Key] = kv.Value;
+        }
+
+        if (string.IsNullOrEmpty(scenarioId))
+            scenarioId = $"run-{DateTime.Now:yyyyMMdd-HHmmss}";
+
+        return new ScenarioConfig(
+            scenarioId, description,
+            TradingResearchEngine.Core.Engine.ReplayMode.Bar,
+            DataProviderType, dataOpts,
+            StrategyType, stratParams,
+            new Dictionary<string, object>(),
+            "ZeroSlippageModel", "ZeroCommissionModel",
+            InitialCash, RiskFreeRate,
+            null, null, null, null);
+    }
+
+    /// <summary>Loads form state from an existing config.</summary>
+    public void LoadFromConfig(ScenarioConfig config)
+    {
+        StrategyType = config.StrategyType;
+        DataProviderType = config.DataProviderType;
+        InitialCash = config.InitialCash;
+        RiskFreeRate = config.AnnualRiskFreeRate;
+        Symbol = config.DataProviderOptions.TryGetValue("Symbol", out var s) ? s?.ToString() ?? "" : "";
+        Interval = config.DataProviderOptions.TryGetValue("Interval", out var i) ? i?.ToString() ?? "1D" : "1D";
+        FilePath = config.DataProviderOptions.TryGetValue("FilePath", out var f) ? f?.ToString() ?? "" : "";
+        _strategyParams.Clear();
+        foreach (var kv in config.StrategyParameters)
+            _strategyParams[kv.Key] = kv.Value?.ToString() ?? "";
+    }
+}

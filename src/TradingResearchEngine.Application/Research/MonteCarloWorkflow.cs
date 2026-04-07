@@ -49,17 +49,25 @@ public sealed class MonteCarloWorkflow : IResearchWorkflow<MonteCarloOptions, Mo
         {
             return new MonteCarloResult(
                 sourceResult.EndEquity, sourceResult.EndEquity, sourceResult.EndEquity,
-                0m, 0m, new List<decimal> { sourceResult.EndEquity }, 0, 0);
+                0m, 0m, new List<decimal> { sourceResult.EndEquity }, 0, 0,
+                new List<MonteCarloPath>(), new List<MonteCarloPercentileBand>());
         }
 
         var returns = trades.Select(t => t.NetPnl).ToArray();
+        int tradeCount = returns.Length;
         var rng = options.Seed.HasValue ? new Random(options.Seed.Value) : new Random();
         var endEquities = new List<decimal>(options.SimulationCount);
         var maxDrawdowns = new List<decimal>(options.SimulationCount);
         var maxConsecLosses = new List<int>(options.SimulationCount);
         var maxConsecWins = new List<int>(options.SimulationCount);
+        var allPaths = new List<MonteCarloPath>(options.SimulationCount);
         var ruinThreshold = sourceResult.StartEquity * (1m - options.RuinThresholdPercent);
         int ruinCount = 0;
+
+        // Matrix for percentile band computation: [step][sim]
+        var stepEquities = new decimal[tradeCount + 1][];
+        for (int s = 0; s <= tradeCount; s++)
+            stepEquities[s] = new decimal[options.SimulationCount];
 
         for (int sim = 0; sim < options.SimulationCount; sim++)
         {
@@ -71,12 +79,18 @@ public sealed class MonteCarloWorkflow : IResearchWorkflow<MonteCarloOptions, Mo
             bool ruined = false;
             int consecLosses = 0, maxCL = 0;
             int consecWins = 0, maxCW = 0;
+            var path = new decimal[tradeCount + 1];
+            path[0] = equity;
+            stepEquities[0][sim] = equity;
 
-            for (int i = 0; i < returns.Length; i++)
+            for (int i = 0; i < tradeCount; i++)
             {
-                int idx = rng.Next(returns.Length);
+                int idx = rng.Next(tradeCount);
                 decimal pnl = returns[idx];
                 equity += pnl;
+                path[i + 1] = equity;
+                stepEquities[i + 1][sim] = equity;
+
                 if (equity > peak) peak = equity;
                 decimal dd = peak > 0 ? (peak - equity) / peak : 0m;
                 if (dd > maxDd) maxDd = dd;
@@ -87,11 +101,25 @@ public sealed class MonteCarloWorkflow : IResearchWorkflow<MonteCarloOptions, Mo
                 else { consecLosses = 0; consecWins = 0; }
             }
 
+            allPaths.Add(new MonteCarloPath(path));
             endEquities.Add(equity);
             maxDrawdowns.Add(maxDd);
             maxConsecLosses.Add(maxCL);
             maxConsecWins.Add(maxCW);
             if (ruined) ruinCount++;
+        }
+
+        // Compute percentile bands at each step
+        var bands = new List<MonteCarloPercentileBand>(tradeCount + 1);
+        for (int s = 0; s <= tradeCount; s++)
+        {
+            var sorted = stepEquities[s].OrderBy(v => v).ToArray();
+            int n = sorted.Length;
+            bands.Add(new MonteCarloPercentileBand(
+                s,
+                sorted[Math.Max(0, (int)(n * 0.10) - 1)],
+                sorted[Math.Max(0, (int)(n * 0.50) - 1)],
+                sorted[Math.Min((int)(n * 0.90), n - 1)]));
         }
 
         endEquities.Sort();
@@ -108,6 +136,7 @@ public sealed class MonteCarloWorkflow : IResearchWorkflow<MonteCarloOptions, Mo
         int p90ConsecLosses = maxConsecLosses[Math.Min((int)(count * 0.90), count - 1)];
         int p90ConsecWins = maxConsecWins[Math.Min((int)(count * 0.90), count - 1)];
 
-        return new MonteCarloResult(p10, p50, p90, ruinProb, medianDd, endEquities, p90ConsecLosses, p90ConsecWins);
+        return new MonteCarloResult(p10, p50, p90, ruinProb, medianDd, endEquities,
+            p90ConsecLosses, p90ConsecWins, allPaths, bands);
     }
 }

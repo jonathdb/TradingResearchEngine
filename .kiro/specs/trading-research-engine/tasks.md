@@ -243,6 +243,11 @@ Language: C# 12 / .NET 8. Test framework: xUnit + FsCheck.Xunit.
 - [x] 24.2 MeanReversionStrategy
 - [x] 24.3 BreakoutStrategy
 - [x] 24.4 RsiStrategy
+- [x] 24.5 DonchianBreakoutStrategy — 20-day channel breakout with lagged bands (no lookahead bias)
+- [x] 24.6 BollingerBandsStrategy — mean reversion at Bollinger Band extremes
+- [x] 24.7 StationaryMeanReversionStrategy — ADF stationarity filter + z-score mean reversion
+- [x] 24.8 MacroRegimeRotationStrategy — vol/trend/momentum regime detection with monthly rebalancing
+- [x] 24.9 JsonElement parameter conversion fix in RunScenarioUseCase (handles bool, int, decimal from JSON)
 
 ### 25. Further Improvements — Research Workflows (DONE)
 
@@ -301,54 +306,79 @@ Language: C# 12 / .NET 8. Test framework: xUnit + FsCheck.Xunit.
   - Save Config and View Results buttons
   - Query parameter support (?strategy=, ?config=)
 
-### UI Phase 4: Research Workflow Screens — NOT STARTED
+### UI Phase 4: Research Workflow Screens ✅
 
-- [ ] 31.1 Parameter Sweep page
-  - Parameter grid builder (add param name + value list)
-  - Run with progress (X of Y combinations)
-  - Results: ranked table, parameter sensitivity heatmap
-- [ ] 31.2 Monte Carlo page
-  - Source result selector, simulation count, seed, ruin threshold
-  - Run with progress (X of N simulations)
-  - Results: P10/P50/P90 cards, ruin gauge, end equity histogram, percentile bands
-- [ ] 31.3 Walk-Forward page
-  - Window config (IS/OOS length, step size, anchored toggle)
-  - Results: window table with efficiency ratios, IS vs OOS bar chart
-- [ ] 31.4 Variance Testing page
-  - Preset display + user-defined preset editor
-  - Results: side-by-side metrics, overlaid equity curves
-- [ ] 31.5 Parameter Perturbation page
-  - Run count, jitter %, seed inputs
-  - Results: Sharpe distribution histogram, mean/stddev cards
-- [ ] 31.6 Randomized OOS page
-  - OOS fraction, iterations, seed inputs
-  - Results: IS vs OOS scatter plot, efficiency distribution
-- [ ] 31.7 Benchmark Comparison page
-  - Results: overlaid equity curves, alpha/beta/IR cards
+- [x] 31.0 Pre-work: shared components + bug fix
+  - ResultPicker component (dropdown of saved results with metrics)
+  - ScenarioConfigEditor component (reusable strategy/data/execution form)
+  - WorkflowRunner<TResult> component (generic run/progress/cancel/error wrapper)
+  - Fixed RandomizedOosWorkflow provider type bug (now switches to "memory" for filtered bars)
+- [x] 31.1 Parameter Sweep page (/research/sweep)
+  - Dynamic parameter grid builder + ranked results table + sensitivity display
+- [x] 31.2 Monte Carlo page (/research/montecarlo)
+  - Source result picker + simulation options + P10/P50/P90 cards + equity distribution histogram
+- [x] 31.3 Walk-Forward page (/research/walkforward)
+  - Window config (IS/OOS days, step, anchored) + efficiency ratio table
+- [x] 31.4 Variance Testing page (/research/variance)
+  - Conservative/Base/Strong preset comparison table
+- [x] 31.5 Parameter Perturbation page (/research/perturbation)
+  - Jitter config + mean/stddev Sharpe + worst/best cards
+- [x] 31.6 Benchmark Comparison page (/research/benchmark)
+  - Strategy vs buy-and-hold with alpha/beta/IR/tracking error cards
+- [ ] 31.7 Randomized OOS page (/research/randomizedoos) — deferred, needs IDataProvider injection in UI
 
-### UI Phase 5: Prop-Firm Module Screens — NOT STARTED
+### UI Phase 5: Prop-Firm Module Screens ✅
 
-- [ ] 32.1 Challenge Evaluator page (select result + firm rules → pass/fail + economics)
-- [ ] 32.2 Instant Funding Evaluator page (config inputs → payout/EV/breakeven)
-- [ ] 32.3 Variance Presets page (Conservative/Base/Strong comparison)
-- [ ] 32.4 Rule Set Editor (create/edit FirmRuleSet JSON)
-- [ ] 32.5 Drawdown timeline with firm limit overlays
+- [x] 32.0 Pre-work:
+  - FirmRuleSet implements IHasId, registered IRepository<FirmRuleSet>
+  - FirmRuleSetEditor shared component (form + save/load from repository)
+- [x] 32.1 Challenge Evaluator page (/propfirm/challenge)
+  - Result picker + firm rule set editor + challenge config form
+  - Pass/fail badge, violated rules list, challenge probability
+- [x] 32.2 Instant Funding Evaluator page (/propfirm/funding)
+  - Funding config form (8 fields) + firm rule set editor
+  - Monthly payout, lifetime EV, breakeven months, challenge probability cards
+- [x] 32.3 Variance Presets page (/propfirm/variance)
+  - Base funding config + firm rule set → Conservative/Base/Strong comparison table
+- [ ] 32.4 Rule Set Editor standalone page — covered by FirmRuleSetEditor component embedded in each page
+- [ ] 32.5 Drawdown timeline with firm limit overlays — deferred to Phase 6 (needs custom chart)
 
-### UI Phase 6: Comparison Tools + Advanced Charts — NOT STARTED
+### UI Phase 6: Comparison Tools + Advanced Charts ✅
 
-- [ ] 33.1 Multi-run comparison page (select 2-10 results → side-by-side table + overlaid charts)
-- [ ] 33.2 Radar chart for multi-metric comparison
-- [ ] 33.3 Monthly return heatmap
-- [ ] 33.4 Rolling metrics charts (rolling Sharpe, rolling drawdown)
-- [ ] 33.5 Report export refinement (styled Markdown, PDF option)
+- [x] 33.0 Pre-work:
+  - Updated ComparisonRow with Calmar, Expectancy, Smoothness, MaxConsecutiveLosses
+  - MonteCarloResult now stores full paths for all simulations + per-step percentile bands
+  - MonteCarloChart component (all sim paths + P10/P50/P90 bands + actual result highlighted)
+  - MultiResultPicker component (multi-select table)
+  - MetricsRadarChart component (Sharpe, Calmar, WinRate, PF, Smoothness, Expectancy)
+  - OverlaidEquityCurves component (multiple equity curves on one chart)
+  - EquityDistributionChart component (MC end equity histogram)
+- [x] 33.1 Multi-run comparison page (/compare)
+  - Multi-select results → comparison table with all metrics + best-by badges
+  - Overlaid equity curves chart + metrics radar chart
+- [x] 33.2 Radar chart for multi-metric comparison (embedded in compare page)
+- [x] 33.3 Monthly return heatmap (new tab on Result Detail page)
+- [ ] 33.4 Rolling metrics charts — deferred (needs sliding window computation)
+- [x] 33.5 Report export (Export Markdown button on Result Detail page, saves to local AppData)
 
-### UI Phase 7: Polish + Data Management — NOT STARTED
+### UI Phase 7: Polish + Data Management ✅
 
-- [ ] 34.1 Data Files page (list, upload, preview, validate schema)
-- [ ] 34.2 Settings page (risk defaults, slippage/commission, reporting, repository path)
-- [ ] 34.3 Responsive layout refinements
-- [ ] 34.4 Error handling and edge case UX
-- [ ] 34.5 Keyboard shortcuts for power users
+- [x] 34.1 Data Files page (/data)
+  - Lists CSV files from data directory + samples/data
+  - Shows metadata: filename, format, row count, size, date range
+  - Preview first 20 rows of any file
+  - Validate schema (detect format)
+  - Convert non-engine formats to engine format
+  - DataFileService in Infrastructure for file management
+- [x] 34.2 Settings page (/settings)
+  - Read-only display of all current config values
+  - Risk defaults, Monte Carlo defaults, sweep parallelism, reporting, storage paths
+  - Registered strategies list
+- [x] 34.3 Error boundary
+  - ErrorBoundary wrapping main content in MainLayout
+  - Friendly error message with "Try Again" button
+- [ ] 34.4 Responsive layout refinements — MudBlazor handles basics, defer fine-tuning
+- [ ] 34.5 Keyboard shortcuts — deferred to future iteration
 
 ---
 

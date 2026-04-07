@@ -1,0 +1,80 @@
+@typeparam TResult
+@inject ISnackbar Snackbar
+
+<MudButton Variant="Variant.Filled" Color="MudBlazor.Color.Primary"
+           FullWidth="true" Class="mb-2"
+           Disabled="IsRunning"
+           OnClick="Run"
+           StartIcon="@Icons.Material.Filled.PlayArrow">
+    @(IsRunning ? "Running..." : ButtonText)
+</MudButton>
+
+@if (IsRunning)
+{
+    <MudProgressLinear Indeterminate="true" Color="MudBlazor.Color.Primary" Class="mb-2" />
+    <MudButton Variant="Variant.Outlined" Color="MudBlazor.Color.Warning"
+               FullWidth="true" Class="mb-2" OnClick="Cancel">
+        Cancel
+    </MudButton>
+}
+
+@if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+}
+
+@if (Result is not null && ResultContent is not null)
+{
+    <MudPaper Class="pa-4 mt-3" Elevation="2">
+        @ResultContent(Result)
+    </MudPaper>
+}
+
+@code {
+    [Parameter] public string ButtonText { get; set; } = "Run";
+    [Parameter] public Func<CancellationToken, Task<TResult>>? OnExecute { get; set; }
+    [Parameter] public RenderFragment<TResult>? ResultContent { get; set; }
+    [Parameter] public EventCallback<TResult> OnCompleted { get; set; }
+
+    public bool IsRunning { get; private set; }
+    public TResult? Result { get; private set; }
+
+    private string? _error;
+    private CancellationTokenSource? _cts;
+
+    private async Task Run()
+    {
+        if (OnExecute is null) return;
+
+        IsRunning = true;
+        Result = default;
+        _error = null;
+        _cts = new CancellationTokenSource();
+        StateHasChanged();
+
+        try
+        {
+            Result = await Task.Run(() => OnExecute(_cts.Token));
+            Snackbar.Add("Workflow completed.", Severity.Success);
+            await OnCompleted.InvokeAsync(Result);
+        }
+        catch (OperationCanceledException)
+        {
+            Snackbar.Add("Cancelled.", Severity.Warning);
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            IsRunning = false;
+            _cts?.Dispose();
+            _cts = null;
+            StateHasChanged();
+        }
+    }
+
+    private void Cancel() => _cts?.Cancel();
+}

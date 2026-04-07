@@ -1,0 +1,56 @@
+@using ApexCharts
+
+@if (_seriesData is not null && _seriesData.Count > 0)
+{
+    <ApexChart TItem="EqPoint"
+               Options="_options"
+               Height="350">
+        @foreach (var series in _seriesData)
+        {
+            <ApexPointSeries TItem="EqPoint"
+                             Items="series.Points"
+                             SeriesType="SeriesType.Line"
+                             Name="@series.Name"
+                             XValue="@(p => p.Timestamp.DateTime)"
+                             YValue="@(p => p.Equity)" />
+        }
+    </ApexChart>
+}
+
+@code {
+    [Parameter] public IReadOnlyList<BacktestResult>? Results { get; set; }
+
+    private List<EquitySeries>? _seriesData;
+
+    private static readonly string[] Colors = { "#42A5F5", "#FF7043", "#66BB6A", "#AB47BC", "#FFA726", "#26C6DA", "#EF5350", "#8D6E63", "#78909C", "#D4E157" };
+
+    protected override void OnParametersSet()
+    {
+        if (Results is null || Results.Count == 0) { _seriesData = null; return; }
+
+        _seriesData = Results.Select(r => new EquitySeries(
+            r.ScenarioConfig.ScenarioId,
+            r.EquityCurve.Select(p => new EqPoint(p.Timestamp, p.TotalEquity)).ToList()
+        )).ToList();
+    }
+
+    private ApexChartOptions<EqPoint> _options = new()
+    {
+        Chart = new Chart
+        {
+            Toolbar = new Toolbar { Show = true },
+            Zoom = new Zoom { Enabled = true }
+        },
+        Stroke = new Stroke { Curve = Curve.Smooth, Width = 2 },
+        Xaxis = new XAxis { Type = XAxisType.Datetime },
+        Yaxis = new List<YAxis>
+        {
+            new() { Labels = new YAxisLabels { Formatter = "function(val) { return '$' + val.toFixed(0); }" } }
+        },
+        Legend = new Legend { Position = LegendPosition.Top },
+        Tooltip = new Tooltip { X = new TooltipX { Format = "yyyy-MM-dd" } }
+    };
+
+    public record EquitySeries(string Name, List<EqPoint> Points);
+    public record EqPoint(DateTimeOffset Timestamp, decimal Equity);
+}

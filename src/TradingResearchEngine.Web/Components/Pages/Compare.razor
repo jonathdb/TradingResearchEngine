@@ -1,0 +1,122 @@
+@page "/compare"
+@inject TradingResearchEngine.Application.Research.ScenarioComparisonUseCase CompareUseCase
+@inject ISnackbar Snackbar
+
+<PageTitle>Compare Runs — TradingResearchEngine</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Compare Backtest Runs</MudText>
+
+<MudGrid>
+    <MudItem xs="12">
+        <MudPaper Class="pa-4" Elevation="2">
+            <MultiResultPicker @ref="_picker" Label="Select results to compare" />
+
+            <MudButton Variant="Variant.Filled" Color="MudBlazor.Color.Primary"
+                       Class="mt-3" OnClick="RunComparison"
+                       StartIcon="@Icons.Material.Filled.CompareArrows">
+                Compare Selected
+            </MudButton>
+        </MudPaper>
+    </MudItem>
+</MudGrid>
+
+@if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error" Class="mt-4">@_error</MudAlert>
+}
+
+@if (_report is not null && _selectedResults is not null)
+{
+    <MudGrid Class="mt-4">
+        <MudItem xs="12">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.h6" Class="mb-2">
+                    Best by Sharpe: <MudChip T="string" Color="MudBlazor.Color.Success" Size="MudBlazor.Size.Small">@_report.BestBySharpe</MudChip>
+                    Best by Drawdown: <MudChip T="string" Color="MudBlazor.Color.Info" Size="MudBlazor.Size.Small">@_report.BestByDrawdown</MudChip>
+                </MudText>
+
+                <MudTable Items="_report.Rows" Dense="true" Hover="true" Striped="true">
+                    <HeaderContent>
+                        <MudTh>Scenario</MudTh>
+                        <MudTh>Sharpe</MudTh>
+                        <MudTh>Sortino</MudTh>
+                        <MudTh>Calmar</MudTh>
+                        <MudTh>Max DD</MudTh>
+                        <MudTh>Win Rate</MudTh>
+                        <MudTh>PF</MudTh>
+                        <MudTh>Expectancy</MudTh>
+                        <MudTh>R²</MudTh>
+                        <MudTh>Consec L</MudTh>
+                        <MudTh>Trades</MudTh>
+                        <MudTh>End Equity</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>
+                            @context.ScenarioId
+                            @if (context.ScenarioId == _report.BestBySharpe) { <MudIcon Icon="@Icons.Material.Filled.Star" Color="MudBlazor.Color.Warning" Size="MudBlazor.Size.Small" /> }
+                        </MudTd>
+                        <MudTd>@(context.SharpeRatio?.ToString("F2") ?? "N/A")</MudTd>
+                        <MudTd>@(context.SortinoRatio?.ToString("F2") ?? "N/A")</MudTd>
+                        <MudTd>@(context.CalmarRatio?.ToString("F2") ?? "N/A")</MudTd>
+                        <MudTd>@context.MaxDrawdown.ToString("P2")</MudTd>
+                        <MudTd>@(context.WinRate?.ToString("P1") ?? "N/A")</MudTd>
+                        <MudTd>@(context.ProfitFactor?.ToString("F2") ?? "N/A")</MudTd>
+                        <MudTd>$@(context.Expectancy?.ToString("F2") ?? "N/A")</MudTd>
+                        <MudTd>@(context.EquityCurveSmoothness?.ToString("F4") ?? "N/A")</MudTd>
+                        <MudTd>@context.MaxConsecutiveLosses</MudTd>
+                        <MudTd>@context.TotalTrades</MudTd>
+                        <MudTd>$@context.EndEquity.ToString("F2")</MudTd>
+                    </RowTemplate>
+                </MudTable>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    @* Charts *@
+    <MudGrid Class="mt-4">
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.h6" Class="mb-2">Overlaid Equity Curves</MudText>
+                <OverlaidEquityCurves Results="_selectedResults" />
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.h6" Class="mb-2">Metrics Radar</MudText>
+                <MetricsRadarChart Results="_selectedResults" />
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    private MultiResultPicker? _picker;
+    private TradingResearchEngine.Core.Results.ComparisonReport? _report;
+    private IReadOnlyList<BacktestResult>? _selectedResults;
+    private string? _error;
+
+    private void RunComparison()
+    {
+        _error = null;
+        _report = null;
+        _selectedResults = null;
+
+        var selected = _picker?.GetSelected();
+        if (selected is null || selected.Count < 2)
+        {
+            _error = "Select at least 2 results to compare.";
+            return;
+        }
+
+        try
+        {
+            _selectedResults = selected;
+            _report = CompareUseCase.Compare(selected);
+            Snackbar.Add($"Comparing {selected.Count} results", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+}

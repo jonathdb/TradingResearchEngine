@@ -1,0 +1,79 @@
+@page "/propfirm/funding"
+@using TradingResearchEngine.Application.PropFirm
+@using TradingResearchEngine.Application.PropFirm.Results
+@inject PropFirmEvaluator Evaluator
+@inject ISnackbar Snackbar
+
+<PageTitle>Instant Funding — TradingResearchEngine</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Instant Funding Evaluator</MudText>
+
+<MudGrid>
+    <MudItem xs="12" md="6">
+        <MudPaper Class="pa-4" Elevation="2">
+            <FirmRuleSetEditor @ref="_ruleSetEditor" />
+
+            <MudDivider Class="my-4" />
+            <MudText Typo="Typo.h6" Class="mb-3">Funding Config</MudText>
+
+            <MudNumericField T="decimal" Label="Direct Funded Probability %" @bind-Value="_fundedProb"
+                             Variant="Variant.Outlined" Class="mb-2" Min="0" Max="100" />
+            <MudNumericField T="decimal" Label="Account Fee USD" @bind-Value="_accountFee"
+                             Variant="Variant.Outlined" Class="mb-2" Min="0" />
+            <MudNumericField T="decimal" Label="Notional Size USD" @bind-Value="_notional"
+                             Variant="Variant.Outlined" Class="mb-2" Min="0" />
+            <MudNumericField T="decimal" Label="Gross Monthly Return %" @bind-Value="_grossReturn"
+                             Variant="Variant.Outlined" Class="mb-2" Step="0.5M" />
+            <MudNumericField T="decimal" Label="Payout Split %" @bind-Value="_payoutSplit"
+                             Variant="Variant.Outlined" Class="mb-2" Min="0" Max="100" />
+            <MudNumericField T="decimal" Label="Payout Friction Factor" @bind-Value="_friction"
+                             Variant="Variant.Outlined" Class="mb-2" Min="0" Max="1" Step="0.05M" />
+            <MudNumericField T="int" Label="Expected Payout Months" @bind-Value="_months"
+                             Variant="Variant.Outlined" Class="mb-2" Min="1" />
+
+            <MudButton Variant="Variant.Filled" Color="MudBlazor.Color.Primary"
+                       FullWidth="true" Class="mt-3" OnClick="Calculate"
+                       StartIcon="@Icons.Material.Filled.Calculate">
+                Calculate Economics
+            </MudButton>
+        </MudPaper>
+    </MudItem>
+
+    <MudItem xs="12" md="6">
+        @if (_result is not null)
+        {
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.h6" Class="mb-3">Economics</MudText>
+                <MudGrid>
+                    <MudItem xs="6"><MetricCard Label="Monthly Payout" Value="@($"${_result.MonthlyPayoutExpectancy:F2}")" /></MudItem>
+                    <MudItem xs="6"><MetricCard Label="Lifetime EV" Value="@($"${_result.LifetimeEV:F2}")" /></MudItem>
+                    <MudItem xs="6"><MetricCard Label="Breakeven Months" Value="@(_result.BreakevenMonths?.ToString() ?? "Never")" /></MudItem>
+                    <MudItem xs="6"><MetricCard Label="Challenge Prob" Value="@($"{_result.ChallengeProbability:P2}")" /></MudItem>
+                </MudGrid>
+            </MudPaper>
+        }
+    </MudItem>
+</MudGrid>
+
+@code {
+    private FirmRuleSetEditor? _ruleSetEditor;
+    private PropFirmScenarioResult? _result;
+    private decimal _fundedProb = 80m;
+    private decimal _accountFee = 500m;
+    private decimal _notional = 100_000m;
+    private decimal _grossReturn = 5m;
+    private decimal _payoutSplit = 80m;
+    private decimal _friction = 0.9m;
+    private int _months = 12;
+
+    private void Calculate()
+    {
+        if (_ruleSetEditor is null) return;
+        var rules = _ruleSetEditor.BuildRuleSet();
+        var config = new InstantFundingConfig(
+            _fundedProb, _accountFee, _notional, _grossReturn,
+            _payoutSplit, _friction, _months, rules);
+        _result = Evaluator.ComputeEconomics(config);
+        Snackbar.Add($"Monthly payout: ${_result.MonthlyPayoutExpectancy:F2}", Severity.Info);
+    }
+}

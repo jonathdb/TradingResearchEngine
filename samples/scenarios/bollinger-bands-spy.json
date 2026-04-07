@@ -1,0 +1,26 @@
+{
+  "ScenarioId": "bollinger-bands-spy",
+  "Description": "Bollinger Bands mean-reversion on SPY daily bars. Buy at lower band, sell at upper.",
+  "ReplayMode": "Bar",
+  "DataProviderType": "csv",
+  "DataProviderOptions": {
+    "Symbol": "SPY",
+    "Interval": "1D",
+    "FilePath": "samples/data/spy-daily.csv"
+  },
+  "StrategyType": "bollinger-bands",
+  "StrategyParameters": {
+    "Period": 30,
+    "StdDevMultiplier": 2,
+    "ExitAtMiddle": false
+  },
+  "RiskParameters": {},
+  "SlippageModelType": "ZeroSlippageModel",
+  "CommissionModelType": "ZeroCommissionModel",
+  "InitialCash": 100000,
+  "AnnualRiskFreeRate": 0.05,
+  "RandomSeed": null,
+  "ResearchWorkflowType": null,
+  "ResearchWorkflowOptions": null,
+  "PropFirmOptions": null
+}

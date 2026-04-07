@@ -1,0 +1,50 @@
+@page "/research/variance"
+@inject TradingResearchEngine.Application.Research.VarianceTestingWorkflow VarWorkflow
+@inject ISnackbar Snackbar
+
+<PageTitle>Variance Testing — TradingResearchEngine</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Variance Testing</MudText>
+<MudText Typo="Typo.body2" Class="mb-4">
+    Runs Conservative, Base, and Strong presets to stress-test assumptions.
+</MudText>
+
+<MudGrid>
+    <MudItem xs="12" md="6">
+        <MudPaper Class="pa-4" Elevation="2">
+            <ScenarioConfigEditor @ref="_configEditor" />
+
+            <WorkflowRunner TResult="TradingResearchEngine.Application.Research.Results.VarianceResult"
+                            ButtonText="Run Variance Test"
+                            OnExecute="Execute">
+                <ResultContent Context="result">
+                    <MudTable Items="result.Variants" Dense="true" Hover="true">
+                        <HeaderContent>
+                            <MudTh>Preset</MudTh><MudTh>Sharpe</MudTh><MudTh>Max DD</MudTh>
+                            <MudTh>Win Rate</MudTh><MudTh>Trades</MudTh><MudTh>End Equity</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd><MudChip T="string" Size="MudBlazor.Size.Small">@context.PresetName</MudChip></MudTd>
+                            <MudTd>@(context.Result.SharpeRatio?.ToString("F2") ?? "N/A")</MudTd>
+                            <MudTd>@context.Result.MaxDrawdown.ToString("P2")</MudTd>
+                            <MudTd>@(context.Result.WinRate?.ToString("P1") ?? "N/A")</MudTd>
+                            <MudTd>@context.Result.TotalTrades</MudTd>
+                            <MudTd>$@context.Result.EndEquity.ToString("F2")</MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                </ResultContent>
+            </WorkflowRunner>
+        </MudPaper>
+    </MudItem>
+</MudGrid>
+
+@code {
+    private ScenarioConfigEditor? _configEditor;
+
+    private async Task<TradingResearchEngine.Application.Research.Results.VarianceResult> Execute(CancellationToken ct)
+    {
+        var config = _configEditor!.BuildConfig();
+        var options = new TradingResearchEngine.Application.Research.VarianceOptions();
+        return await VarWorkflow.RunAsync(config, options, ct);
+    }
+}

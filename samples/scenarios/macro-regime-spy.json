@@ -1,0 +1,27 @@
+{
+  "ScenarioId": "macro-regime-spy",
+  "Description": "Macro Regime Rotation on SPY daily. Uses vol/trend/momentum regime detection with monthly rebalancing.",
+  "ReplayMode": "Bar",
+  "DataProviderType": "csv",
+  "DataProviderOptions": {
+    "Symbol": "SPY",
+    "Interval": "1D",
+    "FilePath": "samples/data/spy-daily.csv"
+  },
+  "StrategyType": "macro-regime-rotation",
+  "StrategyParameters": {
+    "VolLookback": 21,
+    "TrendLookback": 200,
+    "MomentumLookback": 63,
+    "RebalanceDays": 21
+  },
+  "RiskParameters": {},
+  "SlippageModelType": "ZeroSlippageModel",
+  "CommissionModelType": "ZeroCommissionModel",
+  "InitialCash": 100000,
+  "AnnualRiskFreeRate": 0.05,
+  "RandomSeed": null,
+  "ResearchWorkflowType": null,
+  "ResearchWorkflowOptions": null,
+  "PropFirmOptions": null
+}

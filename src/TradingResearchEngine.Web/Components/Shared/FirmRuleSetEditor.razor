@@ -1,0 +1,76 @@
+@using TradingResearchEngine.Application.PropFirm
+@inject TradingResearchEngine.Core.Persistence.IRepository<FirmRuleSet> RuleSetRepo
+
+<MudText Typo="Typo.h6" Class="mb-3">Firm Rule Set</MudText>
+
+@if (_savedRuleSets.Count > 0)
+{
+    <MudSelect T="string" Label="Load Saved Rule Set" Value="_selectedId"
+               ValueChanged="OnLoadSaved" Variant="Variant.Outlined" Class="mb-3">
+        <MudSelectItem T="string" Value="@("")">— New —</MudSelectItem>
+        @foreach (var rs in _savedRuleSets)
+        {
+            <MudSelectItem T="string" Value="@rs.FirmName">@rs.FirmName</MudSelectItem>
+        }
+    </MudSelect>
+}
+
+<MudTextField T="string" Label="Firm Name" @bind-Value="FirmName"
+              Variant="Variant.Outlined" Class="mb-2" />
+<MudNumericField T="decimal" Label="Max Daily Drawdown %" @bind-Value="MaxDailyDd"
+                 Variant="Variant.Outlined" Class="mb-2" Min="0" Max="100" Step="0.5M" />
+<MudNumericField T="decimal" Label="Max Total Drawdown %" @bind-Value="MaxTotalDd"
+                 Variant="Variant.Outlined" Class="mb-2" Min="0" Max="100" Step="1M" />
+<MudNumericField T="int" Label="Min Trading Days" @bind-Value="MinTradingDays"
+                 Variant="Variant.Outlined" Class="mb-2" Min="0" />
+<MudNumericField T="decimal?" Label="Payout Cap USD (optional)" @bind-Value="PayoutCap"
+                 Variant="Variant.Outlined" Class="mb-2" />
+<MudNumericField T="decimal?" Label="Consistency Rule % (optional)" @bind-Value="ConsistencyRule"
+                 Variant="Variant.Outlined" Class="mb-2" />
+
+<MudButton Variant="Variant.Text" Color="MudBlazor.Color.Primary" Class="mt-2"
+           StartIcon="@Icons.Material.Filled.Save" OnClick="Save">
+    Save Rule Set
+</MudButton>
+
+@code {
+    public string FirmName { get; set; } = "MyFirm";
+    public decimal MaxDailyDd { get; set; } = 5m;
+    public decimal MaxTotalDd { get; set; } = 10m;
+    public int MinTradingDays { get; set; } = 5;
+    public decimal? PayoutCap { get; set; }
+    public decimal? ConsistencyRule { get; set; }
+
+    private List<FirmRuleSet> _savedRuleSets = new();
+    private string _selectedId = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var all = await RuleSetRepo.ListAsync();
+        _savedRuleSets = all.ToList();
+    }
+
+    private void OnLoadSaved(string firmName)
+    {
+        _selectedId = firmName;
+        var rs = _savedRuleSets.FirstOrDefault(r => r.FirmName == firmName);
+        if (rs is null) return;
+        FirmName = rs.FirmName;
+        MaxDailyDd = rs.MaxDailyDrawdownPercent;
+        MaxTotalDd = rs.MaxTotalDrawdownPercent;
+        MinTradingDays = rs.MinTradingDays;
+        PayoutCap = rs.PayoutCapUsd;
+        ConsistencyRule = rs.ConsistencyRulePercent;
+    }
+
+    public FirmRuleSet BuildRuleSet() => new(
+        FirmName, MaxDailyDd, MaxTotalDd, MinTradingDays,
+        PayoutCap, ConsistencyRule, new List<string>());
+
+    private async Task Save()
+    {
+        await RuleSetRepo.SaveAsync(BuildRuleSet());
+        var all = await RuleSetRepo.ListAsync();
+        _savedRuleSets = all.ToList();
+    }
+}

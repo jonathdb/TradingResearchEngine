@@ -1,0 +1,58 @@
+@using ApexCharts
+
+@if (_data is not null && _data.Count > 0)
+{
+    <ApexChart TItem="RadarPoint"
+               Title="Metrics Comparison"
+               Options="_options"
+               Height="400">
+        @foreach (var series in _data)
+        {
+            <ApexPointSeries TItem="RadarPoint"
+                             Items="series.Points"
+                             SeriesType="SeriesType.Radar"
+                             Name="@series.Name"
+                             XValue="@(p => p.Metric)"
+                             YAggregate="@(pts => pts.Sum(p => p.Value))" />
+        }
+    </ApexChart>
+}
+
+@code {
+    [Parameter] public IReadOnlyList<BacktestResult>? Results { get; set; }
+
+    private List<RadarSeries>? _data;
+
+    protected override void OnParametersSet()
+    {
+        if (Results is null || Results.Count == 0) { _data = null; return; }
+
+        _data = Results.Select(r => new RadarSeries(
+            r.ScenarioConfig.ScenarioId,
+            new List<RadarPoint>
+            {
+                new("Sharpe", Normalize(r.SharpeRatio, 3m)),
+                new("Calmar", Normalize(r.CalmarRatio, 3m)),
+                new("Win Rate", Normalize(r.WinRate, 1m)),
+                new("Profit Factor", Normalize(r.ProfitFactor, 3m)),
+                new("Smoothness", Normalize(r.EquityCurveSmoothness, 1m)),
+                new("Expectancy", Normalize(r.Expectancy, 100m)),
+            })).ToList();
+    }
+
+    // Normalize to 0-100 scale for radar display
+    private static decimal Normalize(decimal? value, decimal maxExpected)
+    {
+        if (!value.HasValue || maxExpected == 0) return 0;
+        return Math.Max(0, Math.Min(100, (value.Value / maxExpected) * 100m));
+    }
+
+    private ApexChartOptions<RadarPoint> _options = new()
+    {
+        Chart = new Chart { Toolbar = new Toolbar { Show = false } },
+        Legend = new Legend { Position = LegendPosition.Bottom }
+    };
+
+    public record RadarSeries(string Name, List<RadarPoint> Points);
+    public record RadarPoint(string Metric, decimal Value);
+}

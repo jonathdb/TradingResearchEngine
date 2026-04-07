@@ -40,8 +40,11 @@ public static class ServiceCollectionExtensions
         });
 
         services.AddSingleton<IReporter, ConsoleReporter>();
+        services.AddSingleton<DataFileService>();
         services.AddSingleton<IRepository<BacktestResult>, JsonFileRepository<BacktestResult>>();
         services.AddSingleton<IRepository<ScenarioConfig>, JsonFileRepository<ScenarioConfig>>();
+        services.AddSingleton<IRepository<TradingResearchEngine.Application.PropFirm.FirmRuleSet>,
+            JsonFileRepository<TradingResearchEngine.Application.PropFirm.FirmRuleSet>>();
 
         return services;
     }

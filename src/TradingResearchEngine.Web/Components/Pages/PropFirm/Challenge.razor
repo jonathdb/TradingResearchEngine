@@ -1,0 +1,95 @@
+@page "/propfirm/challenge"
+@using TradingResearchEngine.Application.PropFirm
+@using TradingResearchEngine.Application.PropFirm.Results
+@inject PropFirmEvaluator Evaluator
+@inject ISnackbar Snackbar
+
+<PageTitle>Challenge Evaluator — TradingResearchEngine</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Prop-Firm Challenge Evaluator</MudText>
+
+<MudGrid>
+    <MudItem xs="12" md="6">
+        <MudPaper Class="pa-4" Elevation="2">
+            <MudText Typo="Typo.h6" Class="mb-3">Backtest Result</MudText>
+            <ResultPicker Label="Select result to evaluate" SelectedResultChanged="r => _result = r" />
+
+            <MudDivider Class="my-4" />
+            <FirmRuleSetEditor @ref="_ruleSetEditor" />
+
+            <MudDivider Class="my-4" />
+            <MudText Typo="Typo.h6" Class="mb-3">Challenge Config</MudText>
+            <MudNumericField T="decimal" Label="Pass Rate %" @bind-Value="_passRate"
+                             Variant="Variant.Outlined" Class="mb-2" Min="0" Max="100" />
+            <MudNumericField T="decimal" Label="Pass-to-Funded Conversion %" @bind-Value="_conversion"
+                             Variant="Variant.Outlined" Class="mb-2" Min="0" Max="100" />
+            <MudNumericField T="decimal" Label="Account Fee USD" @bind-Value="_accountFee"
+                             Variant="Variant.Outlined" Class="mb-2" Min="0" />
+            <MudNumericField T="decimal" Label="Notional Size USD" @bind-Value="_notional"
+                             Variant="Variant.Outlined" Class="mb-2" Min="0" />
+
+            <MudButton Variant="Variant.Filled" Color="MudBlazor.Color.Primary"
+                       FullWidth="true" Class="mt-3" OnClick="Evaluate"
+                       Disabled="_result is null"
+                       StartIcon="@Icons.Material.Filled.Assessment">
+                Evaluate Challenge
+            </MudButton>
+        </MudPaper>
+    </MudItem>
+
+    <MudItem xs="12" md="6">
+        @if (_report is not null)
+        {
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.h6" Class="mb-3">
+                    <MudChip T="string" Color="@(_report.Passed ? MudBlazor.Color.Success : MudBlazor.Color.Error)">
+                        @_report.ChallengeOutcome
+                    </MudChip>
+                </MudText>
+
+                <MetricCard Label="Challenge Probability" Value="@($"{_challengeProb:P2}")" />
+
+                @if (_report.ViolatedRules.Count > 0)
+                {
+                    <MudText Typo="Typo.subtitle2" Class="mt-3 mb-2">Violated Rules</MudText>
+                    <MudList T="string" Dense="true">
+                        @foreach (var rule in _report.ViolatedRules)
+                        {
+                            <MudListItem T="string" Icon="@Icons.Material.Filled.Warning"
+                                         IconColor="MudBlazor.Color.Error">@rule</MudListItem>
+                        }
+                    </MudList>
+                }
+                else
+                {
+                    <MudAlert Severity="Severity.Success" Class="mt-3">All rules passed.</MudAlert>
+                }
+            </MudPaper>
+        }
+    </MudItem>
+</MudGrid>
+
+@code {
+    private FirmRuleSetEditor? _ruleSetEditor;
+    private BacktestResult? _result;
+    private RuleEvaluationReport? _report;
+    private decimal _challengeProb;
+    private decimal _passRate = 80m;
+    private decimal _conversion = 50m;
+    private decimal _accountFee = 500m;
+    private decimal _notional = 100_000m;
+
+    private void Evaluate()
+    {
+        if (_result is null || _ruleSetEditor is null) return;
+        var rules = _ruleSetEditor.BuildRuleSet();
+        _report = Evaluator.Evaluate(_result, rules);
+
+        var challengeConfig = new ChallengeConfig(
+            _passRate, _conversion, _accountFee, _notional,
+            rules.MaxDailyDrawdownPercent, rules.MaxTotalDrawdownPercent, rules);
+        _challengeProb = Evaluator.ComputeChallengeProbability(challengeConfig);
+
+        Snackbar.Add($"Challenge: {_report.ChallengeOutcome}", _report.Passed ? Severity.Success : Severity.Error);
+    }
+}

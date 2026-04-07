@@ -45,6 +45,10 @@ When `MonthlyPayout ≤ 0`, `BreakevenMonths` is `null` and a warning is logged.
 
 Any violation marks `ChallengeOutcome = Failed`.
 
+## FirmRuleSet Persistence
+
+`FirmRuleSet` implements `IHasId` (mapping `Id` to `FirmName`), so it can be persisted via `IRepository<FirmRuleSet>` using the same `JsonFileRepository<T>` infrastructure as `BacktestResult` and `ScenarioConfig`. This enables save/load/delete of firm rule sets for reuse across evaluations.
+
 ## Variance Presets
 
 `PropFirmVarianceWorkflow` applies Conservative, Base, and Strong presets (plus an optional user-defined preset) to an `InstantFundingConfig` and returns a `PropFirmVarianceResult` containing economics for each variant. It is registered as a scoped service in DI.

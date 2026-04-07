@@ -1,0 +1,53 @@
+@using ApexCharts
+
+@if (_buckets is not null && _buckets.Count > 0)
+{
+    <ApexChart TItem="EquityBucket"
+               Title="End Equity Distribution"
+               Options="_options"
+               Height="300">
+        <ApexPointSeries TItem="EquityBucket"
+                         Items="_buckets"
+                         SeriesType="SeriesType.Bar"
+                         Name="Simulations"
+                         XValue="@(b => b.Label)"
+                         YValue="@(b => (decimal)b.Count)" />
+    </ApexChart>
+}
+
+@code {
+    [Parameter] public IReadOnlyList<decimal>? Data { get; set; }
+
+    private List<EquityBucket>? _buckets;
+
+    protected override void OnParametersSet()
+    {
+        if (Data is null || Data.Count == 0) { _buckets = null; return; }
+
+        var sorted = Data.OrderBy(d => d).ToList();
+        decimal min = sorted.First();
+        decimal max = sorted.Last();
+        decimal range = max - min;
+        int bucketCount = Math.Min(30, Math.Max(10, Data.Count / 20));
+        if (range == 0) { _buckets = new() { new($"${min:F0}", Data.Count) }; return; }
+
+        decimal size = range / bucketCount;
+        _buckets = new();
+        for (int i = 0; i < bucketCount; i++)
+        {
+            decimal lo = min + i * size;
+            decimal hi = lo + size;
+            int count = sorted.Count(v => v >= lo && (i == bucketCount - 1 ? v <= hi : v < hi));
+            _buckets.Add(new($"${lo:F0}", count));
+        }
+    }
+
+    private ApexChartOptions<EquityBucket> _options = new()
+    {
+        Chart = new Chart { Toolbar = new Toolbar { Show = false } },
+        PlotOptions = new PlotOptions { Bar = new PlotOptionsBar { ColumnWidth = "90%" } },
+        Colors = new List<string> { "#42A5F5" }
+    };
+
+    public record EquityBucket(string Label, int Count);
+}

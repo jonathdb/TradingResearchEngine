@@ -20,9 +20,13 @@ public sealed class ScenarioComparisonUseCase
             r.ScenarioConfig.ScenarioId,
             r.SharpeRatio,
             r.SortinoRatio,
+            r.CalmarRatio,
             r.MaxDrawdown,
             r.WinRate,
             r.ProfitFactor,
+            r.Expectancy,
+            r.EquityCurveSmoothness,
+            r.MaxConsecutiveLosses,
             r.TotalTrades,
             r.EndEquity)).ToList();
 

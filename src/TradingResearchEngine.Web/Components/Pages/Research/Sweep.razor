@@ -1,0 +1,125 @@
+@page "/research/sweep"
+@inject TradingResearchEngine.Application.Research.ParameterSweepWorkflow SweepWorkflow
+@inject ISnackbar Snackbar
+
+<PageTitle>Parameter Sweep — TradingResearchEngine</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Parameter Sweep</MudText>
+
+<MudGrid>
+    <MudItem xs="12" md="7">
+        <MudPaper Class="pa-4" Elevation="2">
+            <ScenarioConfigEditor @ref="_configEditor" />
+
+            <MudDivider Class="my-4" />
+            <MudText Typo="Typo.h6" Class="mb-3">Parameter Grid</MudText>
+            <MudText Typo="Typo.caption" Class="mb-2">
+                Add parameters to sweep. Values are comma-separated.
+            </MudText>
+
+            @foreach (var entry in _gridEntries)
+            {
+                <MudGrid Class="mb-2">
+                    <MudItem xs="4">
+                        <MudTextField T="string" Label="Parameter" @bind-Value="entry.Name"
+                                      Variant="Variant.Outlined" />
+                    </MudItem>
+                    <MudItem xs="7">
+                        <MudTextField T="string" Label="Values (comma-separated)" @bind-Value="entry.Values"
+                                      Variant="Variant.Outlined" HelperText="e.g. 5,10,15,20" />
+                    </MudItem>
+                    <MudItem xs="1" Class="d-flex align-center">
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="MudBlazor.Color.Error"
+                                       OnClick="@(() => _gridEntries.Remove(entry))" />
+                    </MudItem>
+                </MudGrid>
+            }
+
+            <MudButton Variant="Variant.Text" Color="MudBlazor.Color.Primary"
+                       StartIcon="@Icons.Material.Filled.Add"
+                       OnClick="@(() => _gridEntries.Add(new GridEntry()))">
+                Add Parameter
+            </MudButton>
+        </MudPaper>
+    </MudItem>
+
+    <MudItem xs="12" md="5">
+        <MudPaper Class="pa-4" Elevation="2">
+            <WorkflowRunner TResult="TradingResearchEngine.Application.Research.Results.SweepResult"
+                            ButtonText="Run Sweep"
+                            OnExecute="ExecuteSweep">
+                <ResultContent Context="result">
+                    <MudText Typo="Typo.h6" Class="mb-2">
+                        @result.Results.Count results — Best Sharpe: @(result.RankedBySharpe.FirstOrDefault()?.SharpeRatio?.ToString("F2") ?? "N/A")
+                    </MudText>
+
+                    @if (result.ParameterSensitivity.Count > 0)
+                    {
+                        <MudText Typo="Typo.subtitle2" Class="mb-2">Parameter Sensitivity (lower = more robust)</MudText>
+                        <MudSimpleTable Dense="true">
+                            <thead><tr><th>Parameter</th><th>Sensitivity</th></tr></thead>
+                            <tbody>
+                                @foreach (var kv in result.ParameterSensitivity)
+                                {
+                                    <tr><td>@kv.Key</td><td>@kv.Value.ToString("F4")</td></tr>
+                                }
+                            </tbody>
+                        </MudSimpleTable>
+                    }
+
+                    <MudText Typo="Typo.subtitle2" Class="mt-3 mb-2">Ranked by Sharpe</MudText>
+                    <MudTable Items="result.RankedBySharpe" Dense="true" Hover="true">
+                        <HeaderContent>
+                            <MudTh>Scenario</MudTh>
+                            <MudTh>Sharpe</MudTh>
+                            <MudTh>Max DD</MudTh>
+                            <MudTh>Trades</MudTh>
+                            <MudTh>End Equity</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd>@context.ScenarioConfig.ScenarioId</MudTd>
+                            <MudTd>@(context.SharpeRatio?.ToString("F2") ?? "N/A")</MudTd>
+                            <MudTd>@context.MaxDrawdown.ToString("P2")</MudTd>
+                            <MudTd>@context.TotalTrades</MudTd>
+                            <MudTd>$@context.EndEquity.ToString("F2")</MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                </ResultContent>
+            </WorkflowRunner>
+        </MudPaper>
+    </MudItem>
+</MudGrid>
+
+@code {
+    private ScenarioConfigEditor? _configEditor;
+    private List<GridEntry> _gridEntries = new() { new() };
+
+    private async Task<TradingResearchEngine.Application.Research.Results.SweepResult> ExecuteSweep(CancellationToken ct)
+    {
+        var config = _configEditor!.BuildConfig();
+
+        // Build parameter grid from UI entries
+        var grid = new Dictionary<string, object>();
+        foreach (var entry in _gridEntries.Where(e => !string.IsNullOrWhiteSpace(e.Name)))
+        {
+            var values = entry.Values.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(v => (object)(decimal.TryParse(v, out var d) ? d : int.TryParse(v, out var n) ? n : v))
+                .ToList();
+            grid[entry.Name] = values;
+        }
+
+        var configWithGrid = config with
+        {
+            ResearchWorkflowOptions = new Dictionary<string, object> { ["ParameterGrid"] = grid }
+        };
+
+        var options = new TradingResearchEngine.Application.Configuration.SweepOptions();
+        return await SweepWorkflow.RunAsync(configWithGrid, options, ct);
+    }
+
+    private class GridEntry
+    {
+        public string Name { get; set; } = "";
+        public string Values { get; set; } = "";
+    }
+}

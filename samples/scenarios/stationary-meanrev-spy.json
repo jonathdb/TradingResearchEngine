@@ -1,0 +1,28 @@
+{
+  "ScenarioId": "stationary-meanrev-spy",
+  "Description": "Stationary Mean Reversion with ADF test on SPY daily. Buy z<-1, sell z>1.",
+  "ReplayMode": "Bar",
+  "DataProviderType": "csv",
+  "DataProviderOptions": {
+    "Symbol": "SPY",
+    "Interval": "1D",
+    "FilePath": "samples/data/spy-daily.csv"
+  },
+  "StrategyType": "stationary-mean-reversion",
+  "StrategyParameters": {
+    "Lookback": 30,
+    "EntryThreshold": 0.5,
+    "ExitThreshold": 0.5,
+    "AdfPValueThreshold": 0.10,
+    "SkipStationarityTest": false
+  },
+  "RiskParameters": {},
+  "SlippageModelType": "ZeroSlippageModel",
+  "CommissionModelType": "ZeroCommissionModel",
+  "InitialCash": 100000,
+  "AnnualRiskFreeRate": 0.05,
+  "RandomSeed": null,
+  "ResearchWorkflowType": null,
+  "ResearchWorkflowOptions": null,
+  "PropFirmOptions": null
+}

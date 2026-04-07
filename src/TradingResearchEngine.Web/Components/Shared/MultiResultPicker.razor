@@ -1,0 +1,46 @@
+@inject TradingResearchEngine.Core.Persistence.IRepository<BacktestResult> ResultRepo
+
+<MudText Typo="Typo.subtitle2" Class="mb-2">@Label (select 2+)</MudText>
+
+@if (_loading)
+{
+    <MudProgressCircular Indeterminate="true" Size="MudBlazor.Size.Small" />
+}
+else
+{
+    <MudTable Items="_results" Dense="true" Hover="true" MultiSelection="true"
+              @bind-SelectedItems="_selected" T="BacktestResult">
+        <HeaderContent>
+            <MudTh>Scenario</MudTh>
+            <MudTh>Strategy</MudTh>
+            <MudTh>Sharpe</MudTh>
+            <MudTh>Max DD</MudTh>
+            <MudTh>Trades</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.ScenarioConfig.ScenarioId</MudTd>
+            <MudTd>@context.ScenarioConfig.StrategyType</MudTd>
+            <MudTd>@(context.SharpeRatio?.ToString("F2") ?? "N/A")</MudTd>
+            <MudTd>@context.MaxDrawdown.ToString("P2")</MudTd>
+            <MudTd>@context.TotalTrades</MudTd>
+        </RowTemplate>
+    </MudTable>
+}
+
+@code {
+    [Parameter] public string Label { get; set; } = "Select Results";
+    [Parameter] public EventCallback<IReadOnlyList<BacktestResult>> SelectionChanged { get; set; }
+
+    private List<BacktestResult> _results = new();
+    private HashSet<BacktestResult> _selected = new();
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var all = await ResultRepo.ListAsync();
+        _results = all.OrderByDescending(r => r.RunId).ToList();
+        _loading = false;
+    }
+
+    public IReadOnlyList<BacktestResult> GetSelected() => _selected.ToList();
+}

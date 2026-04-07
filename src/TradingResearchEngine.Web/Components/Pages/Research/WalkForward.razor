@@ -1,0 +1,64 @@
+@page "/research/walkforward"
+@inject TradingResearchEngine.Application.Research.WalkForwardWorkflow WfWorkflow
+@inject ISnackbar Snackbar
+
+<PageTitle>Walk-Forward — TradingResearchEngine</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Walk-Forward Analysis</MudText>
+
+<MudGrid>
+    <MudItem xs="12" md="6">
+        <MudPaper Class="pa-4" Elevation="2">
+            <ScenarioConfigEditor @ref="_configEditor" />
+
+            <MudDivider Class="my-4" />
+            <MudText Typo="Typo.h6" Class="mb-3">Window Configuration</MudText>
+
+            <MudNumericField T="int" Label="In-Sample Days" @bind-Value="_isDays"
+                             Variant="Variant.Outlined" Class="mb-2" Min="5" />
+            <MudNumericField T="int" Label="Out-of-Sample Days" @bind-Value="_oosDays"
+                             Variant="Variant.Outlined" Class="mb-2" Min="1" />
+            <MudNumericField T="int" Label="Step Size Days" @bind-Value="_stepDays"
+                             Variant="Variant.Outlined" Class="mb-2" Min="1" />
+            <MudCheckBox T="bool" Label="Anchored Window" @bind-Value="_anchored" />
+
+            <WorkflowRunner TResult="TradingResearchEngine.Application.Research.Results.WalkForwardResult"
+                            ButtonText="Run Walk-Forward"
+                            OnExecute="Execute">
+                <ResultContent Context="result">
+                    <MetricCard Label="Mean Efficiency Ratio" Value="@(result.MeanEfficiencyRatio?.ToString("F3") ?? "N/A")" />
+                    <MudTable Items="result.Windows" Dense="true" Hover="true" Class="mt-3">
+                        <HeaderContent>
+                            <MudTh>Window</MudTh><MudTh>IS Sharpe</MudTh><MudTh>OOS Sharpe</MudTh><MudTh>Efficiency</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd>@context.WindowIndex</MudTd>
+                            <MudTd>@(context.InSampleResult.SharpeRatio?.ToString("F2") ?? "N/A")</MudTd>
+                            <MudTd>@(context.OutOfSampleResult.SharpeRatio?.ToString("F2") ?? "N/A")</MudTd>
+                            <MudTd>@(context.EfficiencyRatio?.ToString("F3") ?? "N/A")</MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                </ResultContent>
+            </WorkflowRunner>
+        </MudPaper>
+    </MudItem>
+</MudGrid>
+
+@code {
+    private ScenarioConfigEditor? _configEditor;
+    private int _isDays = 60, _oosDays = 20, _stepDays = 20;
+    private bool _anchored;
+
+    private async Task<TradingResearchEngine.Application.Research.Results.WalkForwardResult> Execute(CancellationToken ct)
+    {
+        var config = _configEditor!.BuildConfig();
+        var options = new TradingResearchEngine.Application.Configuration.WalkForwardOptions
+        {
+            InSampleLength = TimeSpan.FromDays(_isDays),
+            OutOfSampleLength = TimeSpan.FromDays(_oosDays),
+            StepSize = TimeSpan.FromDays(_stepDays),
+            AnchoredWindow = _anchored
+        };
+        return await WfWorkflow.RunAsync(config, options, ct);
+    }
+}

@@ -1,0 +1,24 @@
+{
+  "ScenarioId": "donchian-breakout-spy",
+  "Description": "20-day Donchian Channel Breakout on SPY daily bars. Long-only trend follower.",
+  "ReplayMode": "Bar",
+  "DataProviderType": "csv",
+  "DataProviderOptions": {
+    "Symbol": "SPY",
+    "Interval": "1D",
+    "FilePath": "samples/data/spy-daily.csv"
+  },
+  "StrategyType": "donchian-breakout",
+  "StrategyParameters": {
+    "Period": 20
+  },
+  "RiskParameters": {},
+  "SlippageModelType": "ZeroSlippageModel",
+  "CommissionModelType": "ZeroCommissionModel",
+  "InitialCash": 100000,
+  "AnnualRiskFreeRate": 0.05,
+  "RandomSeed": null,
+  "ResearchWorkflowType": null,
+  "ResearchWorkflowOptions": null,
+  "PropFirmOptions": null
+}

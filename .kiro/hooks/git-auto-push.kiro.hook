@@ -1,0 +1,21 @@
+{
+  "enabled": true,
+  "name": "Git Auto Push",
+  "description": "Watches for file changes across the repo. When triggered, stages all changes, generates a meaningful commit message based on recent activity (diffs, modified files), commits, and pushes to the remote.",
+  "version": "1",
+  "when": {
+    "type": "userTriggered",
+    "patterns": [
+      "src/**/*",
+      "docs/**/*",
+      "samples/**/*",
+      "*.sln",
+      "*.md",
+      "*.gitignore"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "Files in the repo have changed. Do the following:\n\n1. Run `git status` and `git diff --stat` to understand what changed recently.\n2. Run `git log --oneline -5` to see recent commit history for context.\n3. Based on the changed files and diffs, compose a clear, concise conventional commit message that summarizes the changes (e.g. \"feat: add Monte Carlo workflow endpoint\" or \"fix: correct margin breach calculation\"). If there are multiple unrelated changes, use a summary line with bullet points in the body.\n4. Run `git add -A` to stage all changes.\n5. Run `git commit -m \"<your generated message>\"` with the commit message you composed.\n6. Run `git push` to push the commit to the remote.\n\nReport back what was committed and pushed."
+  }
+}

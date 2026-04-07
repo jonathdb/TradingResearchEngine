@@ -121,7 +121,15 @@ public sealed class RunScenarioUseCase
 
                 if (match.Key is not null)
                 {
-                    try { args[i] = Convert.ChangeType(match.Value, p.ParameterType); continue; }
+                    try
+                    {
+                        var rawValue = match.Value;
+                        // Handle System.Text.Json's JsonElement
+                        if (rawValue is System.Text.Json.JsonElement je)
+                            rawValue = ConvertJsonElement(je, p.ParameterType);
+                        args[i] = Convert.ChangeType(rawValue, p.ParameterType);
+                        continue;
+                    }
                     catch { /* fall through to default */ }
                 }
 
@@ -137,5 +145,18 @@ public sealed class RunScenarioUseCase
 
         // Fallback: parameterless or DI-resolved
         return (IStrategy)ActivatorUtilities.CreateInstance(_services, strategyType);
+    }
+
+    private static object? ConvertJsonElement(System.Text.Json.JsonElement je, Type targetType)
+    {
+        if (targetType == typeof(int)) return je.GetInt32();
+        if (targetType == typeof(decimal)) return je.GetDecimal();
+        if (targetType == typeof(double)) return je.GetDouble();
+        if (targetType == typeof(bool)) return je.ValueKind == System.Text.Json.JsonValueKind.True
+            || (je.ValueKind == System.Text.Json.JsonValueKind.Number && je.GetInt32() != 0);
+        if (targetType == typeof(string)) return je.GetString();
+        if (targetType == typeof(long)) return je.GetInt64();
+        if (targetType == typeof(float)) return je.GetSingle();
+        return je.ToString();
     }
 }

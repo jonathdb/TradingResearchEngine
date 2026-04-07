@@ -1,0 +1,89 @@
+@page "/research/montecarlo"
+@inject TradingResearchEngine.Application.Research.MonteCarloWorkflow McWorkflow
+@inject ISnackbar Snackbar
+
+<PageTitle>Monte Carlo — TradingResearchEngine</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Monte Carlo Simulation</MudText>
+
+<MudGrid>
+    <MudItem xs="12" md="5">
+        <MudPaper Class="pa-4" Elevation="2">
+            <MudText Typo="Typo.h6" Class="mb-3">Source Result</MudText>
+            <ResultPicker Label="Select a backtest result" SelectedResultChanged="OnResultSelected" />
+
+            <MudDivider Class="my-4" />
+            <MudText Typo="Typo.h6" Class="mb-3">Options</MudText>
+
+            <MudNumericField T="int" Label="Simulation Count" @bind-Value="_simCount"
+                             Variant="Variant.Outlined" Class="mb-2" Min="1" Max="100000" />
+            <MudNumericField T="decimal" Label="Ruin Threshold %" @bind-Value="_ruinThreshold"
+                             Variant="Variant.Outlined" Class="mb-2" Min="0" Max="1" Step="0.05M" />
+            <MudNumericField T="int?" Label="Seed (optional)" @bind-Value="_seed"
+                             Variant="Variant.Outlined" Class="mb-2" />
+
+            <WorkflowRunner TResult="TradingResearchEngine.Application.Research.Results.MonteCarloResult"
+                            ButtonText="Run Monte Carlo"
+                            OnExecute="ExecuteMc"
+                            OnCompleted="OnMcCompleted">
+                <ResultContent Context="result">
+                    <MudGrid>
+                        <MudItem xs="4"><MetricCard Label="P10 Equity" Value="@($"${result.P10EndEquity:F0}")" /></MudItem>
+                        <MudItem xs="4"><MetricCard Label="P50 Equity" Value="@($"${result.P50EndEquity:F0}")" /></MudItem>
+                        <MudItem xs="4"><MetricCard Label="P90 Equity" Value="@($"${result.P90EndEquity:F0}")" /></MudItem>
+                        <MudItem xs="4"><MetricCard Label="Ruin Prob" Value="@($"{result.RuinProbability:P1}")" /></MudItem>
+                        <MudItem xs="4"><MetricCard Label="Median Max DD" Value="@($"{result.MedianMaxDrawdown:P2}")" /></MudItem>
+                        <MudItem xs="4"><MetricCard Label="P90 Consec Loss" Value="@result.P90MaxConsecutiveLosses.ToString()" /></MudItem>
+                    </MudGrid>
+                </ResultContent>
+            </WorkflowRunner>
+        </MudPaper>
+    </MudItem>
+
+    <MudItem xs="12" md="7">
+        @if (_mcResult is not null)
+        {
+            <MudPaper Class="pa-4 mb-4" Elevation="2">
+                <MudText Typo="Typo.h6" Class="mb-2">Simulation Paths + Percentile Bands</MudText>
+                <MonteCarloChart McResult="_mcResult"
+                                 ActualEquityCurve="_selectedResult?.EquityCurve"
+                                 StartEquity="@(_selectedResult?.StartEquity ?? 100_000m)" />
+            </MudPaper>
+
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.h6" Class="mb-2">End Equity Distribution</MudText>
+                <EquityDistributionChart Data="_mcResult.EndEquityDistribution" />
+            </MudPaper>
+        }
+    </MudItem>
+</MudGrid>
+
+@code {
+    private BacktestResult? _selectedResult;
+    private int _simCount = 1000;
+    private decimal _ruinThreshold = 0.50m;
+    private int? _seed;
+    private TradingResearchEngine.Application.Research.Results.MonteCarloResult? _mcResult;
+
+    private void OnResultSelected(BacktestResult? result) => _selectedResult = result;
+
+    private Task<TradingResearchEngine.Application.Research.Results.MonteCarloResult> ExecuteMc(CancellationToken ct)
+    {
+        if (_selectedResult is null)
+            throw new InvalidOperationException("Select a backtest result first.");
+
+        var options = new TradingResearchEngine.Application.Configuration.MonteCarloOptions
+        {
+            SimulationCount = _simCount,
+            RuinThresholdPercent = _ruinThreshold,
+            Seed = _seed
+        };
+
+        return Task.FromResult(McWorkflow.RunAsync(_selectedResult, options, ct));
+    }
+
+    private void OnMcCompleted(TradingResearchEngine.Application.Research.Results.MonteCarloResult result)
+    {
+        _mcResult = result;
+    }
+}

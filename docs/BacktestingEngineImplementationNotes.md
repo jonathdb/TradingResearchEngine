@@ -72,7 +72,33 @@ The provider delegates HTTP fetching to an internal `FetchCsvAsync` method that 
 
 ### InMemoryDataProvider
 
-`InMemoryDataProvider` serves bar and tick records from pre-loaded in-memory lists. It is not resolved via `DataProviderType` — instead, research workflows that partition data (RandomizedOOS, WalkForward) construct it directly with the relevant data slice. It is also useful in tests as a fast, deterministic data source. It supports construction from bars only, ticks only, or both, and respects `CancellationToken` on iteration.
+`InMemoryDataProvider` serves bar and tick records from pre-loaded in-memory lists. Research workflows that partition data into non-contiguous subsets (e.g. `RandomizedOosWorkflow`) set `DataProviderType = "memory"` on the sub-config and pass the filtered bars via `DataProviderOptions["FilteredBars"]`, so the `DataProviderFactory` resolves `InMemoryDataProvider` automatically. Workflows that only adjust the date range (e.g. `WalkForwardWorkflow`) keep the original provider type and modify `From`/`To` in `DataProviderOptions`. `InMemoryDataProvider` is also useful in tests as a fast, deterministic data source. It supports construction from bars only, ticks only, or both, and respects `CancellationToken` on iteration.
+
+## Data File Management
+
+`DataFileService` (Infrastructure) provides CSV file discovery and metadata analysis for the UI Data Files page and any tooling that needs to enumerate available data files.
+
+### DataFileService
+
+- Default data directory: `%LOCALAPPDATA%/TradingResearchEngine/Data` (created automatically if absent)
+- Constructor accepts an optional `dataDir` override for testing or custom deployments
+- `ListFiles()` scans the data directory for `*.csv` files and also checks a `samples/data` directory relative to the working directory (walk-up resolution), deduplicating by filename
+- Returns `List<DataFileInfo>` sorted by filename
+
+### DataFileInfo
+
+| Field | Type | Description |
+|---|---|---|
+| FileName | string | File name without path |
+| FullPath | string | Absolute path to the file |
+| FileSizeBytes | long | File size in bytes |
+| RowCount | int | Number of data rows (excluding header) |
+| DetectedFormat | string | Detected CSV format (e.g. Yahoo, TradingView, MetaTrader, Generic) |
+| FirstTimestamp | string? | First timestamp in the file (null if empty or unparseable) |
+| LastTimestamp | string? | Last timestamp in the file |
+| Headers | string[] | Column headers from the first row |
+
+`DataFileService` is not yet registered in DI — it will be wired when the Data Files page (UI Phase 7, task 34.1) is implemented.
 
 ## Metrics Pipeline
 
@@ -143,6 +169,10 @@ Long-running research workflows report progress via `IProgress<ProgressUpdate>`.
 
 `ScenarioConfig` implements `IHasId` (mapping `Id` to `ScenarioId`), which makes it a valid entity for `IRepository<ScenarioConfig>`. This enables save/load/delete of scenario configurations through the same `JsonFileRepository<T>` infrastructure used for `BacktestResult`. The CLI and API can persist configs for reuse, and the planned Blazor UI relies on this for its strategy editor and saved-config workflows.
 
+## FirmRuleSet Persistence
+
+`FirmRuleSet` implements `IHasId` (mapping `Id` to `FirmName`), enabling CRUD via `IRepository<FirmRuleSet>` and `JsonFileRepository<T>`. This allows prop-firm rule sets to be saved, loaded, and managed through the same persistence infrastructure as `BacktestResult` and `ScenarioConfig`. The Blazor UI Rule Set Editor and the CLI/API can persist firm configurations for reuse across evaluations.
+
 ### Repository Directory Resolution
 
 `JsonFileRepository<T>` resolves its storage directory using the following logic:
@@ -151,6 +181,52 @@ Long-running research workflows report progress via `IProgress<ProgressUpdate>`.
 2. Otherwise, fall back to `%LOCALAPPDATA%/TradingResearchEngine/{TypeName}` (e.g. `BacktestResult`, `ScenarioConfig`).
 
 The directory is created automatically if it does not exist. This means the repository works out of the box with zero configuration — useful for first-run and local development scenarios where no `appsettings.json` is present.
+
+## Monte Carlo Workflow
+
+`MonteCarloWorkflow` bootstrap-resamples the closed-trade return sequence to produce a distribution of outcomes. It implements `IResearchWorkflow<MonteCarloOptions, MonteCarloResult>`.
+
+### Process
+
+1. Runs the base scenario via `RunScenarioUseCase` (or accepts a pre-computed `BacktestResult`).
+2. Extracts the `NetPnl` from each closed trade as the return sequence.
+3. For each simulation: shuffles the return sequence (with replacement), walks the equity forward from `StartEquity`, and tracks peak, drawdown, ruin, and consecutive win/loss streaks.
+4. Records the full equity path per simulation (`MonteCarloPath`) and collects per-step equity values across all simulations.
+5. After all simulations complete, computes P10/P50/P90 percentile bands at each trade step.
+
+### Output — `MonteCarloResult`
+
+| Field | Type | Description |
+|---|---|---|
+| P10EndEquity | decimal | 10th percentile end equity |
+| P50EndEquity | decimal | 50th percentile end equity |
+| P90EndEquity | decimal | 90th percentile end equity |
+| RuinProbability | decimal | Fraction of simulations that hit the ruin threshold |
+| MedianMaxDrawdown | decimal | Median of per-simulation max drawdown |
+| EndEquityDistribution | IReadOnlyList\<decimal\> | Sorted end equity values across all simulations |
+| P90MaxConsecutiveLosses | int | 90th percentile max consecutive losing trades |
+| P90MaxConsecutiveWins | int | 90th percentile max consecutive winning trades |
+| SampledPaths | IReadOnlyList\<MonteCarloPath\> | Full equity path for every simulation (one entry per trade step + initial equity) |
+| PercentileBands | IReadOnlyList\<MonteCarloPercentileBand\> | P10/P50/P90 equity at each trade step across all simulations |
+
+### Supporting Types
+
+- `MonteCarloPath(IReadOnlyList<decimal> EquityValues)` — a single simulation's equity trajectory, length = trade count + 1.
+- `MonteCarloPercentileBand(int Step, decimal P10, decimal P50, decimal P90)` — cross-simulation percentiles at a given trade step.
+
+### Configuration — `MonteCarloOptions`
+
+| Property | Description |
+|---|---|
+| SimulationCount | Number of bootstrap simulations (must be ≥ 1) |
+| Seed | Optional RNG seed for reproducibility |
+| RuinThresholdPercent | Drawdown fraction at which a simulation is marked as ruined |
+
+### Edge Cases
+
+- Zero trades: returns a degenerate result with the source end equity as P10/P50/P90, empty paths, and empty bands.
+- `SimulationCount < 1`: throws `ArgumentException`.
+- Base scenario failure: throws `InvalidOperationException` with the validation errors.
 
 ## Deterministic Replay
 

@@ -94,10 +94,12 @@ public sealed class RandomizedOosWorkflow
             // We pass the bar lists via a convention key that the engine can use
             var isConfig = baseConfig with
             {
+                DataProviderType = "memory",
                 DataProviderOptions = WithBarIndices(baseConfig.DataProviderOptions, isBars)
             };
             var oosConfig = baseConfig with
             {
+                DataProviderType = "memory",
                 DataProviderOptions = WithBarIndices(baseConfig.DataProviderOptions, oosBars)
             };
 

@@ -24,7 +24,7 @@ Dependency rule: `Core ← Application ← Infrastructure ← { Cli, Api, Web }`
 - **Core Engine**: event hierarchy, heartbeat loop, dispatch table, portfolio, metrics (Sharpe, Sortino, Calmar, RoMaD, equity curve smoothness, average holding period, and more)
 - **Research Workflows**: parameter sweep, variance testing, Monte Carlo, walk-forward, parameter perturbation, randomized out-of-sample, scenario comparison, benchmark comparison
 - **PropFirmModule**: challenge/instant-funding economics, rule evaluation, variance presets
-- **Infrastructure**: CSV, HTTP, and in-memory data providers, JSON file repository, console/markdown reporters
+- **Infrastructure**: CSV, HTTP, and in-memory data providers, data file discovery/metadata service, JSON file repository, console/markdown reporters
 
 ## Built-in Strategies
 
@@ -36,6 +36,10 @@ Strategies are discovered via the `[StrategyName]` registry. Use the name in `Sc
 | `breakout` | `BreakoutStrategy` | Buys on N-bar high breakout, sells on N-bar low breakdown |
 | `mean-reversion` | `MeanReversionStrategy` | Buys N std devs below SMA, sells on reversion to mean |
 | `rsi` | `RsiStrategy` | Buys when RSI drops below oversold, sells above overbought |
+| `bollinger-bands` | `BollingerBandsStrategy` | Mean-reversion on Bollinger Band touches, configurable exit at middle or upper band |
+| `donchian-breakout` | `DonchianBreakoutStrategy` | Long-only Donchian Channel breakout with lagged bands to avoid lookahead bias |
+| `stationary-mean-reversion` | `StationaryMeanReversionStrategy` | Z-score mean reversion with ADF stationarity filter; exits on regime change |
+| `macro-regime-rotation` | `MacroRegimeRotationStrategy` | Multi-regime rotation using volatility, trend, and momentum indicators; rebalances monthly with 4-tier allocation |
 
 ## Getting Started
 

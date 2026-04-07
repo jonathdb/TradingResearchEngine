@@ -1,0 +1,54 @@
+@using ApexCharts
+
+@if (_data is not null && _data.Count > 0)
+{
+    <ApexChart TItem="MonthCell"
+               Title="Monthly Returns (%)"
+               Options="_options"
+               Height="300">
+        <ApexPointSeries TItem="MonthCell"
+                         Items="_data"
+                         SeriesType="SeriesType.Heatmap"
+                         Name="Return %"
+                         XValue="@(c => c.Month)"
+                         YValue="@(c => c.ReturnPct)" />
+    </ApexChart>
+}
+else
+{
+    <MudAlert Severity="Severity.Info">Not enough data for monthly returns (need multiple months).</MudAlert>
+}
+
+@code {
+    [Parameter] public IReadOnlyList<TradingResearchEngine.Core.Portfolio.EquityCurvePoint>? EquityCurve { get; set; }
+
+    private List<MonthCell>? _data;
+
+    protected override void OnParametersSet()
+    {
+        if (EquityCurve is null || EquityCurve.Count < 2) { _data = null; return; }
+
+        var monthly = EquityCurve
+            .GroupBy(p => new { p.Timestamp.Year, p.Timestamp.Month })
+            .Where(g => g.Count() >= 2)
+            .Select(g =>
+            {
+                var first = g.First().TotalEquity;
+                var last = g.Last().TotalEquity;
+                var ret = first != 0 ? ((last - first) / first) * 100m : 0m;
+                return new MonthCell(
+                    $"{g.Key.Year}-{g.Key.Month:D2}",
+                    Math.Round(ret, 2));
+            })
+            .ToList();
+
+        _data = monthly.Count > 0 ? monthly : null;
+    }
+
+    private ApexChartOptions<MonthCell> _options = new()
+    {
+        Chart = new Chart { Toolbar = new Toolbar { Show = false } }
+    };
+
+    public record MonthCell(string Month, decimal ReturnPct);
+}

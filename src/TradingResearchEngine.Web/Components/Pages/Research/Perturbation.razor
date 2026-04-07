@@ -1,0 +1,55 @@
+@page "/research/perturbation"
+@inject TradingResearchEngine.Application.Research.ParameterPerturbationWorkflow PertWorkflow
+@inject ISnackbar Snackbar
+
+<PageTitle>Parameter Perturbation — TradingResearchEngine</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Parameter Perturbation</MudText>
+<MudText Typo="Typo.body2" Class="mb-4">
+    Jitters each parameter by ±N% to detect curve-fitting. Stable results = robust strategy.
+</MudText>
+
+<MudGrid>
+    <MudItem xs="12" md="6">
+        <MudPaper Class="pa-4" Elevation="2">
+            <ScenarioConfigEditor @ref="_configEditor" />
+
+            <MudDivider Class="my-4" />
+            <MudNumericField T="int" Label="Run Count" @bind-Value="_runCount"
+                             Variant="Variant.Outlined" Class="mb-2" Min="5" Max="500" />
+            <MudNumericField T="decimal" Label="Jitter %" @bind-Value="_jitter"
+                             Variant="Variant.Outlined" Class="mb-2" Min="0.01M" Max="0.50M" Step="0.05M" />
+
+            <WorkflowRunner TResult="TradingResearchEngine.Application.Research.PerturbationResult"
+                            ButtonText="Run Perturbation"
+                            OnExecute="Execute">
+                <ResultContent Context="result">
+                    <MudGrid>
+                        <MudItem xs="4"><MetricCard Label="Mean Sharpe" Value="@result.MeanSharpe.ToString("F2")" /></MudItem>
+                        <MudItem xs="4"><MetricCard Label="Std Dev" Value="@result.StdDevSharpe.ToString("F3")" /></MudItem>
+                        <MudItem xs="4"><MetricCard Label="Mean Expectancy" Value="@($"${result.MeanExpectancy:F2}")" /></MudItem>
+                        <MudItem xs="6"><MetricCard Label="Worst Sharpe" Value="@result.WorstSharpe.ToString("F2")" /></MudItem>
+                        <MudItem xs="6"><MetricCard Label="Best Sharpe" Value="@result.BestSharpe.ToString("F2")" /></MudItem>
+                    </MudGrid>
+                </ResultContent>
+            </WorkflowRunner>
+        </MudPaper>
+    </MudItem>
+</MudGrid>
+
+@code {
+    private ScenarioConfigEditor? _configEditor;
+    private int _runCount = 50;
+    private decimal _jitter = 0.10m;
+
+    private async Task<TradingResearchEngine.Application.Research.PerturbationResult> Execute(CancellationToken ct)
+    {
+        var config = _configEditor!.BuildConfig();
+        var options = new TradingResearchEngine.Application.Research.PerturbationOptions
+        {
+            RunCount = _runCount,
+            JitterPercent = _jitter
+        };
+        return await PertWorkflow.RunAsync(config, options, ct);
+    }
+}
