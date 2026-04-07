@@ -55,12 +55,12 @@ public sealed class YahooFinanceDataProvider : IDataProvider
         }
     }
 
-    public async IAsyncEnumerable<TickRecord> GetTicks(
+    public IAsyncEnumerable<TickRecord> GetTicks(
         string symbol, DateTimeOffset from, DateTimeOffset to,
-        [EnumeratorCancellation] CancellationToken ct = default)
+        CancellationToken ct = default)
     {
         _logger.LogWarning("Yahoo Finance does not support tick data.");
-        yield break;
+        return EmptyAsyncEnumerable<TickRecord>.Instance;
     }
 
     private async Task<string?> FetchCsvAsync(

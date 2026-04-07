@@ -61,7 +61,7 @@ public class DukascopyPerformanceTests
     }
 
     [Fact]
-    public async Task Profile_Strategy_Processing_Speed()
+    public Task Profile_Strategy_Processing_Speed()
     {
         // Generate synthetic bars to isolate strategy speed from download speed
         var bars = Enumerable.Range(0, 10_000)
@@ -122,5 +122,6 @@ public class DukascopyPerformanceTests
         var optimizedTime = sw.ElapsedMilliseconds;
         Console.WriteLine($"[PERF] Optimized on {bars.Count} bars: {optimizedTime}ms, {signals} signals");
         Console.WriteLine($"[PERF] Speedup: {(double)strategyTime / Math.Max(1, optimizedTime):F1}x");
+        return Task.CompletedTask;
     }
 }

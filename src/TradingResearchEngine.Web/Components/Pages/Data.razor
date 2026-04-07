@@ -35,14 +35,14 @@ else
             <MudTd>@(context.LastTimestamp ?? "—")</MudTd>
             <MudTd>
                 <MudIconButton Icon="@Icons.Material.Filled.Visibility" Size="MudBlazor.Size.Small"
-                               OnClick="@(() => Preview(context))" Title="Preview" />
+                               OnClick="@(() => Preview(context))" />
                 <MudIconButton Icon="@Icons.Material.Filled.CheckCircle" Size="MudBlazor.Size.Small"
-                               OnClick="@(() => Validate(context))" Title="Validate" />
+                               OnClick="@(() => Validate(context))" />
                 @if (context.DetectedFormat != "Engine")
                 {
                     <MudIconButton Icon="@Icons.Material.Filled.Transform" Size="MudBlazor.Size.Small"
                                    Color="MudBlazor.Color.Primary"
-                                   OnClick="@(() => Convert(context))" Title="Convert to engine format" />
+                                   OnClick="@(() => Convert(context))" />
                 }
             </MudTd>
         </RowTemplate>

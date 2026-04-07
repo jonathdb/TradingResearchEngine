@@ -97,12 +97,12 @@ public sealed class DukascopyDataProvider : IDataProvider
         }
     }
 
-    public async IAsyncEnumerable<TickRecord> GetTicks(
+    public IAsyncEnumerable<TickRecord> GetTicks(
         string symbol, DateTimeOffset from, DateTimeOffset to,
-        [EnumeratorCancellation] CancellationToken ct = default)
+        CancellationToken ct = default)
     {
         _logger.LogWarning("Dukascopy tick data not yet implemented. Use bar data.");
-        yield break;
+        return EmptyAsyncEnumerable<TickRecord>.Instance;
     }
 
     private async Task<List<BarRecord>> FetchDayAsync(

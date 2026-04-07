@@ -1,7 +1,7 @@
 @using ApexCharts
 @using TradingResearchEngine.Application.Research.Results
 
-@if (_series is not null && _series.Count > 0)
+@if (_series is not null && _series.Count > 0 && _simPaths is not null)
 {
     <ApexChart TItem="McPoint"
                Options="_options"
