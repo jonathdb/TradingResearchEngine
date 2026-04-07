@@ -200,8 +200,7 @@ Language: C# 12 / .NET 8. Test framework: xUnit + FsCheck.Xunit.
   - [x] 18.6 Write `event-type-docs.md` — enforce XML doc comments on all event types in Core
   - [x] 18.7 Write `strategy-fixture-validation.md` — validate fixture CSV schema
 
-- [ ] 19. Final checkpoint — Ensure all tests pass
-  - Run `dotnet build` (zero warnings) and `dotnet test` (all green); ask the user if questions arise.
+- [x] 19. Final checkpoint — All tests pass (64 tests: 58 unit + 6 integration), build clean
 
 ---
 
@@ -209,58 +208,147 @@ Language: C# 12 / .NET 8. Test framework: xUnit + FsCheck.Xunit.
 
 ### 20. Run full pipeline end-to-end via CLI
 
-- [x] 20.1 Run CLI with scenario JSON — verified: 7 trades, Sharpe 3.38, Status=Completed
+- [x] 20.1 Run CLI with CSV scenario — verified: 7 trades, Sharpe 3.38, Status=Completed
 - [x] 20.2 Run with `--output` — Markdown report generated successfully
-- [ ] 20.3 Test interactive mode
+- [x] 20.3 Run CLI with Dukascopy scenario — verified: EURUSD 6-month daily, 2 trades, 26s first run → 85ms cached
+- [ ] 20.4 Test interactive mode (no `--scenario` argument)
 
 ### 21. Run API host and test endpoints
 
-- [ ] 21.1 Run `dotnet run --project src/TradingResearchEngine.Api` and test `POST /scenarios/run` with the sample ScenarioConfig JSON
-- [ ] 21.2 Test `POST /scenarios/sweep` with a parameter grid in `ResearchWorkflowOptions`
-- [ ] 21.3 Test `POST /scenarios/montecarlo` and verify P10/P50/P90 + streak metrics in response
-- [ ] 21.4 Test error paths: invalid JSON → 400, missing strategy → 400, internal error → 500 with CorrelationId
+- [ ] 21.1 Test `POST /scenarios/run` with sample ScenarioConfig JSON
+- [ ] 21.2 Test `POST /scenarios/sweep` with parameter grid
+- [ ] 21.3 Test `POST /scenarios/montecarlo` and verify P10/P50/P90 + streak metrics
+- [ ] 21.4 Test error paths: invalid JSON → 400, missing strategy → 400, internal error → 500
 
-### 22. Further Improvements — Metrics and Analysis
+### 22. Further Improvements — Metrics (DONE)
 
-- [ ] 22.1 Add `CalmarRatio` to `MetricsCalculator` and `BacktestResult`
-  - Formula: annualized return / max drawdown
-  - Common in prop-firm evaluation; pure additive change
-  - Touches: MetricsCalculator, BacktestResult, BacktestEngine.BuildResult, test helpers
+- [x] 22.1 CalmarRatio added to MetricsCalculator and BacktestResult
+- [x] 22.2 ReturnOnMaxDrawdown (RoMaD) added
+- [x] 22.3 AverageHoldingPeriod added
+- [x] 22.4 EquityCurveSmoothness (R²) added
+- [x] 22.5 Expectancy, MaxConsecutiveLosses, MaxConsecutiveWins added
+- [x] 22.6 All 22 metrics displayed in console reporter and markdown reporter
 
-- [ ] 22.2 Add `ReturnOnMaxDrawdown` (RoMaD) to `MetricsCalculator`
-  - Formula: total return / max drawdown
-  - Touches: same as 22.1
+### 23. Further Improvements — Data Providers (DONE)
 
-- [ ] 22.3 Add `AverageHoldingPeriod` to `MetricsCalculator`
-  - Compute mean duration between entry and exit across all closed trades
-  - `ClosedTrade` already has `EntryTime` and `ExitTime`
-  - Touches: MetricsCalculator, BacktestResult
+- [x] 23.1 InMemoryDataProvider for research workflows
+- [x] 23.2 Dukascopy data provider (LZMA decompression, parallel download, weekend skip, CSV caching)
+- [x] 23.3 CsvFormatConverter for Yahoo/TradingView/MetaTrader CSV imports
+- [x] 23.4 IDataProviderFactory with csv/http/memory/dukascopy support
+- [x] 23.5 DataHandler date parsing fix (handles JSON string/JsonElement values)
 
-- [ ] 22.4 Add `EquityCurveSmoothness` (R² of linear regression) to `MetricsCalculator`
-  - Fit a linear regression to the equity curve; return R²
-  - Smooth (R² near 1.0) = robust; jagged (R² near 0) = fragile
-  - Touches: MetricsCalculator, BacktestResult
+### 24. Further Improvements — Strategies (DONE)
 
-### 23. Further Improvements — Multi-Asset and Benchmarking
+- [x] 24.1 SmaCrossoverStrategy
+- [x] 24.2 MeanReversionStrategy
+- [x] 24.3 BreakoutStrategy
+- [x] 24.4 RsiStrategy
 
-- [ ] 23.1 Add `BenchmarkComparison` to research workflows
-  - Compare strategy equity curve against a buy-and-hold benchmark on the same data
-  - Compute alpha, beta, information ratio, tracking error
-  - New workflow: `BenchmarkComparisonWorkflow` in Application/Research
-  - New result: `BenchmarkComparisonResult` with alpha, beta, IR, tracking error, benchmark equity curve
+### 25. Further Improvements — Research Workflows (DONE)
 
-- [ ] 23.2 Add `CompositeDataHandler` for multi-symbol strategies
-  - Wraps multiple `IDataProvider` streams and interleaves events by timestamp
-  - Emits `BarEvent`/`TickEvent` for each symbol in chronological order
-  - Roadblock: `DataHandler` currently assumes single-symbol streaming. Needs a new `ICompositeDataHandler` or refactor `DataHandler` to accept multiple symbol configs
-  - Touches: Core/DataHandling, ScenarioConfig (needs `Symbols` list), BacktestEngine
+- [x] 25.1 ParameterPerturbationWorkflow (curve-fitting detector)
+- [x] 25.2 RandomizedOosWorkflow (randomized out-of-sample)
+- [x] 25.3 BenchmarkComparisonWorkflow (strategy vs buy-and-hold)
+- [x] 25.4 Parameter sensitivity analysis on SweepResult
+- [x] 25.5 Walk-forward efficiency ratio
+- [x] 25.6 Monte Carlo consecutive streak tracking (P90)
 
-### 24. Further Improvements — Strategy Library
+### 26. Further Improvements — Architecture (DONE)
 
-- [ ] 24.1 Add `MeanReversionStrategy` — buy when price drops N std devs below SMA, sell when it reverts
-- [ ] 24.2 Add `BreakoutStrategy` — buy on N-bar high breakout, sell on N-bar low breakdown
-- [ ] 24.3 Add `RsiStrategy` — buy when RSI < 30, sell when RSI > 70
-- Each strategy decorated with `[StrategyName]` and parameterized via constructor
+- [x] 26.1 IProgress<ProgressUpdate> on IResearchWorkflow interface
+- [x] 26.2 Auto-save BacktestResults via IRepository
+- [x] 26.3 ScenarioConfig implements IHasId with IRepository<ScenarioConfig>
+- [x] 26.4 StrategyRegistry.GetParameterInfo for UI parameter forms
+- [x] 26.5 IDataProviderFactory in Core for clean Application→Infrastructure boundary
+
+### 27. Multi-Asset (NOT STARTED)
+
+- [ ] 27.1 CompositeDataHandler for multi-symbol strategies
+
+---
+
+## Phase 3: Blazor Server UI
+
+### UI Phase 1: Foundation ✅
+
+- [x] 28.1 Create TradingResearchEngine.Web Blazor Server project
+- [x] 28.2 Wire DI (AddTradingResearchEngine + AddTradingResearchEngineInfrastructure + AddStrategyAssembly)
+- [x] 28.3 MudBlazor integration with dark theme
+- [x] 28.4 Shell layout with sidebar navigation (all planned sections)
+
+### UI Phase 2: Dashboard + Results Viewer ✅
+
+- [x] 29.1 Dashboard page (summary cards, equity curve chart, recent runs table, quick-launch buttons)
+- [x] 29.2 Run History page (sortable/filterable/searchable table with pagination)
+- [x] 29.3 Result Detail page with 5 tabs:
+  - Equity Curve (ApexCharts line chart with zoom)
+  - Drawdown (inverted area chart)
+  - P&L Distribution (histogram + win/loss donut)
+  - Trades (full trade list with P&L coloring)
+  - Config (scenario configuration details)
+- [x] 29.4 Reusable chart components: EquityCurveChart, DrawdownChart, TradePnlHistogram, WinLossDonut, MetricCard
+
+### UI Phase 3: Strategy Editor + Run Configuration ✅
+
+- [x] 30.1 Strategy List page (registered types with parameter signatures + saved configs)
+- [x] 30.2 New Run page:
+  - Strategy type dropdown from StrategyRegistry.KnownNames
+  - Dynamic parameter form based on constructor parameters
+  - Data source: CSV file path or Dukascopy (with date pickers)
+  - Execution assumptions: slippage, commission, initial cash, risk-free rate
+  - Run with progress indicator and cancel
+  - Quick summary panel after completion
+  - Save Config and View Results buttons
+  - Query parameter support (?strategy=, ?config=)
+
+### UI Phase 4: Research Workflow Screens — NOT STARTED
+
+- [ ] 31.1 Parameter Sweep page
+  - Parameter grid builder (add param name + value list)
+  - Run with progress (X of Y combinations)
+  - Results: ranked table, parameter sensitivity heatmap
+- [ ] 31.2 Monte Carlo page
+  - Source result selector, simulation count, seed, ruin threshold
+  - Run with progress (X of N simulations)
+  - Results: P10/P50/P90 cards, ruin gauge, end equity histogram, percentile bands
+- [ ] 31.3 Walk-Forward page
+  - Window config (IS/OOS length, step size, anchored toggle)
+  - Results: window table with efficiency ratios, IS vs OOS bar chart
+- [ ] 31.4 Variance Testing page
+  - Preset display + user-defined preset editor
+  - Results: side-by-side metrics, overlaid equity curves
+- [ ] 31.5 Parameter Perturbation page
+  - Run count, jitter %, seed inputs
+  - Results: Sharpe distribution histogram, mean/stddev cards
+- [ ] 31.6 Randomized OOS page
+  - OOS fraction, iterations, seed inputs
+  - Results: IS vs OOS scatter plot, efficiency distribution
+- [ ] 31.7 Benchmark Comparison page
+  - Results: overlaid equity curves, alpha/beta/IR cards
+
+### UI Phase 5: Prop-Firm Module Screens — NOT STARTED
+
+- [ ] 32.1 Challenge Evaluator page (select result + firm rules → pass/fail + economics)
+- [ ] 32.2 Instant Funding Evaluator page (config inputs → payout/EV/breakeven)
+- [ ] 32.3 Variance Presets page (Conservative/Base/Strong comparison)
+- [ ] 32.4 Rule Set Editor (create/edit FirmRuleSet JSON)
+- [ ] 32.5 Drawdown timeline with firm limit overlays
+
+### UI Phase 6: Comparison Tools + Advanced Charts — NOT STARTED
+
+- [ ] 33.1 Multi-run comparison page (select 2-10 results → side-by-side table + overlaid charts)
+- [ ] 33.2 Radar chart for multi-metric comparison
+- [ ] 33.3 Monthly return heatmap
+- [ ] 33.4 Rolling metrics charts (rolling Sharpe, rolling drawdown)
+- [ ] 33.5 Report export refinement (styled Markdown, PDF option)
+
+### UI Phase 7: Polish + Data Management — NOT STARTED
+
+- [ ] 34.1 Data Files page (list, upload, preview, validate schema)
+- [ ] 34.2 Settings page (risk defaults, slippage/commission, reporting, repository path)
+- [ ] 34.3 Responsive layout refinements
+- [ ] 34.4 Error handling and edge case UX
+- [ ] 34.5 Keyboard shortcuts for power users
 
 ---
 
@@ -271,4 +359,6 @@ Language: C# 12 / .NET 8. Test framework: xUnit + FsCheck.Xunit.
 - Checkpoints at tasks 4, 8, 12, 15, and 19 ensure incremental validation
 - Property tests (13.9–13.16) validate the eight universal correctness properties from the design document
 - All monetary values must be rendered in USD with two decimal places; no magic numbers — use named constants throughout
-- Phase 2 tasks (20+) are post-MVP enhancements that build on the working V1 foundation
+- Phase 2 tasks (20-27) are post-MVP engine enhancements
+- Phase 3 tasks (28-34) are the Blazor Server UI implementation
+- UI Phase 4 is the next logical step — surfaces all research workflows in the browser
