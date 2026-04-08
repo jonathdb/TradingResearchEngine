@@ -83,3 +83,28 @@ V2.1 is still engine-only. UI rework remains V3.
 - Optional event trace mode (zero overhead when disabled)
 - Extended analytics: recovery factor, longest flat period
 - Strategy comparison workflow under matched assumptions
+
+## V3 Scope — Product & UX
+
+V3 transforms the engine into a user-facing research product. Single-user, local/single-tenant.
+
+- Strategy identity model: StrategyIdentity, StrategyVersion, StudyRecord as persistent Application-layer concepts
+- Strategy templates: 6 pre-built templates for all built-in strategies
+- Guided strategy builder: 5-step wizard (Template → Market → Rules → Execution → Save) with advanced mode toggle
+- Strategy library: browse, version, and manage strategies with linked runs and studies
+- Research explorer: browse and launch studies from strategy context
+- Prop firm rule packs: PropFirmRulePack with multi-phase ChallengePhase support
+- Pre-built firm packs: FTMO 100k, MyFundedFX 200k, TopStep 100k, The5ers 60k
+- Phase-by-phase evaluation with pass/near-breach/fail status and margin display
+- Robustness warnings: automatic badges for suspicious metrics (Sharpe > 3, trades < 30, K-Ratio < 0, etc.)
+- Multi-format export: Markdown report, CSV trade log, JSON result
+- Failed/cancelled run banners with Edit & Retry action
+- JSON-based persistence: JsonStrategyRepository, JsonStudyRepository, SettingsService
+- DataFileService for CSV discovery, validation, and preview
+
+## Out of Scope for V3
+
+- Multi-user / authentication / team features
+- Database persistence (JSON files only)
+- Live or paper trading
+- Short-selling
