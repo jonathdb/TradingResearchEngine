@@ -64,16 +64,24 @@ public sealed class Portfolio
             CashBalance = newCash;
             ApplyBuyFill(fill);
         }
-        else if (fill.Direction == Direction.Short || fill.Direction == Direction.Flat)
+        else if (fill.Direction == Direction.Flat)
         {
-            decimal proceeds = fill.FillPrice * fill.Quantity - fill.Commission;
-            CashBalance += proceeds;
-            ApplySellFill(fill);
+            // Guard: if no matching long position exists, do not modify cash
+            if (!_positions.TryGetValue(fill.Symbol, out var state) || state.Quantity == 0m)
+            {
+                _logger.LogWarning("OrphanFlatFill: {Symbol} flat fill received with no open position; ignoring.",
+                    fill.Symbol);
+            }
+            else
+            {
+                decimal proceeds = fill.FillPrice * fill.Quantity - fill.Commission;
+                CashBalance += proceeds;
+                ApplySellFill(fill);
+            }
         }
 
         MarkToMarketFromFill(fill);
         RecalculateTotalEquity();
-        _equityCurve.Add(new EquityCurvePoint(fill.Timestamp, TotalEquity));
     }
 
     private void ApplyBuyFill(FillEvent fill)
@@ -117,14 +125,30 @@ public sealed class Portfolio
         TotalEquity = CashBalance + unrealised;
     }
 
+    /// <summary>Appends an enriched equity curve point with full portfolio state.</summary>
+    private void AppendEquityCurvePoint(DateTimeOffset timestamp)
+    {
+        decimal unrealisedPnl = _positions.Values.Sum(p => p.UnrealisedPnl);
+        decimal realisedPnl = _closedTrades.Sum(t => t.NetPnl);
+        int openCount = _positions.Values.Count(p => p.Quantity > 0m);
+
+        _equityCurve.Add(new EquityCurvePoint(
+            timestamp, TotalEquity, CashBalance,
+            unrealisedPnl, realisedPnl, openCount));
+    }
+
     /// <summary>
-    /// Updates unrealised P&amp;L for all open positions using the latest market price.
-    /// Called internally after each fill; can also be called with a market price update.
+    /// Updates unrealised P&amp;L for an open position and appends an <see cref="EquityCurvePoint"/>.
+    /// Called by the engine on every bar, after pending fills are processed and before the strategy is invoked.
+    /// When no position is open for the symbol, still appends an equity curve point reflecting current state.
     /// </summary>
-    internal void MarkToMarket(decimal currentPrice, string symbol)
+    public void MarkToMarket(string symbol, decimal price, DateTimeOffset timestamp)
     {
         if (_positions.TryGetValue(symbol, out var state))
-            state.UpdateUnrealisedPnl(currentPrice);
+            state.UpdateUnrealisedPnl(price);
+
+        RecalculateTotalEquity();
+        AppendEquityCurvePoint(timestamp);
     }
 
     /// <summary>

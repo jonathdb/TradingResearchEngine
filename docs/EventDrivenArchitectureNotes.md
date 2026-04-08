@@ -8,7 +8,7 @@ EngineEvent (abstract record)
 │   ├── BarEvent (OHLCV + timestamp)
 │   └── TickEvent (bid/ask levels + last trade)
 ├── SignalEvent (direction + optional strength)
-├── OrderEvent (direction + quantity + type + RiskApproved flag)
+├── OrderEvent (direction + quantity + type + RiskApproved flag + StopPrice + MaxBarsPending + StopTriggered)
 └── FillEvent (fill price + commission + slippage)
 ```
 
@@ -32,5 +32,6 @@ Both modes use the identical heartbeat-loop and dispatch architecture. The only 
 
 - `BidLevel`, `AskLevel`: readonly record structs for order book depth
 - `LastTrade`: readonly record struct for most recent trade
-- `Position`, `EquityCurvePoint`, `ClosedTrade`: sealed records for portfolio state
+- `Position`, `ClosedTrade`: sealed records for portfolio state
+- `EquityCurvePoint`: sealed record for portfolio snapshots — includes `TotalEquity`, `CashBalance`, `UnrealisedPnl`, `RealisedPnl`, and `OpenPositionCount`; appended by `Portfolio.MarkToMarket`, not by fill processing
 - `ProgressUpdate`: sealed record for workflow progress reporting (`CurrentStep`, `TotalSteps`, `Message`, computed `Fraction`)

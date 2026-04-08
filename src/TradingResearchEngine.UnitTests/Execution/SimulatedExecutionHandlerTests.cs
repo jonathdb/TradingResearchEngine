@@ -26,13 +26,13 @@ public class SimulatedExecutionHandlerTests
     }
 
     [Fact]
-    public void Execute_ShortOrder_SubtractsSlippage()
+    public void Execute_FlatOrder_SubtractsSlippage()
     {
         var slippage = new FixedSpreadSlippageModel(0.05m);
         var commission = new ZeroCommissionModel();
         var handler = new SimulatedExecutionHandler(slippage, commission);
 
-        var order = new OrderEvent("AAPL", Direction.Short, 50m, OrderType.Market, null, T0, true);
+        var order = new OrderEvent("AAPL", Direction.Flat, 50m, OrderType.Market, null, T0, true);
         var bar = new BarEvent("AAPL", "1D", 100m, 105m, 99m, 102m, 1000m, T0);
 
         var fill = handler.Execute(order, bar);

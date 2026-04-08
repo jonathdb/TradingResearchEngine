@@ -32,7 +32,7 @@ public sealed class ConsoleReporter : IReporter
         Console.WriteLine($"Avg Win:      ${result.AverageWin?.ToString($"F{_dp}") ?? "N/A"}");
         Console.WriteLine($"Avg Loss:     ${result.AverageLoss?.ToString($"F{_dp}") ?? "N/A"}");
         Console.WriteLine($"Avg Hold:     {result.AverageHoldingPeriod?.ToString() ?? "N/A"}");
-        Console.WriteLine($"Smoothness:   {result.EquityCurveSmoothness?.ToString($"F4") ?? "N/A"}");
+        Console.WriteLine($"K-Ratio:      {result.EquityCurveSmoothness?.ToString($"F4") ?? "N/A"}");
         Console.WriteLine($"Max Consec L: {result.MaxConsecutiveLosses}");
         Console.WriteLine($"Max Consec W: {result.MaxConsecutiveWins}");
         Console.WriteLine($"Duration:     {result.RunDurationMs}ms");

@@ -31,7 +31,7 @@ public sealed class DefaultRiskLayer : IRiskLayer
             if (snapshot.Positions.TryGetValue(signal.Symbol, out var pos) && pos.Quantity > 0)
             {
                 return new OrderEvent(
-                    signal.Symbol, Direction.Short, pos.Quantity,
+                    signal.Symbol, Direction.Flat, pos.Quantity,
                     OrderType.Market, null, signal.Timestamp, true);
             }
             return null; // no position to close

@@ -62,7 +62,8 @@ public sealed class BenchmarkComparisonWorkflow
         decimal shares = Math.Floor(options.InitialCash / bars[0].Close);
         decimal cash = options.InitialCash - shares * bars[0].Close;
         var benchCurve = bars.Select(b =>
-            new EquityCurvePoint(b.Timestamp, cash + shares * b.Close)).ToList();
+            new EquityCurvePoint(b.Timestamp, cash + shares * b.Close,
+                cash, shares * b.Close - shares * bars[0].Close, 0m, 1)).ToList();
 
         decimal stratReturn = (stratResult.Result.EndEquity - stratResult.Result.StartEquity) / stratResult.Result.StartEquity;
         decimal benchReturn = (benchCurve[^1].TotalEquity - options.InitialCash) / options.InitialCash;

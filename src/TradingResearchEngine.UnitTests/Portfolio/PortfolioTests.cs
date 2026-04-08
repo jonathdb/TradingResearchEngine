@@ -30,7 +30,7 @@ public class PortfolioTests
         p.Update(new FillEvent("AAPL", Direction.Long, 10m, 150m, 0m, 0m, T0));
         var cashAfterBuy = p.CashBalance;
 
-        p.Update(new FillEvent("AAPL", Direction.Short, 10m, 160m, 5m, 0m, T0.AddHours(1)));
+        p.Update(new FillEvent("AAPL", Direction.Flat, 10m, 160m, 5m, 0m, T0.AddHours(1)));
 
         // proceeds = 160 * 10 - 5 = 1595
         Assert.Equal(cashAfterBuy + 1595m, p.CashBalance);
@@ -51,20 +51,27 @@ public class PortfolioTests
     {
         var p = CreatePortfolio();
         p.Update(new FillEvent("AAPL", Direction.Long, 10m, 100m, 0m, 0m, T0));
-        p.Update(new FillEvent("AAPL", Direction.Short, 10m, 110m, 0m, 0m, T0.AddHours(1)));
+        p.Update(new FillEvent("AAPL", Direction.Flat, 10m, 110m, 0m, 0m, T0.AddHours(1)));
 
         Assert.Single(p.ClosedTrades);
         Assert.Equal(100m, p.ClosedTrades[0].NetPnl); // (110-100)*10
     }
 
     [Fact]
-    public void EquityCurve_AppendedAfterEachFill()
+    public void EquityCurve_AppendedByMarkToMarket()
     {
         var p = CreatePortfolio();
         p.Update(new FillEvent("AAPL", Direction.Long, 5m, 100m, 0m, 0m, T0));
-        p.Update(new FillEvent("AAPL", Direction.Long, 5m, 105m, 0m, 0m, T0.AddHours(1)));
+
+        // Fills no longer append to equity curve — MarkToMarket does
+        Assert.Empty(p.EquityCurve);
+
+        // MarkToMarket appends one point per call
+        p.MarkToMarket("AAPL", 105m, T0.AddHours(1));
+        p.MarkToMarket("AAPL", 110m, T0.AddHours(2));
 
         Assert.Equal(2, p.EquityCurve.Count);
+        Assert.True(p.EquityCurve[1].TotalEquity > p.EquityCurve[0].TotalEquity);
     }
 
     [Fact]

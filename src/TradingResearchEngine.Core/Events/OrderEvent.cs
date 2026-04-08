@@ -11,5 +11,8 @@ public record OrderEvent(
     OrderType OrderType,
     decimal? LimitPrice,
     DateTimeOffset Timestamp,
-    bool RiskApproved = false)
+    bool RiskApproved = false,
+    decimal? StopPrice = null,
+    int MaxBarsPending = 0,
+    bool StopTriggered = false)
     : EngineEvent(Timestamp);

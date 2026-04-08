@@ -53,7 +53,7 @@ public sealed class MonteCarloWorkflow : IResearchWorkflow<MonteCarloOptions, Mo
                 new List<MonteCarloPath>(), new List<MonteCarloPercentileBand>());
         }
 
-        var returns = trades.Select(t => t.NetPnl).ToArray();
+        var returns = trades.Select(t => t.ReturnOnRisk).ToArray();
         int tradeCount = returns.Length;
         var rng = options.Seed.HasValue ? new Random(options.Seed.Value) : new Random();
         var endEquities = new List<decimal>(options.SimulationCount);
@@ -86,8 +86,8 @@ public sealed class MonteCarloWorkflow : IResearchWorkflow<MonteCarloOptions, Mo
             for (int i = 0; i < tradeCount; i++)
             {
                 int idx = rng.Next(tradeCount);
-                decimal pnl = returns[idx];
-                equity += pnl;
+                decimal sampledReturn = returns[idx];
+                equity *= (1m + sampledReturn);
                 path[i + 1] = equity;
                 stepEquities[i + 1][sim] = equity;
 
@@ -96,8 +96,8 @@ public sealed class MonteCarloWorkflow : IResearchWorkflow<MonteCarloOptions, Mo
                 if (dd > maxDd) maxDd = dd;
                 if (!ruined && equity <= ruinThreshold) ruined = true;
 
-                if (pnl < 0) { consecLosses++; consecWins = 0; if (consecLosses > maxCL) maxCL = consecLosses; }
-                else if (pnl > 0) { consecWins++; consecLosses = 0; if (consecWins > maxCW) maxCW = consecWins; }
+                if (sampledReturn < 0) { consecLosses++; consecWins = 0; if (consecLosses > maxCL) maxCL = consecLosses; }
+                else if (sampledReturn > 0) { consecWins++; consecLosses = 0; if (consecWins > maxCW) maxCW = consecWins; }
                 else { consecLosses = 0; consecWins = 0; }
             }
 

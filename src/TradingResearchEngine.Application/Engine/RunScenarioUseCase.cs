@@ -96,6 +96,7 @@ public sealed class RunScenarioUseCase
         if (string.IsNullOrWhiteSpace(config.DataProviderType)) errors.Add("DataProviderType is required.");
         if (config.InitialCash <= 0) errors.Add("InitialCash must be greater than zero.");
         if (config.AnnualRiskFreeRate < 0) errors.Add("AnnualRiskFreeRate must be non-negative.");
+        if (config.BarsPerYear <= 0) errors.Add("BarsPerYear must be greater than zero.");
         return errors;
     }
 

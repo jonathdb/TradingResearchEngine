@@ -29,41 +29,48 @@ public static class MetricsCalculator
     }
 
     /// <summary>
-    /// Computes the annualised Sharpe ratio using net P&amp;L from closed trades.
-    /// Returns <c>null</c> when <paramref name="trades"/> is empty.
+    /// Computes the annualised Sharpe ratio from equity curve period-by-period returns.
+    /// Returns <c>null</c> when the curve has fewer than 2 points or zero standard deviation.
     /// </summary>
-    public static decimal? ComputeSharpeRatio(IReadOnlyList<ClosedTrade> trades, decimal annualRiskFreeRate)
+    public static decimal? ComputeSharpeRatio(
+        IReadOnlyList<EquityCurvePoint> curve, decimal annualRiskFreeRate, int barsPerYear)
     {
-        if (trades.Count == 0) return null;
+        if (curve.Count < 2) return null;
 
-        var returns = GetNetReturns(trades);
+        var returns = GetPeriodReturns(curve);
+        if (returns.Count == 0) return null;
+
         decimal stdDev = StdDev(returns);
         if (stdDev == 0m) return null;
 
         decimal meanReturn = returns.Average();
-        decimal dailyRiskFree = annualRiskFreeRate / 252m;
-        return (meanReturn - dailyRiskFree) / stdDev * (decimal)Math.Sqrt(252);
+        decimal periodRiskFree = annualRiskFreeRate / barsPerYear;
+        return (meanReturn - periodRiskFree) / stdDev * (decimal)Math.Sqrt(barsPerYear);
     }
 
     /// <summary>
-    /// Computes the annualised Sortino ratio using downside deviation.
-    /// Returns <c>null</c> when <paramref name="trades"/> is empty.
+    /// Computes the annualised Sortino ratio from equity curve period-by-period returns.
+    /// Downside deviation uses period returns below the risk-free rate.
+    /// Returns <c>null</c> when the curve has fewer than 2 points.
     /// </summary>
-    public static decimal? ComputeSortinoRatio(IReadOnlyList<ClosedTrade> trades, decimal annualRiskFreeRate)
+    public static decimal? ComputeSortinoRatio(
+        IReadOnlyList<EquityCurvePoint> curve, decimal annualRiskFreeRate, int barsPerYear)
     {
-        if (trades.Count == 0) return null;
+        if (curve.Count < 2) return null;
 
-        var returns = GetNetReturns(trades);
-        decimal dailyRiskFree = annualRiskFreeRate / 252m;
+        var returns = GetPeriodReturns(curve);
+        if (returns.Count == 0) return null;
+
+        decimal periodRiskFree = annualRiskFreeRate / barsPerYear;
         decimal meanReturn = returns.Average();
 
-        var downsideReturns = returns.Where(r => r < dailyRiskFree).ToList();
+        var downsideReturns = returns.Where(r => r < periodRiskFree).ToList();
         if (downsideReturns.Count == 0) return null;
 
         decimal downsideDev = StdDev(downsideReturns);
         if (downsideDev == 0m) return null;
 
-        return (meanReturn - dailyRiskFree) / downsideDev * (decimal)Math.Sqrt(252);
+        return (meanReturn - periodRiskFree) / downsideDev * (decimal)Math.Sqrt(barsPerYear);
     }
 
     /// <summary>Returns the win rate as a fraction [0,1], or <c>null</c> when there are no trades.</summary>
@@ -184,34 +191,66 @@ public static class MetricsCalculator
     }
 
     /// <summary>
-    /// R² of a linear regression on the equity curve (smoothness metric).
-    /// Returns 1.0 for perfectly linear, 0.0 for random. <c>null</c> when fewer than 3 points.
+    /// K-Ratio (Zephyr/Kestner definition): measures the consistency of equity curve growth.
+    /// Computed as: (OLS slope of log-equity curve) / (standard error of slope × √n).
+    /// Positive = consistent upward progression; negative = consistent decline.
+    /// Higher absolute value = more linear progression.
+    /// Returns <c>null</c> when fewer than 3 points or when equity contains non-positive values.
     /// </summary>
     public static decimal? ComputeEquityCurveSmoothness(IReadOnlyList<EquityCurvePoint> curve)
     {
         if (curve.Count < 3) return null;
 
         int n = curve.Count;
-        decimal sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0, sumY2 = 0;
+        double sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
+
         for (int i = 0; i < n; i++)
         {
-            decimal x = i;
-            decimal y = curve[i].TotalEquity;
-            sumX += x; sumY += y;
-            sumXY += x * y; sumX2 += x * x; sumY2 += y * y;
+            if (curve[i].TotalEquity <= 0m) return null;
+            double x = i;
+            double y = Math.Log((double)curve[i].TotalEquity);
+            sumX += x;
+            sumY += y;
+            sumXY += x * y;
+            sumX2 += x * x;
         }
 
-        decimal denom = (n * sumX2 - sumX * sumX) * (n * sumY2 - sumY * sumY);
-        if (denom <= 0m) return null;
+        double meanX = sumX / n;
+        double meanY = sumY / n;
+        double sxx = sumX2 - n * meanX * meanX;
+        if (sxx == 0) return null;
 
-        decimal r = (n * sumXY - sumX * sumY) / (decimal)Math.Sqrt((double)denom);
-        return r * r; // R²
+        double slope = (sumXY - n * meanX * meanY) / sxx;
+
+        // Standard error of slope
+        double ssResidual = 0;
+        for (int i = 0; i < n; i++)
+        {
+            double predicted = meanY + slope * (i - meanX);
+            double actual = Math.Log((double)curve[i].TotalEquity);
+            ssResidual += (actual - predicted) * (actual - predicted);
+        }
+
+        double seSlope = Math.Sqrt(ssResidual / ((n - 2) * sxx));
+        if (seSlope == 0) return null;
+
+        return (decimal)(slope / (seSlope * Math.Sqrt(n)));
     }
 
     // --- helpers ---
 
-    private static List<decimal> GetNetReturns(IReadOnlyList<ClosedTrade> trades)
-        => trades.Select(t => t.NetPnl).ToList();
+    /// <summary>Computes period-by-period returns from the equity curve.</summary>
+    private static List<decimal> GetPeriodReturns(IReadOnlyList<EquityCurvePoint> curve)
+    {
+        var returns = new List<decimal>(curve.Count - 1);
+        for (int i = 1; i < curve.Count; i++)
+        {
+            decimal prev = curve[i - 1].TotalEquity;
+            if (prev != 0m)
+                returns.Add((curve[i].TotalEquity - prev) / prev);
+        }
+        return returns;
+    }
 
     private static decimal StdDev(IEnumerable<decimal> values)
     {

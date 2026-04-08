@@ -24,7 +24,9 @@ public sealed record ScenarioConfig(
     int? RandomSeed,
     string? ResearchWorkflowType,
     Dictionary<string, object>? ResearchWorkflowOptions,
-    PropFirmOptions? PropFirmOptions) : IHasId
+    PropFirmOptions? PropFirmOptions,
+    FillMode FillMode = FillMode.NextBarOpen,
+    int BarsPerYear = 252) : IHasId
 {
     /// <inheritdoc/>
     public string Id => ScenarioId;

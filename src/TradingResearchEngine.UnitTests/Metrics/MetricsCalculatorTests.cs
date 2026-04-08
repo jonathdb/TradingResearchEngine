@@ -56,9 +56,10 @@ public class MetricsCalculatorTests
     public void AllRatioMetrics_ZeroTrades_ReturnNull()
     {
         var empty = new List<ClosedTrade>();
+        var emptyCurve = new List<EquityCurvePoint>();
 
-        Assert.Null(MetricsCalculator.ComputeSharpeRatio(empty, 0.02m));
-        Assert.Null(MetricsCalculator.ComputeSortinoRatio(empty, 0.02m));
+        Assert.Null(MetricsCalculator.ComputeSharpeRatio(emptyCurve, 0.02m, 252));
+        Assert.Null(MetricsCalculator.ComputeSortinoRatio(emptyCurve, 0.02m, 252));
         Assert.Null(MetricsCalculator.ComputeWinRate(empty));
         Assert.Null(MetricsCalculator.ComputeProfitFactor(empty));
         Assert.Null(MetricsCalculator.ComputeAverageWin(empty));
@@ -92,24 +93,30 @@ public class MetricsCalculatorTests
     }
 
     [Fact]
-    public void ComputeSharpeRatio_KnownSequence_ReturnsNonNull()
+    public void ComputeSharpeRatio_RisingEquityCurve_ReturnsNonNull()
     {
-        var trades = Enumerable.Range(1, 20)
-            .Select(i => MakeTrade(i % 3 == 0 ? -10m : 20m))
+        // Rising equity curve: 100k, 100.1k, 100.2k, ... (20 points)
+        var curve = Enumerable.Range(0, 20)
+            .Select(i => new EquityCurvePoint(T0.AddDays(i), 100_000m + i * 100m))
             .ToList();
 
-        var sharpe = MetricsCalculator.ComputeSharpeRatio(trades, 0.02m);
+        var sharpe = MetricsCalculator.ComputeSharpeRatio(curve, 0.02m, 252);
         Assert.NotNull(sharpe);
     }
 
     [Fact]
-    public void ComputeSortinoRatio_KnownSequence_ReturnsNonNull()
+    public void ComputeSortinoRatio_VolatileEquityCurve_ReturnsNonNull()
     {
-        var trades = new List<ClosedTrade>();
-        for (int i = 1; i <= 30; i++)
-            trades.Add(MakeTrade(i % 3 == 0 ? -(i * 2m) : (i * 3m)));
+        // Volatile curve with some down periods
+        var curve = new List<EquityCurvePoint>();
+        decimal equity = 100_000m;
+        for (int i = 0; i < 30; i++)
+        {
+            equity += (i % 3 == 0) ? -200m : 300m;
+            curve.Add(new EquityCurvePoint(T0.AddDays(i), equity));
+        }
 
-        var sortino = MetricsCalculator.ComputeSortinoRatio(trades, 0.02m);
+        var sortino = MetricsCalculator.ComputeSortinoRatio(curve, 0.02m, 252);
         Assert.NotNull(sortino);
     }
 
@@ -238,14 +245,15 @@ public class MetricsCalculatorAdvancedTests
     }
 
     [Fact]
-    public void ComputeEquityCurveSmoothness_LinearCurve_ReturnsNearOne()
+    public void ComputeEquityCurveSmoothness_LinearRisingCurve_ReturnsPositiveKRatio()
     {
         var curve = Enumerable.Range(0, 50)
             .Select(i => new EquityCurvePoint(T0.AddDays(i), 100_000m + i * 100m))
             .ToList();
-        var r2 = MetricsCalculator.ComputeEquityCurveSmoothness(curve);
-        Assert.NotNull(r2);
-        Assert.True(r2 > 0.99m);
+        var kRatio = MetricsCalculator.ComputeEquityCurveSmoothness(curve);
+        Assert.NotNull(kRatio);
+        // K-Ratio for a perfectly linear rising curve should be large and positive
+        Assert.True(kRatio > 0m, $"Expected positive K-Ratio, got {kRatio}");
     }
 
     [Fact]

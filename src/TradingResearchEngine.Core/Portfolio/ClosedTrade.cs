@@ -13,4 +13,13 @@ public sealed record ClosedTrade(
     Direction Direction,
     decimal GrossPnl,
     decimal Commission,
-    decimal NetPnl);
+    decimal NetPnl)
+{
+    /// <summary>
+    /// Return on risk: <c>NetPnl / (EntryPrice * Quantity)</c>.
+    /// Returns 0 when the denominator is zero or negative.
+    /// </summary>
+    public decimal ReturnOnRisk => EntryPrice * Quantity > 0m
+        ? NetPnl / (EntryPrice * Quantity)
+        : 0m;
+}

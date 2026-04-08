@@ -26,8 +26,12 @@ public sealed class StationaryMeanReversionStrategy : IStrategy
     private readonly decimal _entryThreshold;
     private readonly decimal _exitThreshold;
     private readonly decimal _adfPValueThreshold;
+    private readonly int _adfRecheckInterval;
     private readonly List<decimal> _closes = new();
     private readonly bool _skipStationarityTest;
+    private int _barsSinceAdfCheck;
+    private bool _cachedStationarity;
+    private bool _adfWarmedUp;
     private Direction _position = Direction.Flat;
 
     /// <param name="lookback">Return lookback window (default 500).</param>
@@ -35,18 +39,21 @@ public sealed class StationaryMeanReversionStrategy : IStrategy
     /// <param name="exitThreshold">Z-score exit threshold, positive (default 1.0 → sell when z &gt; 1).</param>
     /// <param name="adfPValueThreshold">ADF p-value threshold for stationarity (default 0.05).</param>
     /// <param name="skipStationarityTest">If true, skip ADF test and use z-score only (default false).</param>
+    /// <param name="adfRecheckInterval">Re-run ADF test every N bars (default 20). Reduces ADF computation by ~95%.</param>
     public StationaryMeanReversionStrategy(
         int lookback = 500,
         decimal entryThreshold = 1.0m,
         decimal exitThreshold = 1.0m,
         decimal adfPValueThreshold = 0.05m,
-        bool skipStationarityTest = false)
+        bool skipStationarityTest = false,
+        int adfRecheckInterval = 20)
     {
         _lookback = lookback;
         _entryThreshold = entryThreshold;
         _exitThreshold = exitThreshold;
         _adfPValueThreshold = adfPValueThreshold;
         _skipStationarityTest = skipStationarityTest;
+        _adfRecheckInterval = adfRecheckInterval;
     }
 
     /// <inheritdoc/>
@@ -60,8 +67,18 @@ public sealed class StationaryMeanReversionStrategy : IStrategy
         // Compute returns over lookback window
         var returns = ComputeReturns(_closes, _lookback);
 
-        // Test stationarity (or skip if configured)
-        bool isStationary = _skipStationarityTest || IsStationary(returns, (double)_adfPValueThreshold);
+        // Test stationarity with caching — only re-run every _adfRecheckInterval bars
+        if (!_skipStationarityTest)
+        {
+            _barsSinceAdfCheck++;
+            if (_barsSinceAdfCheck >= _adfRecheckInterval || !_adfWarmedUp)
+            {
+                _cachedStationarity = IsStationary(returns, (double)_adfPValueThreshold);
+                _barsSinceAdfCheck = 0;
+                _adfWarmedUp = true;
+            }
+        }
+        bool isStationary = _skipStationarityTest || _cachedStationarity;
 
         if (!isStationary)
         {
@@ -159,7 +176,8 @@ public sealed class StationaryMeanReversionStrategy : IStrategy
         double meanDy = sumDy / m;
         double meanYl = sumYl / m;
         double cov = sumDyYl / m - meanDy * meanYl;
-        double varYl = sumYl2 / m - meanYl * meanYl;
+        // Unbiased sample variance (Bessel's correction)
+        double varYl = (sumYl2 - m * meanYl * meanYl) / (m - 1);
 
         if (varYl == 0) return false;
 

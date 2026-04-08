@@ -45,7 +45,7 @@ public sealed class MarkdownReporter : IReporter
         sb.AppendLine($"| Avg Win | ${result.AverageWin?.ToString($"F{_dp}") ?? "N/A"} |");
         sb.AppendLine($"| Avg Loss | ${result.AverageLoss?.ToString($"F{_dp}") ?? "N/A"} |");
         sb.AppendLine($"| Avg Holding Period | {result.AverageHoldingPeriod?.ToString() ?? "N/A"} |");
-        sb.AppendLine($"| Equity Curve R² | {result.EquityCurveSmoothness?.ToString("F4") ?? "N/A"} |");
+        sb.AppendLine($"| K-Ratio | {result.EquityCurveSmoothness?.ToString("F4") ?? "N/A"} |");
         sb.AppendLine($"| Max Consec Losses | {result.MaxConsecutiveLosses} |");
         sb.AppendLine($"| Max Consec Wins | {result.MaxConsecutiveWins} |");
         sb.AppendLine();

@@ -21,7 +21,24 @@ The outer loop advances one data step. The inner loop drains all events before t
 | SignalEvent | IRiskLayer.ConvertSignal | OrderEvent (risk-approved) |
 | OrderEvent (raw) | IRiskLayer.EvaluateOrder | OrderEvent (risk-approved) |
 | OrderEvent (approved) | IExecutionHandler.Execute | FillEvent |
-| FillEvent | Portfolio.Update | Equity curve point |
+| FillEvent | Portfolio.Update | Position + cash update (no equity curve append) |
+
+## OrderEvent Fields
+
+`OrderEvent` carries the following fields:
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| Symbol | string | — | Instrument identifier |
+| Direction | Direction | — | `Long` or `Flat` |
+| Quantity | decimal | — | Order size |
+| OrderType | OrderType | — | `Market`, `Limit`, `StopMarket`, or `StopLimit` |
+| LimitPrice | decimal? | null | Limit price for `Limit` and `StopLimit` orders |
+| Timestamp | DateTimeOffset | — | Event timestamp |
+| RiskApproved | bool | false | Set to `true` only by the RiskLayer after evaluation |
+| StopPrice | decimal? | null | Trigger price for `StopMarket` and `StopLimit` orders |
+| MaxBarsPending | int | 0 | Bars before expiry; 0 = good-till-cancelled |
+| StopTriggered | bool | false | Whether the stop condition has already been triggered (used by `StopLimit` conversion) |
 
 ## RiskLayer Enforcement
 
@@ -29,7 +46,7 @@ The `OrderEvent.RiskApproved` flag ensures no order reaches the ExecutionHandler
 
 ### Flat Signal Handling
 
-When `DefaultRiskLayer.ConvertSignal` receives a `SignalEvent` with `Direction.Flat`, it checks whether the portfolio holds an open position for that symbol. If a position exists (quantity > 0), it emits a closing `OrderEvent` (direction `Short`, quantity equal to the full position size, `OrderType.Market`, `RiskApproved = true`). If no position exists, it returns `null` and no order is generated.
+When `DefaultRiskLayer.ConvertSignal` receives a `SignalEvent` with `Direction.Flat`, it checks whether the portfolio holds an open position for that symbol. If a position exists (quantity > 0), it emits a closing `OrderEvent` (direction `Flat`, quantity equal to the full position size, `OrderType.Market`, `RiskApproved = true`). If no position exists, it returns `null` and no order is generated.
 
 ## Error Handling
 
@@ -120,6 +137,10 @@ The provider delegates HTTP fetching to an internal `FetchCsvAsync` method that 
 | MaxConsecutiveWins / Losses | closed trades | Longest streak |
 
 All methods return `null` when inputs are insufficient (e.g. zero trades, fewer than 2–3 equity points).
+
+## Equity Curve Ownership
+
+Equity curve points are appended by `Portfolio.MarkToMarket`, not by `Portfolio.Update`. When the engine calls `MarkToMarket(symbol, price, timestamp)` on each bar, the portfolio recalculates unrealised P&L and appends an enriched `EquityCurvePoint` containing `TotalEquity`, `CashBalance`, `UnrealisedPnl`, `RealisedPnl`, and `OpenPositionCount`. `Portfolio.Update(FillEvent)` updates positions and cash but does not append to the equity curve — this separation ensures equity snapshots are driven by market prices rather than fill events.
 
 ## Benchmark Comparison Workflow
 
@@ -227,6 +248,17 @@ The directory is created automatically if it does not exist. This means the repo
 - Zero trades: returns a degenerate result with the source end equity as P10/P50/P90, empty paths, and empty bands.
 - `SimulationCount < 1`: throws `ArgumentException`.
 - Base scenario failure: throws `InvalidOperationException` with the validation errors.
+
+## Fill Mode and Annualisation
+
+`ScenarioConfig` exposes two V2 fields that control execution realism and metric accuracy:
+
+- `FillMode` (default `NextBarOpen`) — determines when risk-approved orders are filled relative to the bar that generated the signal.
+  - `NextBarOpen`: orders queue as pending and fill at the next bar's Open price. This is the correct default that eliminates look-ahead bias.
+  - `SameBarClose`: V1 legacy mode — orders fill immediately at the same bar's Close price. Introduces look-ahead bias; use only for backward-compatible test fixtures.
+- `BarsPerYear` (default `252`) — the canonical annualisation constant used by Sharpe, Sortino, and any other metric that converts per-bar returns to annual figures. Must be positive.
+
+Both values are defined in `Core/Configuration/` (`FillMode.cs` enum and the `ScenarioConfig` record). `RunScenarioUseCase` rejects `BarsPerYear <= 0` during validation.
 
 ## Deterministic Replay
 

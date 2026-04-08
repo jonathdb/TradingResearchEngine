@@ -25,7 +25,7 @@ public sealed class SimulatedExecutionHandler : IExecutionHandler
         decimal basePrice = currentBar switch
         {
             BarEvent bar => bar.Close,
-            TickEvent tick => tick.LastTrade.Price,
+            TickEvent tick => GetTickFillPrice(tick, order.Direction),
             _ => throw new InvalidOperationException($"Unsupported MarketDataEvent type: {currentBar.GetType().Name}")
         };
         decimal slippageAmount = _slippage.ComputeAdjustment(order, currentBar);
@@ -43,5 +43,18 @@ public sealed class SimulatedExecutionHandler : IExecutionHandler
             commission,
             slippageAmount,
             currentBar.Timestamp);
+    }
+
+    /// <summary>
+    /// Returns the appropriate tick fill price based on direction.
+    /// Long fills at Ask, Flat (close) fills at Bid. Falls back to LastTrade.Price.
+    /// </summary>
+    private static decimal GetTickFillPrice(TickEvent tick, Direction direction)
+    {
+        if (direction == Direction.Long && tick.Ask is not null)
+            return tick.Ask.Price;
+        if (direction == Direction.Flat && tick.Bid is not null)
+            return tick.Bid.Price;
+        return tick.LastTrade.Price;
     }
 }

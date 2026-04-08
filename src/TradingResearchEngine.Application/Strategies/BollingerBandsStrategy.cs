@@ -5,16 +5,9 @@ using TradingResearchEngine.Core.Strategy;
 namespace TradingResearchEngine.Application.Strategies;
 
 /// <summary>
-/// Bollinger Bands mean-reversion strategy.
-/// 
+/// Bollinger Bands mean-reversion strategy using O(1) rolling sum accumulators.
 /// Entry: close drops below the lower Bollinger Band → buy (expect reversion to mean).
 /// Exit: close rises above the upper Bollinger Band → sell (mean reversion complete).
-/// Alternative exit: close crosses above the middle band (SMA) for a tighter exit.
-/// 
-/// Parameters:
-/// - period: SMA lookback (default 30)
-/// - stdDevMultiplier: band width in standard deviations (default 2)
-/// - exitAtMiddle: if true, exit when price crosses above SMA instead of upper band (default false)
 /// </summary>
 [StrategyName("bollinger-bands")]
 public sealed class BollingerBandsStrategy : IStrategy
@@ -23,6 +16,8 @@ public sealed class BollingerBandsStrategy : IStrategy
     private readonly decimal _stdDevMultiplier;
     private readonly bool _exitAtMiddle;
     private readonly List<decimal> _closes = new();
+    private decimal _sum;
+    private decimal _sumSq;
     private Direction _position = Direction.Flat;
 
     /// <param name="period">SMA lookback period (default 30).</param>
@@ -41,28 +36,30 @@ public sealed class BollingerBandsStrategy : IStrategy
         if (evt is not BarEvent bar) return Array.Empty<EngineEvent>();
 
         _closes.Add(bar.Close);
-        if (_closes.Count < _period) return Array.Empty<EngineEvent>();
+        int count = _closes.Count;
 
-        // Compute Bollinger Bands
-        decimal sma = 0m;
-        int start = _closes.Count - _period;
-        for (int i = start; i < _closes.Count; i++)
-            sma += _closes[i];
-        sma /= _period;
-
-        decimal variance = 0m;
-        for (int i = start; i < _closes.Count; i++)
+        if (count <= _period)
         {
-            decimal diff = _closes[i] - sma;
-            variance += diff * diff;
+            _sum += bar.Close;
+            _sumSq += bar.Close * bar.Close;
         }
-        variance /= _period;
+        else
+        {
+            decimal departed = _closes[count - _period - 1];
+            _sum += bar.Close - departed;
+            _sumSq += bar.Close * bar.Close - departed * departed;
+        }
+
+        if (count < _period) return Array.Empty<EngineEvent>();
+
+        decimal sma = _sum / _period;
+        decimal variance = _sumSq / _period - sma * sma;
+        if (variance <= 0m) return Array.Empty<EngineEvent>();
         decimal stdDev = (decimal)Math.Sqrt((double)variance);
 
         decimal upperBand = sma + _stdDevMultiplier * stdDev;
         decimal lowerBand = sma - _stdDevMultiplier * stdDev;
 
-        // Entry: close < lower band → buy (oversold, expect reversion)
         if (bar.Close < lowerBand && _position != Direction.Long)
         {
             _position = Direction.Long;
@@ -72,7 +69,6 @@ public sealed class BollingerBandsStrategy : IStrategy
             };
         }
 
-        // Exit: close > upper band (or middle band if exitAtMiddle)
         decimal exitLevel = _exitAtMiddle ? sma : upperBand;
         if (bar.Close > exitLevel && _position == Direction.Long)
         {
