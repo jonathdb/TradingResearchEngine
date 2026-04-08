@@ -721,7 +721,7 @@ Recommendation: MudBlazor for V1. It covers layout, navigation, forms, tables, d
 
 ### Pre-UI blocking work
 1. ~~Add `IProgress<T>` support to workflow interfaces for progress reporting~~ — Done. `ProgressUpdate` record added to `Core.Engine`; `IResearchWorkflow` now has an overload accepting `IProgress<ProgressUpdate>?`.
-2. Auto-save BacktestResults on completion in RunScenarioUseCase
+2. ~~Auto-save BacktestResults on completion in RunScenarioUseCase~~ — Done. `RunAsync` accepts an `autoSave` parameter (default `true`). When enabled and a repository is registered, completed results are persisted automatically. Research workflows pass `autoSave: false` to avoid duplicate saves.
 3. Add `IRepository<ScenarioConfig>` for scenario persistence
 4. Add strategy parameter metadata to StrategyRegistry (parameter names, types, defaults)
 
