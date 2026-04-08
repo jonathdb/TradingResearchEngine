@@ -70,15 +70,31 @@ V3 transforms the engine into a user-facing research product. All tasks are codi
 - [ ] 3.4 Create pre-built firm rule pack JSON files for FTMO, MyFundedFX, TopStep, The5ers
   - _Requirements: REQ-V3-04_
 
-- [ ] 4. Add Infrastructure persistence implementations
-- [ ] 4.1 Implement `JsonStrategyRepository` in `Infrastructure/Persistence/`
+
+
+
+
+- [x] 4. Add Infrastructure persistence implementations
+
+- [x] 4.1 Implement `JsonStrategyRepository` in `Infrastructure/Persistence/`
+
+
+
+
   - _Requirements: REQ-V3-01_
-- [ ] 4.2 Implement `JsonStudyRepository` in `Infrastructure/Persistence/`
+
+- [x] 4.2 Implement `JsonStudyRepository` in `Infrastructure/Persistence/`
+
   - _Requirements: REQ-V3-02_
-- [ ] 4.3 Implement `DataFileService` in `Infrastructure/DataManagement/`
+
+- [x] 4.3 Implement `DataFileService` in `Infrastructure/DataManagement/`
+
   - Scan directories, validate CSV, preview, format detection
+
   - _Requirements: REQ-V3-06_
-- [ ] 4.4 Implement `SettingsService` in `Infrastructure/Settings/`
+
+- [x] 4.4 Implement `SettingsService` in `Infrastructure/Settings/`
+
   - Load/save `AppSettings` from JSON
   - _Requirements: REQ-V3-13_
 

@@ -1,0 +1,103 @@
+@page "/strategies/library"
+@inject IStrategyRepository StrategyRepo
+@inject NavigationManager Nav
+
+<PageTitle>Strategy Library — TradingResearchEngine</PageTitle>
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-4">
+    <MudText Typo="Typo.h4">Strategy Library</MudText>
+    <MudSpacer />
+    <MudButton Variant="Variant.Filled" Color="Color.Primary"
+               StartIcon="@Icons.Material.Filled.Add"
+               OnClick="@(() => Nav.NavigateTo("/strategies/builder"))">
+        New Strategy
+    </MudButton>
+</MudStack>
+
+<MudTextField @bind-Value="_search" Placeholder="Search strategies..."
+              Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+              Immediate="true" Class="mb-4" />
+
+@if (_loading)
+{
+    <MudProgressCircular Indeterminate="true" />
+}
+else if (_strategies.Count == 0)
+{
+    <MudAlert Severity="Severity.Info">
+        No strategies yet. <MudLink Href="/strategies/builder">Create your first strategy</MudLink> to get started.
+    </MudAlert>
+}
+else
+{
+    @foreach (var strategy in FilteredStrategies)
+    {
+        <MudCard Class="mb-3" Outlined="true">
+            <MudCardContent>
+                <MudStack Row="true" AlignItems="AlignItems.Center">
+                    <MudIcon Icon="@Icons.Material.Filled.TrendingUp" Color="Color.Primary" />
+                    <MudStack Spacing="0">
+                        <MudText Typo="Typo.h6">@strategy.StrategyName</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                            @strategy.StrategyType · Created @strategy.CreatedAt.ToString("yyyy-MM-dd")
+                        </MudText>
+                    </MudStack>
+                    <MudSpacer />
+                    <MudChip T="string" Size="MudBlazor.Size.Small" Color="Color.Info">
+                        @(_versionCounts.GetValueOrDefault(strategy.StrategyId, 0)) versions
+                    </MudChip>
+                </MudStack>
+                @if (!string.IsNullOrWhiteSpace(strategy.Description))
+                {
+                    <MudText Typo="Typo.body2" Class="mt-2" Style="opacity:0.7">@strategy.Description</MudText>
+                }
+            </MudCardContent>
+            <MudCardActions>
+                <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Text" Color="Color.Primary"
+                           OnClick="@(() => Nav.NavigateTo($"/strategies/{strategy.StrategyId}"))">
+                    View
+                </MudButton>
+                <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Text" Color="Color.Secondary"
+                           OnClick="@(() => Nav.NavigateTo($"/backtests/new?strategy={strategy.StrategyType}"))">
+                    Run
+                </MudButton>
+                <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Text" Color="Color.Error"
+                           OnClick="@(() => DeleteStrategy(strategy.StrategyId))">
+                    Delete
+                </MudButton>
+            </MudCardActions>
+        </MudCard>
+    }
+}
+
+@code {
+    private List<StrategyIdentity> _strategies = new();
+    private Dictionary<string, int> _versionCounts = new();
+    private bool _loading = true;
+    private string _search = "";
+
+    private IEnumerable<StrategyIdentity> FilteredStrategies =>
+        string.IsNullOrWhiteSpace(_search)
+            ? _strategies
+            : _strategies.Where(s =>
+                s.StrategyName.Contains(_search, StringComparison.OrdinalIgnoreCase) ||
+                s.StrategyType.Contains(_search, StringComparison.OrdinalIgnoreCase));
+
+    protected override async Task OnInitializedAsync()
+    {
+        _strategies = (await StrategyRepo.ListAsync()).ToList();
+        foreach (var s in _strategies)
+        {
+            var versions = await StrategyRepo.GetVersionsAsync(s.StrategyId);
+            _versionCounts[s.StrategyId] = versions.Count;
+        }
+        _loading = false;
+    }
+
+    private async Task DeleteStrategy(string id)
+    {
+        await StrategyRepo.DeleteAsync(id);
+        _strategies.RemoveAll(s => s.StrategyId == id);
+        _versionCounts.Remove(id);
+    }
+}

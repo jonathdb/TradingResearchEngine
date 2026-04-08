@@ -1,0 +1,145 @@
+@page "/strategies/{StrategyId}"
+@inject IStrategyRepository StrategyRepo
+@inject TradingResearchEngine.Core.Persistence.IRepository<BacktestResult> ResultRepo
+@inject TradingResearchEngine.Application.Research.IStudyRepository StudyRepo
+@inject NavigationManager Nav
+
+<PageTitle>Strategy Detail — TradingResearchEngine</PageTitle>
+
+@if (_loading)
+{
+    <MudProgressCircular Indeterminate="true" />
+}
+else if (_strategy is null)
+{
+    <MudAlert Severity="Severity.Warning">Strategy not found.</MudAlert>
+}
+else
+{
+    <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-4">
+        <MudIcon Icon="@Icons.Material.Filled.TrendingUp" Color="Color.Primary" Size="MudBlazor.Size.Large" />
+        <MudStack Spacing="0">
+            <MudText Typo="Typo.h4">@_strategy.StrategyName</MudText>
+            <MudText Typo="Typo.caption">@_strategy.StrategyType · Created @_strategy.CreatedAt.ToString("yyyy-MM-dd")</MudText>
+        </MudStack>
+        <MudSpacer />
+        <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                   OnClick="@(() => Nav.NavigateTo($"/backtests/new?strategy={_strategy.StrategyType}"))">
+            Run Backtest
+        </MudButton>
+    </MudStack>
+
+    @if (!string.IsNullOrWhiteSpace(_strategy.Description))
+    {
+        <MudText Typo="Typo.body1" Class="mb-4">@_strategy.Description</MudText>
+    }
+
+    <MudText Typo="Typo.h6" Class="mb-2">Versions</MudText>
+    @if (_versions.Count == 0)
+    {
+        <MudAlert Severity="Severity.Info">No versions yet.</MudAlert>
+    }
+    else
+    {
+        <MudTable Items="_versions" Dense="true" Hover="true" Class="mb-4">
+            <HeaderContent>
+                <MudTh>Version</MudTh>
+                <MudTh>Parameters</MudTh>
+                <MudTh>Created</MudTh>
+                <MudTh>Note</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd><MudChip T="string" Size="MudBlazor.Size.Small">v@(context.VersionNumber)</MudChip></MudTd>
+                <MudTd>
+                    @string.Join(", ", context.Parameters.Select(kv => $"{kv.Key}={kv.Value}"))
+                </MudTd>
+                <MudTd>@context.CreatedAt.ToString("yyyy-MM-dd HH:mm")</MudTd>
+                <MudTd>@(context.ChangeNote ?? "—")</MudTd>
+            </RowTemplate>
+        </MudTable>
+    }
+
+    <MudText Typo="Typo.h6" Class="mb-2">Linked Runs</MudText>
+    @if (_linkedRuns.Count == 0)
+    {
+        <MudAlert Severity="Severity.Info">No runs linked to this strategy yet.</MudAlert>
+    }
+    else
+    {
+        <MudTable Items="_linkedRuns" Dense="true" Hover="true" Class="mb-4">
+            <HeaderContent>
+                <MudTh>Run ID</MudTh>
+                <MudTh>Status</MudTh>
+                <MudTh>Sharpe</MudTh>
+                <MudTh>Max DD</MudTh>
+                <MudTh>Trades</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>
+                    <MudLink Href="@($"/backtests/{context.RunId}")">
+                        @context.RunId.ToString()[..8]…
+                    </MudLink>
+                </MudTd>
+                <MudTd>@context.Status</MudTd>
+                <MudTd>@(context.SharpeRatio?.ToString("F2") ?? "—")</MudTd>
+                <MudTd>@context.MaxDrawdown.ToString("P1")</MudTd>
+                <MudTd>@context.TotalTrades</MudTd>
+            </RowTemplate>
+        </MudTable>
+    }
+
+    <MudText Typo="Typo.h6" Class="mb-2">Studies</MudText>
+    @if (_studies.Count == 0)
+    {
+        <MudAlert Severity="Severity.Info">No studies yet. Run a backtest first, then launch a study.</MudAlert>
+    }
+    else
+    {
+        <MudTable Items="_studies" Dense="true" Hover="true">
+            <HeaderContent>
+                <MudTh>Study</MudTh>
+                <MudTh>Type</MudTh>
+                <MudTh>Status</MudTh>
+                <MudTh>Created</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.StudyId[..8]…</MudTd>
+                <MudTd>@context.Type</MudTd>
+                <MudTd>@context.Status</MudTd>
+                <MudTd>@context.CreatedAt.ToString("yyyy-MM-dd HH:mm")</MudTd>
+            </RowTemplate>
+        </MudTable>
+    }
+}
+
+@code {
+    [Parameter] public string StrategyId { get; set; } = "";
+
+    private StrategyIdentity? _strategy;
+    private List<StrategyVersion> _versions = new();
+    private List<BacktestResult> _linkedRuns = new();
+    private List<TradingResearchEngine.Application.Research.StudyRecord> _studies = new();
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _strategy = await StrategyRepo.GetAsync(StrategyId);
+        if (_strategy is not null)
+        {
+            _versions = (await StrategyRepo.GetVersionsAsync(StrategyId)).ToList();
+
+            // Find runs linked to any version of this strategy
+            var allResults = await ResultRepo.ListAsync();
+            var versionIds = _versions.Select(v => v.StrategyVersionId).ToHashSet();
+            _linkedRuns = allResults.Where(r => r.StrategyVersionId is not null && versionIds.Contains(r.StrategyVersionId)).ToList();
+
+            // Find studies for all versions
+            foreach (var v in _versions)
+            {
+                var studies = await StudyRepo.ListByVersionAsync(v.StrategyVersionId);
+                _studies.AddRange(studies);
+            }
+        }
+        _loading = false;
+    }
+}

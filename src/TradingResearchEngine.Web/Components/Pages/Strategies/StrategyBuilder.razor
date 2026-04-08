@@ -1,0 +1,308 @@
+@page "/strategies/builder"
+@inject IReadOnlyList<StrategyTemplate> Templates
+@inject IStrategyRepository StrategyRepo
+@inject StrategyRegistry Registry
+@inject RunScenarioUseCase RunUseCase
+@inject TradingResearchEngine.Infrastructure.DataProviders.DataFileService DataFiles
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+
+<PageTitle>New Strategy — TradingResearchEngine</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-2">New Strategy</MudText>
+<MudText Typo="Typo.caption" Class="mb-4">Step @(_step + 1) of 5</MudText>
+
+<MudStepper @bind-ActiveIndex="_step" Linear="true" Color="Color.Primary" Class="mb-4">
+    <MudStep Title="Template" />
+    <MudStep Title="Market" />
+    <MudStep Title="Rules" />
+    <MudStep Title="Execution" />
+    <MudStep Title="Save" />
+</MudStepper>
+
+@* Step 1: Template *@
+@if (_step == 0)
+{
+    <MudText Typo="Typo.h6" Class="mb-3">Choose a Template</MudText>
+    <MudGrid>
+        @foreach (var tpl in Templates)
+        {
+            <MudItem xs="12" sm="6" md="4">
+                <MudCard Outlined="true" Class="@(_selectedTemplate?.TemplateId == tpl.TemplateId ? "border-primary" : "")"
+                         Style="cursor:pointer" @onclick="() => SelectTemplate(tpl)">
+                    <MudCardContent>
+                        <MudText Typo="Typo.subtitle1">@tpl.Name</MudText>
+                        <MudText Typo="Typo.body2" Style="opacity:0.7">@tpl.Description</MudText>
+                        <MudChip T="string" Size="MudBlazor.Size.Small" Class="mt-2">@tpl.TypicalUseCase</MudChip>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+        }
+    </MudGrid>
+    <MudStack Row="true" Class="mt-4" Justify="Justify.FlexEnd">
+        <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                   Disabled="@(_selectedTemplate is null)"
+                   OnClick="@(() => _step = 1)">Next: Market →</MudButton>
+    </MudStack>
+}
+
+@* Step 2: Market & Data *@
+else if (_step == 1)
+{
+    <MudText Typo="Typo.h6" Class="mb-3">Market & Data</MudText>
+    <MudTextField @bind-Value="_symbol" Label="Symbol" Placeholder="e.g. EURUSD" Class="mb-3" />
+    <MudSelect @bind-Value="_timeframe" Label="Timeframe" Class="mb-3">
+        <MudSelectItem Value="@("Daily")">Daily (252 bars/year)</MudSelectItem>
+        <MudSelectItem Value="@("H4")">H4 (1512 bars/year)</MudSelectItem>
+        <MudSelectItem Value="@("H1")">H1 (6048 bars/year)</MudSelectItem>
+        <MudSelectItem Value="@("M15")">M15 (24192 bars/year)</MudSelectItem>
+    </MudSelect>
+    <MudSelect @bind-Value="_dataFilePath" Label="Data File" Class="mb-3">
+        @foreach (var file in _dataFiles)
+        {
+            <MudSelectItem Value="@file.FullPath">@file.FileName (@file.RowCount rows)</MudSelectItem>
+        }
+    </MudSelect>
+    <MudAlert Severity="Severity.Info" Dense="true" Class="mb-3">
+        @_timeframe bars use @BarsPerYear bars/year for annualisation.
+    </MudAlert>
+    <MudStack Row="true" Class="mt-4" Justify="Justify.SpaceBetween">
+        <MudButton Variant="Variant.Text" OnClick="@(() => _step = 0)">← Back</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                   Disabled="@(string.IsNullOrWhiteSpace(_symbol) || string.IsNullOrWhiteSpace(_dataFilePath))"
+                   OnClick="@(() => _step = 2)">Next: Rules →</MudButton>
+    </MudStack>
+}
+
+@* Step 3: Entry/Exit Rules (strategy parameters) *@
+else if (_step == 2)
+{
+    <MudText Typo="Typo.h6" Class="mb-3">Entry & Exit Rules</MudText>
+    @if (_selectedTemplate is not null)
+    {
+        <MudText Typo="Typo.body2" Class="mb-3" Style="opacity:0.7">
+            Configure parameters for @_selectedTemplate.Name. Defaults are pre-filled.
+        </MudText>
+        @foreach (var param in _parameters.Keys.ToList())
+        {
+            var key = param;
+            <MudTextField Value="@_parameters[key]" ValueChanged="@((string v) => _parameters[key] = v)"
+                          Label="@key"
+                          HelperText="@GetParameterHelp(key)"
+                          Class="mb-2" />
+        }
+    }
+    <MudStack Row="true" Class="mt-4" Justify="Justify.SpaceBetween">
+        <MudButton Variant="Variant.Text" OnClick="@(() => _step = 1)">← Back</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                   OnClick="@(() => _step = 3)">Next: Execution →</MudButton>
+    </MudStack>
+}
+
+@* Step 4: Execution Assumptions *@
+else if (_step == 3)
+{
+    <MudText Typo="Typo.h6" Class="mb-3">Execution Assumptions</MudText>
+    <MudSelect @bind-Value="_realismProfile" Label="Realism Profile" Class="mb-3">
+        <MudSelectItem Value="@("FastResearch")">Fast Research (same-bar close, zero slippage)</MudSelectItem>
+        <MudSelectItem Value="@("StandardBacktest")">Standard Backtest (next-bar open, fixed slippage)</MudSelectItem>
+        <MudSelectItem Value="@("BrokerConservative")">Broker Conservative (next-bar open, ATR slippage)</MudSelectItem>
+    </MudSelect>
+
+    @if (_showAdvancedExecution)
+    {
+        <MudTextField @bind-Value="_initialCash" Label="Initial Cash ($)" InputType="InputType.Number" Class="mb-2" />
+        <MudTextField @bind-Value="_riskFreeRate" Label="Annual Risk-Free Rate" InputType="InputType.Number" Class="mb-2" />
+        <MudSelect @bind-Value="_slippageModel" Label="Slippage Model" Class="mb-2">
+            <MudSelectItem Value="@("Zero")">Zero</MudSelectItem>
+            <MudSelectItem Value="@("FixedSpread")">Fixed Spread</MudSelectItem>
+        </MudSelect>
+        <MudSelect @bind-Value="_commissionModel" Label="Commission Model" Class="mb-2">
+            <MudSelectItem Value="@("Zero")">Zero</MudSelectItem>
+            <MudSelectItem Value="@("PerTrade")">Per Trade</MudSelectItem>
+            <MudSelectItem Value="@("PerShare")">Per Share</MudSelectItem>
+        </MudSelect>
+    }
+    <MudButton Variant="Variant.Text" Size="MudBlazor.Size.Small" Class="mt-2"
+               OnClick="@(() => _showAdvancedExecution = !_showAdvancedExecution)">
+        @(_showAdvancedExecution ? "Hide Advanced" : "Show Advanced Options")
+    </MudButton>
+
+    <MudStack Row="true" Class="mt-4" Justify="Justify.SpaceBetween">
+        <MudButton Variant="Variant.Text" OnClick="@(() => _step = 2)">← Back</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                   OnClick="@(() => _step = 4)">Next: Review →</MudButton>
+    </MudStack>
+}
+
+@* Step 5: Review & Save *@
+else if (_step == 4)
+{
+    <MudText Typo="Typo.h6" Class="mb-3">Review & Save</MudText>
+    <MudTextField @bind-Value="_strategyName" Label="Strategy Name" Placeholder="e.g. EURUSD Mean Reversion" Class="mb-3" />
+    <MudTextField @bind-Value="_description" Label="Description (optional)" Lines="2" Class="mb-3" />
+
+    <MudSimpleTable Dense="true" Striped="true" Class="mb-4">
+        <tbody>
+            <tr><td>Template</td><td>@(_selectedTemplate?.Name ?? "—")</td></tr>
+            <tr><td>Strategy Type</td><td>@(_selectedTemplate?.StrategyType ?? "—")</td></tr>
+            <tr><td>Symbol</td><td>@_symbol</td></tr>
+            <tr><td>Timeframe</td><td>@_timeframe (@BarsPerYear bars/year)</td></tr>
+            <tr><td>Data File</td><td>@(Path.GetFileName(_dataFilePath))</td></tr>
+            <tr><td>Realism Profile</td><td>@_realismProfile</td></tr>
+            <tr><td>Initial Cash</td><td>$@_initialCash.ToString("F0")</td></tr>
+            @foreach (var p in _parameters)
+            {
+                <tr><td>@p.Key</td><td>@p.Value</td></tr>
+            }
+        </tbody>
+    </MudSimpleTable>
+
+    <MudStack Row="true" Class="mt-4" Justify="Justify.SpaceBetween">
+        <MudButton Variant="Variant.Text" OnClick="@(() => _step = 3)">← Back</MudButton>
+        <MudStack Row="true" Spacing="2">
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary"
+                       Disabled="@(string.IsNullOrWhiteSpace(_strategyName) || _saving)"
+                       OnClick="SaveOnly">Save</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                       Disabled="@(string.IsNullOrWhiteSpace(_strategyName) || _saving)"
+                       OnClick="SaveAndRun">Save & Run</MudButton>
+        </MudStack>
+    </MudStack>
+
+    @if (_saving)
+    {
+        <MudProgressLinear Indeterminate="true" Class="mt-2" />
+    }
+}
+
+@code {
+    private int _step;
+    private StrategyTemplate? _selectedTemplate;
+    private string _symbol = "";
+    private string _timeframe = "Daily";
+    private string _dataFilePath = "";
+    private Dictionary<string, string> _parameters = new();
+    private string _realismProfile = "StandardBacktest";
+    private decimal _initialCash = 100_000m;
+    private decimal _riskFreeRate = 0.02m;
+    private string _slippageModel = "Zero";
+    private string _commissionModel = "Zero";
+    private string _strategyName = "";
+    private string _description = "";
+    private bool _showAdvancedExecution;
+    private bool _saving;
+    private List<TradingResearchEngine.Infrastructure.DataProviders.DataFileInfo> _dataFiles = new();
+
+    private int BarsPerYear => _timeframe switch
+    {
+        "H4" => 1512, "H1" => 6048, "M15" => 24192, _ => 252
+    };
+
+    protected override void OnInitialized()
+    {
+        _dataFiles = DataFiles.ListFiles();
+    }
+
+    private void SelectTemplate(StrategyTemplate tpl)
+    {
+        _selectedTemplate = tpl;
+        _timeframe = tpl.RecommendedTimeframe;
+        _parameters = tpl.DefaultParameters.ToDictionary(
+            kv => kv.Key, kv => kv.Value?.ToString() ?? "");
+    }
+
+    private string GetParameterHelp(string paramName) => paramName.ToLowerInvariant() switch
+    {
+        "fastperiod" => "Fast SMA lookback period (bars)",
+        "slowperiod" => "Slow SMA lookback period (bars)",
+        "lookback" => "Lookback window (bars)",
+        "entrystddevs" => "Entry threshold in standard deviations",
+        "period" => "Indicator period (bars)",
+        "oversold" => "RSI oversold threshold (0-100)",
+        "overbought" => "RSI overbought threshold (0-100)",
+        "stddevmultiplier" => "Bollinger Band width multiplier",
+        "exitatmiddle" => "Exit at middle band (true/false)",
+        "entrythreshold" => "Z-score entry threshold",
+        "exitthreshold" => "Z-score exit threshold",
+        _ => ""
+    };
+
+    private async Task SaveOnly()
+    {
+        _saving = true;
+        try
+        {
+            await SaveStrategy();
+            Snackbar.Add($"Strategy '{_strategyName}' saved.", Severity.Success);
+            Nav.NavigateTo("/strategies/library");
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+        finally { _saving = false; }
+    }
+
+    private async Task SaveAndRun()
+    {
+        _saving = true;
+        try
+        {
+            var (identity, version) = await SaveStrategy();
+            var config = BuildScenarioConfig(identity, version);
+            var result = await Task.Run(() => RunUseCase.RunAsync(config));
+            if (result.IsSuccess && result.Result is not null)
+            {
+                Snackbar.Add($"Backtest completed: {result.Result.TotalTrades} trades, Sharpe {result.Result.SharpeRatio?.ToString("F2") ?? "N/A"}", Severity.Success);
+                Nav.NavigateTo($"/backtests/{result.Result.RunId}");
+            }
+            else
+            {
+                Snackbar.Add($"Run failed: {string.Join("; ", result.Errors ?? Array.Empty<string>())}", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+        finally { _saving = false; }
+    }
+
+    private async Task<(StrategyIdentity, StrategyVersion)> SaveStrategy()
+    {
+        var strategyId = _strategyName.ToLowerInvariant().Replace(" ", "-");
+        var identity = new StrategyIdentity(strategyId, _strategyName,
+            _selectedTemplate?.StrategyType ?? "", DateTimeOffset.Now, _description);
+        await StrategyRepo.SaveAsync(identity);
+
+        var config = BuildScenarioConfig(identity, null);
+        var typedParams = _parameters.ToDictionary(kv => kv.Key, kv => (object)kv.Value);
+        var version = new StrategyVersion($"{strategyId}-v1", strategyId, 1,
+            typedParams, config, DateTimeOffset.Now, "Initial version");
+        await StrategyRepo.SaveVersionAsync(version);
+
+        return (identity, version);
+    }
+
+    private ScenarioConfig BuildScenarioConfig(StrategyIdentity identity, StrategyVersion? version)
+    {
+        var dataOpts = new Dictionary<string, object> { ["FilePath"] = _dataFilePath };
+        var stratParams = _parameters.ToDictionary(kv => kv.Key, kv => (object)kv.Value);
+
+        var fillMode = _realismProfile == "FastResearch"
+            ? FillMode.SameBarClose : FillMode.NextBarOpen;
+
+        return new ScenarioConfig(
+            $"run-{DateTime.Now:yyyyMMdd-HHmmss}",
+            $"{identity.StrategyName} backtest",
+            TradingResearchEngine.Core.Engine.ReplayMode.Bar,
+            "csv", dataOpts,
+            _selectedTemplate?.StrategyType ?? "", stratParams,
+            new Dictionary<string, object>(),
+            _slippageModel, _commissionModel,
+            _initialCash, _riskFreeRate,
+            null, null, null, null,
+            fillMode, BarsPerYear);
+    }
+}
