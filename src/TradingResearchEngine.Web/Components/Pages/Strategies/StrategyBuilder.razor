@@ -12,13 +12,17 @@
 <MudText Typo="Typo.h4" Class="mb-2">New Strategy</MudText>
 <MudText Typo="Typo.caption" Class="mb-4">Step @(_step + 1) of 5</MudText>
 
-<MudStepper @bind-ActiveIndex="_step" Linear="true" Color="Color.Primary" Class="mb-4">
-    <MudStep Title="Template" />
-    <MudStep Title="Market" />
-    <MudStep Title="Rules" />
-    <MudStep Title="Execution" />
-    <MudStep Title="Save" />
-</MudStepper>
+<MudStack Row="true" Spacing="1" Class="mb-4" AlignItems="AlignItems.Center">
+    @foreach (var (title, idx) in new[] { ("Template", 0), ("Market", 1), ("Rules", 2), ("Execution", 3), ("Save", 4) })
+    {
+        <MudChip T="string" Size="MudBlazor.Size.Small"
+                 Color="@(idx < _step ? Color.Success : idx == _step ? Color.Primary : Color.Default)"
+                 Variant="@(idx == _step ? Variant.Filled : Variant.Outlined)">
+            @(idx + 1). @title
+        </MudChip>
+        @if (idx < 4) { <MudIcon Icon="@Icons.Material.Filled.ChevronRight" Size="MudBlazor.Size.Small" /> }
+    }
+</MudStack>
 
 @* Step 1: Template *@
 @if (_step == 0)

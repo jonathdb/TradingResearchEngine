@@ -148,7 +148,6 @@ public sealed class WalkForwardWorkflow : IResearchWorkflow<WalkForwardOptions, 
         IReadOnlyList<WalkForwardWindow> windows)
     {
         var composite = new List<Core.Portfolio.EquityCurvePoint>();
-        decimal equityOffset = 0m;
 
         foreach (var window in windows)
         {
