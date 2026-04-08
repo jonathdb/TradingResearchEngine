@@ -1,0 +1,156 @@
+@page "/propfirm/evaluate"
+@using TradingResearchEngine.Application.PropFirm
+@using TradingResearchEngine.Application.PropFirm.Results
+@inject PropFirmEvaluator Evaluator
+@inject ISnackbar Snackbar
+
+<PageTitle>Prop Firm Evaluation — TradingResearchEngine</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Prop Firm Evaluation</MudText>
+
+<MudGrid>
+    <MudItem xs="12" md="5">
+        <MudPaper Class="pa-4" Elevation="2">
+            <MudText Typo="Typo.h6" Class="mb-3">Select Result</MudText>
+            <ResultPicker Label="Backtest result to evaluate" SelectedResultChanged="r => _result = r" />
+
+            <MudDivider Class="my-4" />
+            <MudText Typo="Typo.h6" Class="mb-3">Select Firm</MudText>
+            <MudSelect T="PropFirmRulePack" @bind-Value="_selectedPack" Label="Rule Pack"
+                       Variant="Variant.Outlined" Class="mb-3"
+                       ToStringFunc="@(p => p is null ? "" : $"{p.FirmName} — {p.ChallengeName}")">
+                @foreach (var pack in _packs)
+                {
+                    <MudSelectItem Value="@pack">
+                        @(pack.IsBuiltIn ? "🔒" : "✏️") @pack.FirmName — @pack.ChallengeName ($@pack.AccountSizeUsd.ToString("N0"))
+                    </MudSelectItem>
+                }
+            </MudSelect>
+
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true"
+                       Disabled="@(_result is null || _selectedPack is null)"
+                       OnClick="Evaluate">
+                Evaluate
+            </MudButton>
+        </MudPaper>
+    </MudItem>
+
+    <MudItem xs="12" md="7">
+        @if (_phaseResults is not null && _selectedPack is not null)
+        {
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3">
+                    <MudText Typo="Typo.h6">@_selectedPack.FirmName — @_selectedPack.ChallengeName</MudText>
+                    <MudSpacer />
+                    <MudChip T="string" Color="@(_allPassed ? Color.Success : Color.Error)" Size="MudBlazor.Size.Large">
+                        @(_allPassed ? "✅ PASS" : "❌ FAIL")
+                    </MudChip>
+                </MudStack>
+
+                @foreach (var phase in _phaseResults)
+                {
+                    <MudText Typo="Typo.subtitle1" Class="mt-3 mb-2">
+                        @phase.PhaseName
+                        <MudChip T="string" Size="MudBlazor.Size.Small"
+                                 Color="@(phase.Passed ? Color.Success : Color.Error)">
+                            @(phase.Passed ? "Pass" : "Fail")
+                        </MudChip>
+                    </MudText>
+
+                    <MudTable Items="phase.Rules" Dense="true" Hover="true" Class="mb-2">
+                        <HeaderContent>
+                            <MudTh>Rule</MudTh>
+                            <MudTh>Status</MudTh>
+                            <MudTh>Actual</MudTh>
+                            <MudTh>Limit</MudTh>
+                            <MudTh>Margin</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd>@context.RuleName</MudTd>
+                            <MudTd>
+                                <MudChip T="string" Size="MudBlazor.Size.Small"
+                                         Color="@GetRuleColor(context.Status)">
+                                    @GetRuleIcon(context.Status) @context.Status
+                                </MudChip>
+                            </MudTd>
+                            <MudTd>@context.ActualValue.ToString("F2")</MudTd>
+                            <MudTd>@context.LimitValue.ToString("F2")</MudTd>
+                            <MudTd Style="@(context.Margin < 0 ? "color:red" : "")">
+                                @(context.Margin >= 0 ? "+" : "")@context.Margin.ToString("F2")
+                            </MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                }
+
+                @if (_selectedPack.UnsupportedRules is not null && _selectedPack.UnsupportedRules.Count > 0)
+                {
+                    <MudAlert Severity="Severity.Info" Dense="true" Class="mt-3">
+                        <MudText Typo="Typo.caption">Rules not modelled:</MudText>
+                        @foreach (var rule in _selectedPack.UnsupportedRules)
+                        {
+                            <MudText Typo="Typo.body2">• @rule</MudText>
+                        }
+                    </MudAlert>
+                }
+            </MudPaper>
+        }
+    </MudItem>
+</MudGrid>
+
+@code {
+    private BacktestResult? _result;
+    private PropFirmRulePack? _selectedPack;
+    private IReadOnlyList<PhaseEvaluationResult>? _phaseResults;
+    private bool _allPassed;
+
+    private List<PropFirmRulePack> _packs = new();
+
+    protected override void OnInitialized()
+    {
+        // Load built-in packs from JSON files
+        _packs = LoadBuiltInPacks();
+    }
+
+    private void Evaluate()
+    {
+        if (_result is null || _selectedPack is null) return;
+        _phaseResults = Evaluator.EvaluateRulePack(_result, _selectedPack);
+        _allPassed = _phaseResults.All(p => p.Passed);
+    }
+
+    private static Color GetRuleColor(RuleStatus status) => status switch
+    {
+        RuleStatus.Passed => Color.Success,
+        RuleStatus.NearBreach => Color.Warning,
+        RuleStatus.Failed => Color.Error,
+        _ => Color.Default
+    };
+
+    private static string GetRuleIcon(RuleStatus status) => status switch
+    {
+        RuleStatus.Passed => "✅",
+        RuleStatus.NearBreach => "⚠️",
+        RuleStatus.Failed => "❌",
+        _ => ""
+    };
+
+    private static List<PropFirmRulePack> LoadBuiltInPacks()
+    {
+        var packs = new List<PropFirmRulePack>();
+        var firmsDir = Path.Combine(Directory.GetCurrentDirectory(), "data", "firms");
+        if (!Directory.Exists(firmsDir)) return packs;
+
+        foreach (var file in Directory.GetFiles(firmsDir, "*.json"))
+        {
+            try
+            {
+                var json = File.ReadAllText(file);
+                var pack = System.Text.Json.JsonSerializer.Deserialize<PropFirmRulePack>(json,
+                    new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                if (pack is not null) packs.Add(pack);
+            }
+            catch { /* skip invalid files */ }
+        }
+        return packs.OrderBy(p => p.FirmName).ThenBy(p => p.ChallengeName).ToList();
+    }
+}

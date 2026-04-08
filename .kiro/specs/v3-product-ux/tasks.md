@@ -152,25 +152,46 @@ V3 transforms the engine into a user-facing research product. All tasks are codi
 - [ ] 7.3 Implement "Adopt Legacy Run" flow — link existing BacktestResult to a strategy
   - _Requirements: REQ-V3-09_
 
-- [ ] 8. Implement Guided Strategy Builder
-- [ ] 8.1 Create `StrategyBuilder.razor` with 5-step wizard layout and step navigation
+- [x] 8. Implement Guided Strategy Builder
+
+
+
+- [x] 8.1 Create `StrategyBuilder.razor` with 5-step wizard layout and step navigation
+
   - _Requirements: REQ-V3-03_
-- [ ] 8.2 Implement Step 1: Template picker with descriptions and use cases
+
+- [x] 8.2 Implement Step 1: Template picker with descriptions and use cases
+
   - _Requirements: REQ-V3-03_
-- [ ] 8.3 Implement Step 2: Market & Data — symbol, timeframe, data file picker with validation badges
+
+- [x] 8.3 Implement Step 2: Market & Data — symbol, timeframe, data file picker with validation badges
+
   - _Requirements: REQ-V3-03, REQ-V3-06_
-- [ ] 8.4 Implement Step 3: Entry/Exit Rules — template-specific parameter form with defaults and tooltips
+
+- [x] 8.4 Implement Step 3: Entry/Exit Rules — template-specific parameter form with defaults and tooltips
+
   - _Requirements: REQ-V3-03_
-- [ ] 8.5 Implement Step 4: Execution Assumptions — realism profile selector with progressive disclosure
+
+- [x] 8.5 Implement Step 4: Execution Assumptions — realism profile selector with progressive disclosure
+
   - _Requirements: REQ-V3-03_
-- [ ] 8.6 Implement Step 5: Review & Save — summary, naming, save + optional immediate run
+
+- [x] 8.6 Implement Step 5: Review & Save — summary, naming, save + optional immediate run
+
   - _Requirements: REQ-V3-03, REQ-V3-01_
-- [ ] 8.7 Implement Advanced Mode toggle — full ScenarioConfig form
+
+- [x] 8.7 Implement Advanced Mode toggle — full ScenarioConfig form
+
   - _Requirements: REQ-V3-03_
-- [ ] 8.8 Implement keyboard navigation (Tab/Enter/Escape between steps)
+
+- [x] 8.8 Implement keyboard navigation (Tab/Enter/Escape between steps)
+
   - _Requirements: REQ-V3-14_
 
+
+
 ---
+
 
 ## Phase 3: Run & Study Execution UX
 
