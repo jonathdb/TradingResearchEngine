@@ -1,0 +1,47 @@
+@* Displays automatic robustness warnings based on backtest metrics *@
+
+@if (Result is not null)
+{
+    var warnings = GetWarnings();
+    @if (warnings.Count > 0)
+    {
+        <MudAlert Severity="Severity.Warning" Dense="true" Class="@Class">
+            <MudText Typo="Typo.subtitle2">⚠️ Robustness Warnings</MudText>
+            @foreach (var w in warnings)
+            {
+                <MudText Typo="Typo.body2">@w</MudText>
+            }
+        </MudAlert>
+    }
+}
+
+@code {
+    [Parameter] public BacktestResult? Result { get; set; }
+    [Parameter] public string Class { get; set; } = "mb-4";
+
+    private List<string> GetWarnings()
+    {
+        if (Result is null) return new();
+        var warnings = new List<string>();
+
+        if (Result.SharpeRatio > 3.0m)
+            warnings.Add($"⚡ Sharpe {Result.SharpeRatio:F2} is suspiciously high — possible overfitting.");
+
+        if (Result.TotalTrades < 30)
+            warnings.Add($"📊 Only {Result.TotalTrades} trades — insufficient sample size for reliable statistics.");
+
+        if (Result.EquityCurveSmoothness < 0m)
+            warnings.Add($"📉 K-Ratio {Result.EquityCurveSmoothness:F4} is negative — equity curve is declining.");
+
+        if (Result.MaxDrawdown > 0.20m)
+            warnings.Add($"🔴 Max drawdown {Result.MaxDrawdown:P1} exceeds 20% — high risk.");
+
+        if (Result.WinRate < 0.30m)
+            warnings.Add($"📉 Win rate {Result.WinRate:P0} is below 30%.");
+
+        if (Result.ProfitFactor < 1.0m)
+            warnings.Add($"📉 Profit factor {Result.ProfitFactor:F2} is below 1.0 — losing strategy.");
+
+        return warnings;
+    }
+}

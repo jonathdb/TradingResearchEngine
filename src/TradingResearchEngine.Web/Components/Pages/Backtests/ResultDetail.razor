@@ -63,6 +63,9 @@ else
         <MudItem xs="6" sm="3"><MetricCard Label="Max Consec Wins" Value="@_result.MaxConsecutiveWins.ToString()" /></MudItem>
     </MudGrid>
 
+    @* Robustness warnings *@
+    <RobustnessWarnings Result="_result" />
+
     @* Tabbed content: Charts + Trades *@
     <MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-4">
         <MudTabPanel Text="Equity Curve">
@@ -142,12 +145,24 @@ else
         </MudTabPanel>
     </MudTabs>
 
-    @* Export button *@
-    <MudButton Variant="Variant.Outlined" Color="MudBlazor.Color.Secondary"
-               Class="mt-4" StartIcon="@Icons.Material.Filled.Download"
-               OnClick="ExportMarkdown">
-        Export Markdown Report
-    </MudButton>
+    @* Export buttons *@
+    <MudStack Row="true" Class="mt-4" Spacing="2">
+        <MudButton Variant="Variant.Outlined" Color="MudBlazor.Color.Secondary"
+                   StartIcon="@Icons.Material.Filled.Description"
+                   OnClick="ExportMarkdown">
+            Export Markdown
+        </MudButton>
+        <MudButton Variant="Variant.Outlined" Color="MudBlazor.Color.Secondary"
+                   StartIcon="@Icons.Material.Filled.TableChart"
+                   OnClick="ExportCsvTradeLog">
+            Export CSV Trades
+        </MudButton>
+        <MudButton Variant="Variant.Outlined" Color="MudBlazor.Color.Secondary"
+                   StartIcon="@Icons.Material.Filled.Code"
+                   OnClick="ExportJson">
+            Export JSON
+        </MudButton>
+    </MudStack>
 }
 
 @code {
@@ -171,11 +186,42 @@ else
         var md = reporter.RenderToMarkdown(_result);
 
         var fileName = $"{_result.ScenarioConfig.ScenarioId}-report.md";
-        var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "TradingResearchEngine", "Reports");
-        if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
-        var path = Path.Combine(dir, fileName);
+        var path = GetExportPath(fileName);
         await File.WriteAllTextAsync(path, md);
         Snackbar.Add($"Report saved to {path}", Severity.Success);
+    }
+
+    private async Task ExportCsvTradeLog()
+    {
+        if (_result is null) return;
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("Symbol,EntryTime,ExitTime,EntryPrice,ExitPrice,Quantity,Direction,GrossPnl,Commission,NetPnl,ReturnOnRisk");
+        foreach (var t in _result.Trades)
+        {
+            sb.AppendLine($"{t.Symbol},{t.EntryTime:O},{t.ExitTime:O},{t.EntryPrice},{t.ExitPrice},{t.Quantity},{t.Direction},{t.GrossPnl},{t.Commission},{t.NetPnl},{t.ReturnOnRisk:F6}");
+        }
+        var fileName = $"{_result.ScenarioConfig.ScenarioId}-trades.csv";
+        var path = GetExportPath(fileName);
+        await File.WriteAllTextAsync(path, sb.ToString());
+        Snackbar.Add($"Trade log saved to {path}", Severity.Success);
+    }
+
+    private async Task ExportJson()
+    {
+        if (_result is null) return;
+        var json = System.Text.Json.JsonSerializer.Serialize(_result,
+            new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+        var fileName = $"{_result.ScenarioConfig.ScenarioId}-result.json";
+        var path = GetExportPath(fileName);
+        await File.WriteAllTextAsync(path, json);
+        Snackbar.Add($"JSON result saved to {path}", Severity.Success);
+    }
+
+    private static string GetExportPath(string fileName)
+    {
+        var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "TradingResearchEngine", "Exports");
+        if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+        return Path.Combine(dir, fileName);
     }
 }

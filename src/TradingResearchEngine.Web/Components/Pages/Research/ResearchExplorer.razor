@@ -1,0 +1,96 @@
+@page "/research/explorer"
+@inject TradingResearchEngine.Application.Research.IStudyRepository StudyRepo
+@inject IStrategyRepository StrategyRepo
+@inject NavigationManager Nav
+
+<PageTitle>Research Explorer — TradingResearchEngine</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Research Explorer</MudText>
+
+@if (_loading)
+{
+    <MudProgressCircular Indeterminate="true" />
+}
+else if (_studies.Count == 0)
+{
+    <MudAlert Severity="Severity.Info">
+        No studies yet. Run a backtest first, then launch a study from the result page or strategy detail.
+    </MudAlert>
+}
+else
+{
+    <MudTable Items="_studies" Dense="true" Hover="true" Striped="true">
+        <HeaderContent>
+            <MudTh>Study</MudTh>
+            <MudTh>Type</MudTh>
+            <MudTh>Strategy</MudTh>
+            <MudTh>Status</MudTh>
+            <MudTh>Created</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.Study.StudyId[..Math.Min(8, context.Study.StudyId.Length)]…</MudTd>
+            <MudTd>
+                <MudChip T="string" Size="MudBlazor.Size.Small"
+                         Color="@GetStudyTypeColor(context.Study.Type)">
+                    @context.Study.Type
+                </MudChip>
+            </MudTd>
+            <MudTd>@(context.StrategyName ?? "—")</MudTd>
+            <MudTd>
+                <MudChip T="string" Size="MudBlazor.Size.Small"
+                         Color="@GetStatusColor(context.Study.Status)">
+                    @context.Study.Status
+                </MudChip>
+            </MudTd>
+            <MudTd>@context.Study.CreatedAt.ToString("yyyy-MM-dd HH:mm")</MudTd>
+        </RowTemplate>
+    </MudTable>
+}
+
+@code {
+    private record StudyRow(TradingResearchEngine.Application.Research.StudyRecord Study, string? StrategyName);
+
+    private List<StudyRow> _studies = new();
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var allStudies = await StudyRepo.ListAsync();
+        var strategies = (await StrategyRepo.ListAsync()).ToDictionary(s => s.StrategyId);
+
+        foreach (var study in allStudies)
+        {
+            // Try to find strategy name from version ID
+            string? stratName = null;
+            foreach (var strat in strategies.Values)
+            {
+                var versions = await StrategyRepo.GetVersionsAsync(strat.StrategyId);
+                if (versions.Any(v => v.StrategyVersionId == study.StrategyVersionId))
+                {
+                    stratName = strat.StrategyName;
+                    break;
+                }
+            }
+            _studies.Add(new StudyRow(study, stratName));
+        }
+        _loading = false;
+    }
+
+    private static Color GetStudyTypeColor(TradingResearchEngine.Application.Research.StudyType type) => type switch
+    {
+        TradingResearchEngine.Application.Research.StudyType.MonteCarlo => Color.Primary,
+        TradingResearchEngine.Application.Research.StudyType.WalkForward => Color.Secondary,
+        TradingResearchEngine.Application.Research.StudyType.Sensitivity => Color.Warning,
+        TradingResearchEngine.Application.Research.StudyType.ParameterSweep => Color.Info,
+        _ => Color.Default
+    };
+
+    private static Color GetStatusColor(TradingResearchEngine.Application.Research.StudyStatus status) => status switch
+    {
+        TradingResearchEngine.Application.Research.StudyStatus.Completed => Color.Success,
+        TradingResearchEngine.Application.Research.StudyStatus.Running => Color.Info,
+        TradingResearchEngine.Application.Research.StudyStatus.Failed => Color.Error,
+        TradingResearchEngine.Application.Research.StudyStatus.Cancelled => Color.Warning,
+        _ => Color.Default
+    };
+}

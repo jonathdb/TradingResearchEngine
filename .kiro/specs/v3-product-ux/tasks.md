@@ -124,14 +124,30 @@ V3 transforms the engine into a user-facing research product. All tasks are codi
 - [ ] 6.3 Test `DataFileService` validation (valid CSV, missing columns, out-of-order timestamps)
   - _Requirements: REQ-V3-06_
 
+
+
+
+
 ---
+
+
+
+
 
 ## Phase 2: Strategy Builder + Library UI
 
-- [ ] 7. Implement Strategy Library page
-- [ ] 7.1 Create `StrategyLibrary.razor` — list strategies with version, run count, last Sharpe
+
+
+- [x] 7. Implement Strategy Library page
+
+
+
+- [x] 7.1 Create `StrategyLibrary.razor` — list strategies with version, run count, last Sharpe
+
   - _Requirements: REQ-V3-01_
-- [ ] 7.2 Create `StrategyDetail.razor` — version history, linked runs, linked studies
+
+- [x] 7.2 Create `StrategyDetail.razor` — version history, linked runs, linked studies
+
   - _Requirements: REQ-V3-01, REQ-V3-02_
 - [ ] 7.3 Implement "Adopt Legacy Run" flow — link existing BacktestResult to a strategy
   - _Requirements: REQ-V3-09_
