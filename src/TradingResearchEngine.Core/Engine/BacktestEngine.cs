@@ -9,6 +9,7 @@ using TradingResearchEngine.Core.Portfolio;
 using TradingResearchEngine.Core.Queue;
 using TradingResearchEngine.Core.Results;
 using TradingResearchEngine.Core.Risk;
+using TradingResearchEngine.Core.Sessions;
 using TradingResearchEngine.Core.Strategy;
 
 namespace TradingResearchEngine.Core.Engine;
@@ -24,6 +25,7 @@ public sealed class BacktestEngine : IBacktestEngine
     private readonly IStrategy _strategy;
     private readonly IRiskLayer _riskLayer;
     private readonly IExecutionHandler _executionHandler;
+    private readonly ISessionCalendar? _sessionCalendar;
     private readonly ILogger<BacktestEngine> _logger;
 
     /// <summary>Initialises the engine with all required pipeline components.</summary>
@@ -32,13 +34,15 @@ public sealed class BacktestEngine : IBacktestEngine
         IStrategy strategy,
         IRiskLayer riskLayer,
         IExecutionHandler executionHandler,
-        ILogger<BacktestEngine> logger)
+        ILogger<BacktestEngine> logger,
+        ISessionCalendar? sessionCalendar = null)
     {
         _dataProvider = dataProvider;
         _strategy = strategy;
         _riskLayer = riskLayer;
         _executionHandler = executionHandler;
         _logger = logger;
+        _sessionCalendar = sessionCalendar;
     }
 
     /// <inheritdoc/>
@@ -50,7 +54,7 @@ public sealed class BacktestEngine : IBacktestEngine
             loggerFactory.CreateLogger<Portfolio.Portfolio>());
         var queue = new EventQueue();
         var dataHandler = new DataHandler(_dataProvider, config, loggerFactory.CreateLogger<DataHandler>());
-        var state = new RunState(config.FillMode);
+        var state = new RunState(config.EffectiveFillMode);
 
         try
         {
@@ -113,6 +117,10 @@ public sealed class BacktestEngine : IBacktestEngine
         else if (mde is TickEvent tick)
             portfolio.MarkToMarket(tick.Symbol, tick.LastTrade.Price, tick.Timestamp);
 
+        // Session filter: skip strategy invocation for bars outside allowed sessions
+        if (_sessionCalendar is not null && !_sessionCalendar.IsTradable(mde.Timestamp))
+            return;
+
         // Step 3: Pass to strategy
         try
         {
@@ -164,8 +172,9 @@ public sealed class BacktestEngine : IBacktestEngine
                 // This path is only hit in SameBarClose mode when orders are enqueued directly
                 if (state.LastMarketEvent is not null)
                 {
-                    var fill = _executionHandler.Execute(approvedOrder, state.LastMarketEvent);
-                    portfolio.Update(fill);
+                    var result = _executionHandler.Execute(approvedOrder, state.LastMarketEvent);
+                    if (result.Fill is not null)
+                        portfolio.Update(result.Fill);
                 }
                 break;
 
@@ -195,8 +204,9 @@ public sealed class BacktestEngine : IBacktestEngine
             // SameBarClose: execute immediately
             if (state.LastMarketEvent is not null)
             {
-                var fill = _executionHandler.Execute(order, state.LastMarketEvent);
-                portfolio.Update(fill);
+                var result = _executionHandler.Execute(order, state.LastMarketEvent);
+                if (result.Fill is not null)
+                    portfolio.Update(result.Fill);
             }
         }
     }
@@ -215,21 +225,34 @@ public sealed class BacktestEngine : IBacktestEngine
 
         foreach (var order in state.PendingOrders)
         {
-            var fill = TryFillOrder(order, mde);
-            if (fill is not null)
+            var result = TryFillOrder(order, mde);
+
+            if (result is not null && result.Fill is not null &&
+                result.Outcome is ExecutionOutcome.Filled or ExecutionOutcome.PartiallyFilled)
             {
-                portfolio.Update(fill);
+                portfolio.Update(result.Fill);
+
+                // Partial fill: re-enqueue residual order
+                if (result.Outcome == ExecutionOutcome.PartiallyFilled && result.RemainingQuantity > 0m)
+                {
+                    remaining.Add(order with { Quantity = result.RemainingQuantity });
+                }
+            }
+            else if (result is not null && result.Outcome == ExecutionOutcome.Rejected)
+            {
+                _logger.LogWarning("OrderRejected: {Symbol} {OrderType} — {Reason}",
+                    order.Symbol, order.OrderType, result.RejectionReason ?? "unknown");
             }
             else
             {
-                // Check expiry (MaxBarsPending: 0 = GTC, >0 = decrement and expire at 0)
+                // Unfilled — check expiry (MaxBarsPending: 0 = GTC, >0 = decrement and expire at 0)
                 if (order.MaxBarsPending > 0)
                 {
                     int barsLeft = order.MaxBarsPending - 1;
                     if (barsLeft <= 0)
                     {
                         _logger.LogInformation("OrderExpired: {Symbol} {OrderType} order expired after MaxBarsPending.", order.Symbol, order.OrderType);
-                        continue; // drop expired order
+                        continue;
                     }
                     remaining.Add(order with { MaxBarsPending = barsLeft });
                 }
@@ -244,8 +267,8 @@ public sealed class BacktestEngine : IBacktestEngine
         state.PendingOrders.AddRange(remaining);
     }
 
-    /// <summary>Attempts to fill an order against the current market data. Returns null if unfilled.</summary>
-    private FillEvent? TryFillOrder(OrderEvent order, MarketDataEvent mde)
+    /// <summary>Attempts to fill an order against the current market data. Returns null if no fill attempt possible.</summary>
+    private ExecutionResult? TryFillOrder(OrderEvent order, MarketDataEvent mde)
     {
         if (mde is BarEvent bar)
         {
@@ -264,39 +287,33 @@ public sealed class BacktestEngine : IBacktestEngine
     }
 
     /// <summary>Fills a market order at the bar's Open price + slippage.</summary>
-    private FillEvent FillMarketAtOpen(OrderEvent order, BarEvent bar)
+    private ExecutionResult? FillMarketAtOpen(OrderEvent order, BarEvent bar)
     {
-        // Create a synthetic bar with Open as the reference price for the execution handler
         var openBar = bar with { Close = bar.Open };
         return _executionHandler.Execute(order, openBar);
     }
 
     /// <summary>Limit buy: fill if bar.Low &lt;= LimitPrice. Limit sell: fill if bar.High &gt;= LimitPrice.</summary>
-    private FillEvent? TryFillLimit(OrderEvent order, BarEvent bar)
+    private ExecutionResult? TryFillLimit(OrderEvent order, BarEvent bar)
     {
         if (!order.LimitPrice.HasValue) return null;
         decimal limitPrice = order.LimitPrice.Value;
 
         if (order.Direction == Direction.Long && bar.Low <= limitPrice)
-        {
             return CreateFillAtPrice(order, limitPrice, bar.Timestamp);
-        }
         if (order.Direction == Direction.Flat && bar.High >= limitPrice)
-        {
             return CreateFillAtPrice(order, limitPrice, bar.Timestamp);
-        }
         return null;
     }
 
     /// <summary>Stop-market buy: fill if bar.High &gt;= StopPrice. Stop-market sell: fill if bar.Low &lt;= StopPrice.</summary>
-    private FillEvent? TryFillStopMarket(OrderEvent order, BarEvent bar)
+    private ExecutionResult? TryFillStopMarket(OrderEvent order, BarEvent bar)
     {
         if (!order.StopPrice.HasValue) return null;
         decimal stopPrice = order.StopPrice.Value;
 
         if (order.Direction == Direction.Long && bar.High >= stopPrice)
         {
-            // Fill via execution handler with synthetic bar at stop price — slippage applied naturally
             var syntheticBar = bar with { Close = stopPrice };
             return _executionHandler.Execute(order, syntheticBar);
         }
@@ -312,7 +329,7 @@ public sealed class BacktestEngine : IBacktestEngine
     /// Stop-limit: trigger if stop condition met, then fill if limit condition met.
     /// If triggered but not filled, converts to pending limit order.
     /// </summary>
-    private FillEvent? TryFillStopLimit(OrderEvent order, BarEvent bar)
+    private ExecutionResult? TryFillStopLimit(OrderEvent order, BarEvent bar)
     {
         if (!order.StopPrice.HasValue || !order.LimitPrice.HasValue) return null;
 
@@ -320,7 +337,6 @@ public sealed class BacktestEngine : IBacktestEngine
         decimal stopPrice = order.StopPrice.Value;
         decimal limitPrice = order.LimitPrice.Value;
 
-        // Check trigger
         if (!triggered)
         {
             if (order.Direction == Direction.Long && bar.High >= stopPrice)
@@ -331,31 +347,25 @@ public sealed class BacktestEngine : IBacktestEngine
 
         if (!triggered) return null;
 
-        // Triggered — try limit fill
         if (order.Direction == Direction.Long && bar.Low <= limitPrice)
             return CreateFillAtPrice(order, limitPrice, bar.Timestamp);
         if (order.Direction == Direction.Flat && bar.High >= limitPrice)
             return CreateFillAtPrice(order, limitPrice, bar.Timestamp);
 
-        // Triggered but not filled — will be kept in pending queue as triggered limit
-        // Mark as triggered so next bar skips the stop check
-        if (!order.StopTriggered)
-        {
-            // Replace in pending queue with triggered version
-            // This is handled by the caller checking the return value
-        }
-        return null;
+        // Triggered but not filled — return Unfilled so caller keeps it in queue
+        return new ExecutionResult(ExecutionOutcome.Unfilled, null);
     }
 
-    /// <summary>Creates a fill event at a specific price using the execution handler for commission calculation.</summary>
-    private FillEvent CreateFillAtPrice(OrderEvent order, decimal fillPrice, DateTimeOffset timestamp)
+    /// <summary>Creates a fill at a specific price using the execution handler for commission calculation.</summary>
+    private ExecutionResult? CreateFillAtPrice(OrderEvent order, decimal fillPrice, DateTimeOffset timestamp)
     {
         var syntheticBar = new BarEvent(order.Symbol, "1D", fillPrice, fillPrice, fillPrice, fillPrice, 0m, timestamp);
-        var baseFill = _executionHandler.Execute(order, syntheticBar);
+        var result = _executionHandler.Execute(order, syntheticBar);
 
-        // Override fill price (execution handler would apply slippage to the synthetic bar's close,
-        // but for limit fills we want the exact limit price with only commission applied)
-        return baseFill with { FillPrice = fillPrice, SlippageAmount = 0m };
+        if (result.Fill is null) return null;
+
+        var adjustedFill = result.Fill with { FillPrice = fillPrice, SlippageAmount = 0m };
+        return new ExecutionResult(ExecutionOutcome.Filled, adjustedFill);
     }
 
     private sealed class RunState

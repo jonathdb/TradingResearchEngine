@@ -75,7 +75,12 @@ public sealed class RunScenarioUseCase
         var executionHandler = _services.GetRequiredService<IExecutionHandler>();
         var engineLogger = _services.GetRequiredService<ILogger<BacktestEngine>>();
 
-        var engine = new BacktestEngine(dataProvider, strategy, riskLayer, executionHandler, engineLogger);
+        // Resolve optional session calendar if configured
+        var sessionCalendar = config.SessionOptions?.SessionCalendarType is not null
+            ? _services.GetService<Core.Sessions.ISessionCalendar>()
+            : null;
+
+        var engine = new BacktestEngine(dataProvider, strategy, riskLayer, executionHandler, engineLogger, sessionCalendar);
         var result = await engine.RunAsync(config, ct);
 
         // Auto-save result if repository is available

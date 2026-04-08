@@ -46,6 +46,9 @@ public static class ServiceCollectionExtensions
         // BacktestEngine is constructed manually by RunScenarioUseCase — not registered in DI
         services.AddTransient<IRiskLayer, DefaultRiskLayer>();
 
+        // Default position sizing policy — can be overridden via DI
+        services.AddTransient<Core.Risk.IPositionSizingPolicy, PercentEquitySizingPolicy>();
+
         // Default fallback models — overridden by Infrastructure registrations if present
         services.AddTransient<ISlippageModel, ZeroSlippageModel>();
         services.AddTransient<ICommissionModel, ZeroCommissionModel>();

@@ -9,7 +9,7 @@ EngineEvent (abstract record)
 │   └── TickEvent (bid/ask levels + last trade)
 ├── SignalEvent (direction + optional strength)
 ├── OrderEvent (direction + quantity + type + RiskApproved flag + StopPrice + MaxBarsPending + StopTriggered)
-└── FillEvent (fill price + commission + slippage)
+└── FillEvent (fill price + commission + slippage + ExecutionOutcome + RemainingQuantity + RejectionReason)
 ```
 
 All events carry a `DateTimeOffset Timestamp`. Events are immutable records.
@@ -35,3 +35,4 @@ Both modes use the identical heartbeat-loop and dispatch architecture. The only 
 - `Position`, `ClosedTrade`: sealed records for portfolio state
 - `EquityCurvePoint`: sealed record for portfolio snapshots — includes `TotalEquity`, `CashBalance`, `UnrealisedPnl`, `RealisedPnl`, and `OpenPositionCount`; appended by `Portfolio.MarkToMarket`, not by fill processing
 - `ProgressUpdate`: sealed record for workflow progress reporting (`CurrentStep`, `TotalSteps`, `Message`, computed `Fraction`)
+- `ExecutionOutcome`: enum on `FillEvent` — `Filled`, `PartiallyFilled`, `Unfilled`, `Rejected`, `Expired`; defaults to `Filled` for backward compatibility

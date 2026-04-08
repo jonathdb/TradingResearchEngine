@@ -26,8 +26,20 @@ public sealed record ScenarioConfig(
     Dictionary<string, object>? ResearchWorkflowOptions,
     PropFirmOptions? PropFirmOptions,
     FillMode FillMode = FillMode.NextBarOpen,
-    int BarsPerYear = 252) : IHasId
+    int BarsPerYear = 252,
+    ExecutionRealismProfile RealismProfile = ExecutionRealismProfile.StandardBacktest,
+    ExecutionOptions? ExecutionOptions = null,
+    SessionOptions? SessionOptions = null,
+    TraceOptions? TraceOptions = null) : IHasId
 {
     /// <inheritdoc/>
     public string Id => ScenarioId;
+
+    /// <summary>Effective fill mode: ExecutionOptions override takes precedence over top-level FillMode.</summary>
+    public FillMode EffectiveFillMode =>
+        ExecutionOptions?.FillModeOverride ?? FillMode;
+
+    /// <summary>Whether event tracing is enabled.</summary>
+    public bool EnableEventTrace =>
+        TraceOptions?.EnableEventTrace ?? false;
 }

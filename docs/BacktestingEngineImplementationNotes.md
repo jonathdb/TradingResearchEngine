@@ -260,6 +260,55 @@ The directory is created automatically if it does not exist. This means the repo
 
 Both values are defined in `Core/Configuration/` (`FillMode.cs` enum and the `ScenarioConfig` record). `RunScenarioUseCase` rejects `BarsPerYear <= 0` during validation.
 
+## Execution Realism (V2.1)
+
+`ScenarioConfig` exposes additional V2.1 fields for execution realism and diagnostics:
+
+### ExecutionRealismProfile
+
+`RealismProfile` (default `StandardBacktest`) selects a preset bundle of execution defaults. Defined in `Core/Configuration/ExecutionRealismProfile.cs`.
+
+| Profile | Fill Mode | Slippage | Partial Fills | Notes |
+|---|---|---|---|---|
+| `FastResearch` | SameBarClose | Zero | Disabled | Maximum speed for parameter sweeps |
+| `StandardBacktest` | NextBarOpen | Fixed spread | Disabled | Default for backtesting |
+| `BrokerConservative` | NextBarOpen | ATR-scaled | Enabled | Session-aware spread widening, pessimistic stop fills |
+
+### ExecutionOptions
+
+`ExecutionOptions` (optional, default `null`) allows overriding individual profile defaults. Any non-null field takes precedence over the profile's default. Defined in `Core/Configuration/ExecutionOptions.cs`.
+
+| Field | Type | Description |
+|---|---|---|
+| FillModeOverride | FillMode? | Overrides the profile's fill mode |
+| SlippageModelOverride | string? | Overrides the profile's slippage model type |
+| SlippageModelOptions | Dictionary\<string, object\>? | Model-specific slippage parameters |
+| EnablePartialFills | bool? | Overrides the profile's partial fill setting |
+| DefaultMaxBarsPending | int? | Overrides the profile's order expiry bar count |
+
+The computed property `ScenarioConfig.EffectiveFillMode` resolves the active fill mode: `ExecutionOptions.FillModeOverride` takes precedence over the top-level `FillMode` field.
+
+### SessionOptions and TraceOptions
+
+Two additional optional records on `ScenarioConfig`:
+
+- `SessionOptions` — configures session calendar filtering (`SessionCalendarType`, `SessionFilterOptions`). When set, the engine filters bars outside the active trading session.
+- `TraceOptions` — enables event trace recording (`EnableEventTrace`). The computed property `ScenarioConfig.EnableEventTrace` resolves this.
+
+### ExecutionOutcome
+
+`FillEvent` carries an `ExecutionOutcome` enum (default `Filled`) along with `RemainingQuantity` and an optional `RejectionReason`. Defined in `Core/Events/ExecutionOutcome.cs`.
+
+| Value | Meaning |
+|---|---|
+| `Filled` | Order fully filled |
+| `PartiallyFilled` | Partially filled; remaining quantity carried forward |
+| `Unfilled` | Not filled this bar; remains in pending queue |
+| `Rejected` | Rejected (session closed, insufficient capital, invalid stop) |
+| `Expired` | Expired after exceeding `MaxBarsPending` |
+
+The default execution path remains simple full fills (`Outcome = Filled`, `RemainingQuantity = 0`) unless partial fills are explicitly enabled via `ExecutionOptions`.
+
 ## Deterministic Replay
 
 When `ScenarioConfig.RandomSeed` is set, all RNG instances are seeded from it. Same config + same data = identical results.

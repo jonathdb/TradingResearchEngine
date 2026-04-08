@@ -17,12 +17,14 @@ public class SimulatedExecutionHandlerTests
         var order = new OrderEvent("AAPL", Direction.Long, 100m, OrderType.Market, null, T0, true);
         var bar = new BarEvent("AAPL", "1D", 100m, 105m, 99m, 102m, 1000m, T0);
 
-        var fill = handler.Execute(order, bar);
+        var result = handler.Execute(order, bar);
 
-        Assert.Equal(102.10m, fill.FillPrice); // close 102 + slippage 0.10
-        Assert.Equal(5m, fill.Commission);
-        Assert.Equal(0.10m, fill.SlippageAmount);
-        Assert.Equal(100m, fill.Quantity);
+        Assert.Equal(ExecutionOutcome.Filled, result.Outcome);
+        Assert.NotNull(result.Fill);
+        Assert.Equal(102.10m, result.Fill.FillPrice); // close 102 + slippage 0.10
+        Assert.Equal(5m, result.Fill.Commission);
+        Assert.Equal(0.10m, result.Fill.SlippageAmount);
+        Assert.Equal(100m, result.Fill.Quantity);
     }
 
     [Fact]
@@ -35,9 +37,10 @@ public class SimulatedExecutionHandlerTests
         var order = new OrderEvent("AAPL", Direction.Flat, 50m, OrderType.Market, null, T0, true);
         var bar = new BarEvent("AAPL", "1D", 100m, 105m, 99m, 102m, 1000m, T0);
 
-        var fill = handler.Execute(order, bar);
+        var result = handler.Execute(order, bar);
 
-        Assert.Equal(101.95m, fill.FillPrice); // close 102 - slippage 0.05
+        Assert.NotNull(result.Fill);
+        Assert.Equal(101.95m, result.Fill.FillPrice); // close 102 - slippage 0.05
     }
 
     [Fact]
@@ -53,8 +56,9 @@ public class SimulatedExecutionHandlerTests
             new[] { new AskLevel(102m, 100m) },
             new LastTrade(101.50m, 50m, T0), T0);
 
-        var fill = handler.Execute(order, tick);
+        var result = handler.Execute(order, tick);
 
-        Assert.Equal(101.50m, fill.FillPrice);
+        Assert.NotNull(result.Fill);
+        Assert.Equal(101.50m, result.Fill.FillPrice);
     }
 }

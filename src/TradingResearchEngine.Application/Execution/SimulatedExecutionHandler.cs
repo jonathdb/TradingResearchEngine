@@ -5,7 +5,7 @@ namespace TradingResearchEngine.Application.Execution;
 
 /// <summary>
 /// Simulates order execution by applying the active slippage and commission models
-/// to produce a <see cref="FillEvent"/>.
+/// to produce a <see cref="FillEvent"/> wrapped in an <see cref="ExecutionResult"/>.
 /// </summary>
 public sealed class SimulatedExecutionHandler : IExecutionHandler
 {
@@ -20,7 +20,7 @@ public sealed class SimulatedExecutionHandler : IExecutionHandler
     }
 
     /// <inheritdoc/>
-    public FillEvent Execute(OrderEvent order, MarketDataEvent currentBar)
+    public ExecutionResult Execute(OrderEvent order, MarketDataEvent currentBar)
     {
         decimal basePrice = currentBar switch
         {
@@ -35,7 +35,7 @@ public sealed class SimulatedExecutionHandler : IExecutionHandler
 
         decimal commission = _commission.ComputeCommission(order, fillPrice, order.Quantity);
 
-        return new FillEvent(
+        var fill = new FillEvent(
             order.Symbol,
             order.Direction,
             order.Quantity,
@@ -43,6 +43,8 @@ public sealed class SimulatedExecutionHandler : IExecutionHandler
             commission,
             slippageAmount,
             currentBar.Timestamp);
+
+        return new ExecutionResult(ExecutionOutcome.Filled, fill);
     }
 
     /// <summary>

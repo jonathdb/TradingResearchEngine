@@ -8,5 +8,8 @@ public record FillEvent(
     decimal FillPrice,
     decimal Commission,
     decimal SlippageAmount,
-    DateTimeOffset Timestamp)
+    DateTimeOffset Timestamp,
+    ExecutionOutcome Outcome = ExecutionOutcome.Filled,
+    decimal RemainingQuantity = 0m,
+    string? RejectionReason = null)
     : EngineEvent(Timestamp);
