@@ -145,22 +145,58 @@ else
         </MudTabPanel>
     </MudTabs>
 
+    @* Study launch buttons *@
+    @if (_result.Status == BacktestStatus.Completed)
+    {
+        <MudText Typo="Typo.h6" Class="mt-6 mb-2">Run Study</MudText>
+        <MudStack Row="true" Spacing="2" Class="mb-4">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                       StartIcon="@Icons.Material.Filled.Casino"
+                       Href="@($"/research/montecarlo?result={_result.Id}")">
+                Monte Carlo
+            </MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Secondary"
+                       StartIcon="@Icons.Material.Filled.Timeline"
+                       Href="@($"/research/walkforward?strategy={_result.ScenarioConfig.StrategyType}")">
+                Walk-Forward
+            </MudButton>
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary"
+                       StartIcon="@Icons.Material.Filled.GridOn"
+                       Href="@($"/research/sweep?strategy={_result.ScenarioConfig.StrategyType}")">
+                Parameter Sweep
+            </MudButton>
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary"
+                       StartIcon="@Icons.Material.Filled.Tune"
+                       Href="@($"/research/perturbation?result={_result.Id}")">
+                Perturbation
+            </MudButton>
+        </MudStack>
+
+        <MudText Typo="Typo.h6" Class="mb-2">Prop Firm</MudText>
+        <MudButton Variant="Variant.Outlined" Color="Color.Warning"
+                   StartIcon="@Icons.Material.Filled.AccountBalance"
+                   Href="@($"/propfirm/evaluate")">
+            Evaluate for Prop Firm
+        </MudButton>
+    }
+
     @* Export buttons *@
-    <MudStack Row="true" Class="mt-4" Spacing="2">
+    <MudText Typo="Typo.h6" Class="mt-6 mb-2">Export</MudText>
+    <MudStack Row="true" Spacing="2" Class="mb-4">
         <MudButton Variant="Variant.Outlined" Color="MudBlazor.Color.Secondary"
                    StartIcon="@Icons.Material.Filled.Description"
                    OnClick="ExportMarkdown">
-            Export Markdown
+            Markdown
         </MudButton>
         <MudButton Variant="Variant.Outlined" Color="MudBlazor.Color.Secondary"
                    StartIcon="@Icons.Material.Filled.TableChart"
                    OnClick="ExportCsvTradeLog">
-            Export CSV Trades
+            CSV Trades
         </MudButton>
         <MudButton Variant="Variant.Outlined" Color="MudBlazor.Color.Secondary"
                    StartIcon="@Icons.Material.Filled.Code"
                    OnClick="ExportJson">
-            Export JSON
+            JSON
         </MudButton>
     </MudStack>
 }

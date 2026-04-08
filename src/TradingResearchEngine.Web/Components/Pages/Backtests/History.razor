@@ -1,9 +1,21 @@
 @page "/backtests/history"
 @inject TradingResearchEngine.Core.Persistence.IRepository<BacktestResult> ResultRepo
+@inject ISnackbar Snackbar
 
 <PageTitle>Run History — TradingResearchEngine</PageTitle>
 
-<MudText Typo="Typo.h4" Class="mb-4">Run History</MudText>
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-4">
+    <MudText Typo="Typo.h4">Run History</MudText>
+    <MudSpacer />
+    @if (_results.Count > 0)
+    {
+        <MudButton Variant="Variant.Outlined" Color="Color.Error" Size="MudBlazor.Size.Small"
+                   StartIcon="@Icons.Material.Filled.DeleteSweep"
+                   OnClick="DeleteAllRuns">
+            Delete All (@_results.Count)
+        </MudButton>
+    }
+</MudStack>
 
 @if (_loading)
 {
@@ -11,7 +23,9 @@
 }
 else if (_results.Count == 0)
 {
-    <MudAlert Severity="Severity.Info">No saved results.</MudAlert>
+    <MudAlert Severity="Severity.Info">
+        No saved results. <MudLink Href="/strategies/builder">Create a strategy</MudLink> and run a backtest to see results here.
+    </MudAlert>
 }
 else
 {
@@ -22,7 +36,7 @@ else
             <MudTextField @bind-Value="_searchString" Placeholder="Search..."
                           Adornment="Adornment.Start"
                           AdornmentIcon="@Icons.Material.Filled.Search"
-                          IconSize="Size.Medium" Class="mt-0" />
+                          IconSize="MudBlazor.Size.Medium" Class="mt-0" />
         </ToolBarContent>
         <HeaderContent>
             <MudTh><MudTableSortLabel SortBy="new Func<BacktestResult, object>(x => x.ScenarioConfig.ScenarioId)">Scenario</MudTableSortLabel></MudTh>
@@ -30,28 +44,26 @@ else
             <MudTh>Status</MudTh>
             <MudTh><MudTableSortLabel SortBy="new Func<BacktestResult, object>(x => x.SharpeRatio ?? 0m)">Sharpe</MudTableSortLabel></MudTh>
             <MudTh><MudTableSortLabel SortBy="new Func<BacktestResult, object>(x => x.MaxDrawdown)">Max DD</MudTableSortLabel></MudTh>
-            <MudTh>Win Rate</MudTh>
-            <MudTh>Expectancy</MudTh>
             <MudTh>Trades</MudTh>
-            <MudTh>End Equity</MudTh>
-            <MudTh>Duration</MudTh>
+            <MudTh>Actions</MudTh>
         </HeaderContent>
         <RowTemplate>
             <MudTd><MudLink Href="@($"/backtests/{context.Id}")">@context.ScenarioConfig.ScenarioId</MudLink></MudTd>
             <MudTd>@context.ScenarioConfig.StrategyType</MudTd>
             <MudTd>
-                <MudChip T="string" Size="Size.Small"
+                <MudChip T="string" Size="MudBlazor.Size.Small"
                          Color="@(context.Status == BacktestStatus.Completed ? Color.Success : Color.Error)">
                     @context.Status
                 </MudChip>
             </MudTd>
-            <MudTd>@(context.SharpeRatio?.ToString("F2") ?? "N/A")</MudTd>
-            <MudTd>@context.MaxDrawdown.ToString("P2")</MudTd>
-            <MudTd>@(context.WinRate?.ToString("P1") ?? "N/A")</MudTd>
-            <MudTd>@(context.Expectancy?.ToString("F2") ?? "N/A")</MudTd>
+            <MudTd>@(context.SharpeRatio?.ToString("F2") ?? "—")</MudTd>
+            <MudTd>@context.MaxDrawdown.ToString("P1")</MudTd>
             <MudTd>@context.TotalTrades</MudTd>
-            <MudTd>$@context.EndEquity.ToString("F2")</MudTd>
-            <MudTd>@(context.RunDurationMs)ms</MudTd>
+            <MudTd>
+                <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error"
+                               Size="MudBlazor.Size.Small"
+                               OnClick="@(() => DeleteRun(context.Id))" />
+            </MudTd>
         </RowTemplate>
         <PagerContent>
             <MudTablePager />
@@ -76,5 +88,20 @@ else
         if (string.IsNullOrWhiteSpace(_searchString)) return true;
         return result.ScenarioConfig.ScenarioId.Contains(_searchString, StringComparison.OrdinalIgnoreCase)
             || result.ScenarioConfig.StrategyType.Contains(_searchString, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private async Task DeleteRun(string id)
+    {
+        await ResultRepo.DeleteAsync(id);
+        _results.RemoveAll(r => r.Id == id);
+        Snackbar.Add("Run deleted.", Severity.Info);
+    }
+
+    private async Task DeleteAllRuns()
+    {
+        foreach (var r in _results.ToList())
+            await ResultRepo.DeleteAsync(r.Id);
+        _results.Clear();
+        Snackbar.Add("All runs deleted.", Severity.Info);
     }
 }

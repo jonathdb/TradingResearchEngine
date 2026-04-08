@@ -6,12 +6,12 @@
 <MudSnackbarProvider />
 
 <MudLayout>
-    <MudAppBar Elevation="1" Dense="true">
+    <MudAppBar Elevation="1" Dense="true" Fixed="true">
         <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit"
                        Edge="Edge.Start" OnClick="ToggleDrawer" />
         <MudText Typo="Typo.h6" Class="ml-3">TradingResearchEngine</MudText>
         <MudSpacer />
-        <MudText Typo="Typo.caption" Class="mr-4" Style="opacity:0.6">v1.0</MudText>
+        <MudText Typo="Typo.caption" Class="mr-4" Style="opacity:0.6">v3.0</MudText>
     </MudAppBar>
 
     <MudDrawer @bind-Open="_drawerOpen" ClipMode="DrawerClipMode.Always"
@@ -19,7 +19,7 @@
         <NavMenu />
     </MudDrawer>
 
-    <MudMainContent Class="pa-4">
+    <MudMainContent Class="pa-4" Style="margin-top: 48px;">
         <ErrorBoundary @ref="_errorBoundary">
             <ChildContent>
                 @Body

@@ -2,32 +2,28 @@
     <MudNavLink Href="/" Match="NavLinkMatch.All"
                 Icon="@Icons.Material.Filled.Dashboard">Dashboard</MudNavLink>
 
-    <MudNavGroup Title="Strategies" Icon="@Icons.Material.Filled.Psychology" Expanded="false">
-        <MudNavLink Href="/strategies/library">Strategy Library</MudNavLink>
-        <MudNavLink Href="/strategies/builder">New Strategy</MudNavLink>
-        <MudNavLink Href="/strategies">Strategy Types</MudNavLink>
-    </MudNavGroup>
+    <MudNavLink Href="/strategies/library"
+                Icon="@Icons.Material.Filled.Psychology">Strategies</MudNavLink>
 
-    <MudNavGroup Title="Backtests" Icon="@Icons.Material.Filled.PlayArrow" Expanded="false">
-        <MudNavLink Href="/backtests/new">New Run</MudNavLink>
-        <MudNavLink Href="/backtests/history">Run History</MudNavLink>
-    </MudNavGroup>
+    <MudNavLink Href="/strategies/builder"
+                Icon="@Icons.Material.Filled.Add">New Strategy</MudNavLink>
+
+    <MudNavLink Href="/backtests/history"
+                Icon="@Icons.Material.Filled.History">Run History</MudNavLink>
 
     <MudNavGroup Title="Research" Icon="@Icons.Material.Filled.Science" Expanded="false">
-        <MudNavLink Href="/research/explorer">Research Explorer</MudNavLink>
+        <MudNavLink Href="/research/explorer">Explorer</MudNavLink>
         <MudNavLink Href="/research/sweep">Parameter Sweep</MudNavLink>
         <MudNavLink Href="/research/montecarlo">Monte Carlo</MudNavLink>
         <MudNavLink Href="/research/walkforward">Walk-Forward</MudNavLink>
-        <MudNavLink Href="/research/variance">Variance Testing</MudNavLink>
         <MudNavLink Href="/research/perturbation">Perturbation</MudNavLink>
         <MudNavLink Href="/research/benchmark">Benchmark</MudNavLink>
     </MudNavGroup>
 
-    <MudNavGroup Title="Prop-Firm" Icon="@Icons.Material.Filled.AccountBalance" Expanded="false">
+    <MudNavGroup Title="Prop Firm" Icon="@Icons.Material.Filled.AccountBalance" Expanded="false">
         <MudNavLink Href="/propfirm/evaluate">Evaluate Strategy</MudNavLink>
-        <MudNavLink Href="/propfirm/challenge">Challenge (Legacy)</MudNavLink>
+        <MudNavLink Href="/propfirm/challenge">Challenge</MudNavLink>
         <MudNavLink Href="/propfirm/funding">Instant Funding</MudNavLink>
-        <MudNavLink Href="/propfirm/variance">Variance</MudNavLink>
     </MudNavGroup>
 
     <MudNavLink Href="/compare" Icon="@Icons.Material.Filled.CompareArrows">Compare</MudNavLink>
