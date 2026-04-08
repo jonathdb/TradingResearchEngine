@@ -53,7 +53,7 @@ public sealed class ParameterPerturbationWorkflow
 
             var jittered = JitterParameters(baseConfig.StrategyParameters, options.JitterPercent, rng);
             var config = baseConfig with { StrategyParameters = jittered };
-            var runResult = await _runScenario.RunAsync(config, ct);
+            var runResult = await _runScenario.RunAsync(config, ct, autoSave: false);
 
             if (runResult.IsSuccess && runResult.Result is not null)
                 results.Add(runResult.Result);

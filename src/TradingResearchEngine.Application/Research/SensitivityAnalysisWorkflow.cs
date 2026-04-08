@@ -19,7 +19,7 @@ public sealed class SensitivityAnalysisWorkflow
     public async Task<SensitivityResult> RunAsync(
         ScenarioConfig baseConfig, SensitivityOptions options, CancellationToken ct = default)
     {
-        var baseResult = await _runScenario.RunAsync(baseConfig, ct);
+        var baseResult = await _runScenario.RunAsync(baseConfig, ct, autoSave: false);
         if (!baseResult.IsSuccess || baseResult.Result is null)
             throw new InvalidOperationException("Base scenario run failed.");
 
@@ -111,7 +111,7 @@ public sealed class SensitivityAnalysisWorkflow
     {
         try
         {
-            var result = await _runScenario.RunAsync(config, ct);
+            var result = await _runScenario.RunAsync(config, ct, autoSave: false);
             return result.IsSuccess ? result.Result : null;
         }
         catch { return null; }

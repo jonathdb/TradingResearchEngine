@@ -51,7 +51,7 @@ public sealed class VarianceTestingWorkflow : IResearchWorkflow<VarianceOptions,
         foreach (var (name, overrides) in presets)
         {
             var merged = MergeOverrides(baseConfig, overrides);
-            var runResult = await _runScenario.RunAsync(merged, ct);
+            var runResult = await _runScenario.RunAsync(merged, ct, autoSave: false);
             if (runResult.IsSuccess && runResult.Result is not null)
                 variants.Add((name, runResult.Result));
         }

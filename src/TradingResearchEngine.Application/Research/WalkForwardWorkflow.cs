@@ -79,7 +79,7 @@ public sealed class WalkForwardWorkflow : IResearchWorkflow<WalkForwardOptions, 
                 StrategyParameters = new Dictionary<string, object>(bestParams),
                 DataProviderOptions = WithDateRange(baseConfig.DataProviderOptions, oosStart, oosEnd)
             };
-            var oosRunResult = await _runScenario.RunAsync(oosConfig, ct);
+            var oosRunResult = await _runScenario.RunAsync(oosConfig, ct, autoSave: false);
 
             if (oosRunResult.IsSuccess && oosRunResult.Result is not null)
             {

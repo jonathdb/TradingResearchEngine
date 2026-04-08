@@ -37,7 +37,7 @@ public sealed class BenchmarkComparisonWorkflow
         ScenarioConfig baseConfig, BenchmarkOptions options, CancellationToken ct = default)
     {
         // Run the strategy
-        var stratResult = await _runScenario.RunAsync(baseConfig, ct);
+        var stratResult = await _runScenario.RunAsync(baseConfig, ct, autoSave: false);
         if (!stratResult.IsSuccess || stratResult.Result is null)
             throw new InvalidOperationException("Strategy run failed.");
 

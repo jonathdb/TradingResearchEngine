@@ -103,8 +103,8 @@ public sealed class RandomizedOosWorkflow
                 DataProviderOptions = WithBarIndices(baseConfig.DataProviderOptions, oosBars)
             };
 
-            var isResult = await _runScenario.RunAsync(isConfig, ct);
-            var oosResult = await _runScenario.RunAsync(oosConfig, ct);
+            var isResult = await _runScenario.RunAsync(isConfig, ct, autoSave: false);
+            var oosResult = await _runScenario.RunAsync(oosConfig, ct, autoSave: false);
 
             if (isResult.IsSuccess && isResult.Result is not null
                 && oosResult.IsSuccess && oosResult.Result is not null)

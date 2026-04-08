@@ -52,7 +52,10 @@ public sealed class RunScenarioUseCase
     /// Validates <paramref name="config"/>, resolves all pipeline components, and runs the engine.
     /// Returns a <see cref="ScenarioRunResult"/> with validation errors if config is invalid.
     /// </summary>
-    public async Task<ScenarioRunResult> RunAsync(ScenarioConfig config, CancellationToken ct = default)
+    /// <param name="config">Scenario configuration.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <param name="autoSave">When true, persists the result to the repository. Research workflows should pass false.</param>
+    public async Task<ScenarioRunResult> RunAsync(ScenarioConfig config, CancellationToken ct = default, bool autoSave = true)
     {
         var errors = Validate(config);
         if (errors.Count > 0) return ScenarioRunResult.Failure(errors);
@@ -87,8 +90,8 @@ public sealed class RunScenarioUseCase
         var metadata = BuildMetadata(config);
         result = result with { Metadata = metadata };
 
-        // Auto-save result if repository is available
-        if (_repository is not null && result.Status == BacktestStatus.Completed)
+        // Auto-save result if repository is available and autoSave is enabled
+        if (autoSave && _repository is not null && result.Status == BacktestStatus.Completed)
         {
             try { await _repository.SaveAsync(result, ct); }
             catch (Exception ex) { _logger.LogWarning(ex, "Failed to auto-save BacktestResult {RunId}.", result.RunId); }

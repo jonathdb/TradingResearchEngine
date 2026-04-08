@@ -40,7 +40,7 @@ public sealed class RealismSensitivityWorkflow
                     : FillMode.NextBarOpen
             };
 
-            var runResult = await _runScenario.RunAsync(config, ct);
+            var runResult = await _runScenario.RunAsync(config, ct, autoSave: false);
             if (runResult.IsSuccess && runResult.Result is not null)
             {
                 var r = runResult.Result;

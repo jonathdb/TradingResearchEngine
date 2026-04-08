@@ -47,7 +47,7 @@ public sealed class ParameterSweepWorkflow : IResearchWorkflow<SweepOptions, Swe
             async (combo, token) =>
             {
                 var merged = MergeParameters(baseConfig, combo);
-                var runResult = await _runScenario.RunAsync(merged, token);
+                var runResult = await _runScenario.RunAsync(merged, token, autoSave: false);
                 if (runResult.IsSuccess && runResult.Result is not null)
                 {
                     lock (results) { results.Add(runResult.Result); }

@@ -23,7 +23,7 @@ public sealed class MonteCarloWorkflow : IResearchWorkflow<MonteCarloOptions, Mo
         if (options.SimulationCount < 1)
             throw new ArgumentException("SimulationCount must be >= 1.", nameof(options));
 
-        var runResult = await _runScenario.RunAsync(baseConfig, ct);
+        var runResult = await _runScenario.RunAsync(baseConfig, ct, autoSave: false);
         if (!runResult.IsSuccess || runResult.Result is null)
             throw new InvalidOperationException(
                 "MonteCarloWorkflow: base scenario run failed. "
