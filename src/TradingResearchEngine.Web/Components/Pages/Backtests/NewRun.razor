@@ -242,8 +242,8 @@
             dataOpts["FilePath"] = _filePath;
         if (_dataProviderType == "dukascopy" && _fromDate.HasValue && _toDate.HasValue)
         {
-            dataOpts["From"] = new DateTimeOffset(_fromDate.Value, TimeSpan.Zero);
-            dataOpts["To"] = new DateTimeOffset(_toDate.Value, TimeSpan.Zero);
+            dataOpts["From"] = new DateTimeOffset(DateTime.SpecifyKind(_fromDate.Value, DateTimeKind.Utc), TimeSpan.Zero);
+            dataOpts["To"] = new DateTimeOffset(DateTime.SpecifyKind(_toDate.Value, DateTimeKind.Utc), TimeSpan.Zero);
         }
 
         var stratParams = new Dictionary<string, object>();

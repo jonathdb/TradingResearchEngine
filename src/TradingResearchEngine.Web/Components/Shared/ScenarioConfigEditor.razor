@@ -95,8 +95,8 @@
         if (DataProviderType == "csv") dataOpts["FilePath"] = FilePath;
         if (DataProviderType == "dukascopy" && FromDate.HasValue && ToDate.HasValue)
         {
-            dataOpts["From"] = new DateTimeOffset(FromDate.Value, TimeSpan.Zero);
-            dataOpts["To"] = new DateTimeOffset(ToDate.Value, TimeSpan.Zero);
+            dataOpts["From"] = new DateTimeOffset(DateTime.SpecifyKind(FromDate.Value, DateTimeKind.Utc), TimeSpan.Zero);
+            dataOpts["To"] = new DateTimeOffset(DateTime.SpecifyKind(ToDate.Value, DateTimeKind.Utc), TimeSpan.Zero);
         }
 
         var stratParams = new Dictionary<string, object>();

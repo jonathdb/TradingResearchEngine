@@ -17,7 +17,10 @@
   ],
   "payoutSplitPercent": 90,
   "scalingThresholdPercent": null,
-  "unsupportedRules": ["Futures-only (no forex)", "Position size limits per contract"],
+  "unsupportedRules": [
+    "Futures-only (no forex)",
+    "Position size limits per contract"
+  ],
   "isBuiltIn": true,
   "notes": "TopStep 100k Trading Combine as of Q1 2025. Trailing drawdown."
 }
