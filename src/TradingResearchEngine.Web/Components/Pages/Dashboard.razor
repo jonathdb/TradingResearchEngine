@@ -74,10 +74,10 @@ else
     else
     {
         <MudGrid Class="mb-4">
-            @foreach (var s in _strategies.Take(4))
+            @foreach (var s in _recentStrategies)
             {
                 <MudItem xs="12" sm="6" md="3">
-                    <MudCard Outlined="true" Style="cursor:pointer" @onclick="@(() => Nav.NavigateTo($"/strategies/{s.StrategyId}"))">
+                    <MudCard Outlined="true">
                         <MudCardContent>
                             <MudText Typo="Typo.subtitle1">@s.StrategyName</MudText>
                             <MudText Typo="Typo.caption" Style="opacity:0.6">@s.StrategyType</MudText>
@@ -100,7 +100,7 @@ else
     }
     else
     {
-        <MudTable Items="_runs.Take(8)" Dense="true" Hover="true" Striped="true" Class="mb-4">
+        <MudTable Items="_recentRuns" Dense="true" Hover="true" Striped="true" Class="mb-4">
             <HeaderContent>
                 <MudTh>Scenario</MudTh>
                 <MudTh>Strategy</MudTh>
@@ -141,7 +141,9 @@ else
 
 @code {
     private List<StrategyIdentity> _strategies = new();
+    private List<StrategyIdentity> _recentStrategies = new();
     private List<BacktestResult> _runs = new();
+    private List<BacktestResult> _recentRuns = new();
     private List<TradingResearchEngine.Application.Research.StudyRecord> _studies = new();
     private BacktestResult? _latestRun;
     private List<(BacktestResult Run, List<string> Warnings)> _warningRuns = new();
@@ -150,7 +152,9 @@ else
     protected override async Task OnInitializedAsync()
     {
         _strategies = (await StrategyRepo.ListAsync()).ToList();
+        _recentStrategies = _strategies.Take(4).ToList();
         _runs = (await ResultRepo.ListAsync()).OrderByDescending(r => r.RunId).ToList();
+        _recentRuns = _runs.Take(8).ToList();
         _studies = (await StudyRepo.ListAsync()).ToList();
         _latestRun = _runs.FirstOrDefault();
 
