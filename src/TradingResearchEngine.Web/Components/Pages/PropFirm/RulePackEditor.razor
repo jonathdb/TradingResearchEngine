@@ -1,0 +1,132 @@
+@page "/propfirm/rulepack/new"
+@page "/propfirm/rulepack/edit/{PackId}"
+@using TradingResearchEngine.Application.PropFirm
+@inject ISnackbar Snackbar
+@inject NavigationManager Nav
+
+<PageTitle>Rule Pack Editor — TradingResearchEngine</PageTitle>
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-4">
+    <MudText Typo="Typo.h4">@(string.IsNullOrEmpty(PackId) ? "New" : "Edit") Rule Pack</MudText>
+    <MudSpacer />
+    <MudButton Variant="Variant.Filled" Color="Color.Primary"
+               Disabled="@(!IsValid())" OnClick="Save">Save Rule Pack</MudButton>
+</MudStack>
+
+<MudGrid>
+    <MudItem xs="12" md="6">
+        <MudPaper Class="pa-4" Elevation="1">
+            <MudTextField @bind-Value="_firmName" Label="Firm Name" Class="mb-2" />
+            <MudTextField @bind-Value="_challengeName" Label="Challenge Name" Class="mb-2" />
+            <MudNumericField T="decimal" @bind-Value="_accountSize" Label="Account Size (USD)" Class="mb-2" />
+            <MudNumericField T="decimal?" @bind-Value="_payoutSplit" Label="Payout Split % (optional)" Class="mb-2" />
+            <MudNumericField T="decimal?" @bind-Value="_scalingThreshold" Label="Scaling Threshold % (optional)" Class="mb-2" />
+            <MudTextField @bind-Value="_notes" Label="Notes" Lines="2" Class="mb-2" />
+        </MudPaper>
+    </MudItem>
+
+    <MudItem xs="12" md="6">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2">
+            <MudText Typo="Typo.h6">Challenge Phases</MudText>
+            <MudSpacer />
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="MudBlazor.Size.Small"
+                       StartIcon="@Icons.Material.Filled.Add" OnClick="AddPhase">Add Phase</MudButton>
+        </MudStack>
+
+        @for (int i = 0; i < _phases.Count; i++)
+        {
+            var idx = i;
+            <MudPaper Class="pa-3 mb-2" Elevation="1" Outlined="true">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2">
+                    <MudText Typo="Typo.subtitle2">Phase @(idx + 1)</MudText>
+                    <MudSpacer />
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error"
+                                   Size="MudBlazor.Size.Small" OnClick="@(() => RemovePhase(idx))" />
+                </MudStack>
+                <MudTextField Value="@_phases[idx].Name" ValueChanged="@((string v) => _phases[idx].Name = v)"
+                              Label="Phase Name" Class="mb-1" />
+                <MudGrid>
+                    <MudItem xs="6">
+                        <MudNumericField T="decimal" Value="@_phases[idx].ProfitTarget"
+                                         ValueChanged="@((decimal v) => _phases[idx].ProfitTarget = v)"
+                                         Label="Profit Target %" />
+                    </MudItem>
+                    <MudItem xs="6">
+                        <MudNumericField T="decimal" Value="@_phases[idx].MaxDailyDD"
+                                         ValueChanged="@((decimal v) => _phases[idx].MaxDailyDD = v)"
+                                         Label="Max Daily DD %" />
+                    </MudItem>
+                    <MudItem xs="6">
+                        <MudNumericField T="decimal" Value="@_phases[idx].MaxTotalDD"
+                                         ValueChanged="@((decimal v) => _phases[idx].MaxTotalDD = v)"
+                                         Label="Max Total DD %" />
+                    </MudItem>
+                    <MudItem xs="6">
+                        <MudNumericField T="int" Value="@_phases[idx].MinDays"
+                                         ValueChanged="@((int v) => _phases[idx].MinDays = v)"
+                                         Label="Min Trading Days" />
+                    </MudItem>
+                </MudGrid>
+                <MudCheckBox T="bool" Value="@_phases[idx].TrailingDD"
+                             ValueChanged="@((bool v) => _phases[idx].TrailingDD = v)"
+                             Label="Trailing Drawdown" Class="mt-1" />
+            </MudPaper>
+        }
+
+        @if (_phases.Count == 0)
+        {
+            <MudAlert Severity="Severity.Info" Dense="true">Add at least one challenge phase.</MudAlert>
+        }
+    </MudItem>
+</MudGrid>
+
+@code {
+    [Parameter] public string? PackId { get; set; }
+
+    private string _firmName = "";
+    private string _challengeName = "";
+    private decimal _accountSize = 100_000m;
+    private decimal? _payoutSplit;
+    private decimal? _scalingThreshold;
+    private string _notes = "";
+    private List<PhaseModel> _phases = new() { new PhaseModel() };
+
+    private class PhaseModel
+    {
+        public string Name { get; set; } = "Phase 1";
+        public decimal ProfitTarget { get; set; } = 10m;
+        public decimal MaxDailyDD { get; set; } = 5m;
+        public decimal MaxTotalDD { get; set; } = 10m;
+        public int MinDays { get; set; } = 4;
+        public bool TrailingDD { get; set; }
+    }
+
+    private void AddPhase() => _phases.Add(new PhaseModel { Name = $"Phase {_phases.Count + 1}" });
+    private void RemovePhase(int idx) { if (_phases.Count > 0) _phases.RemoveAt(idx); }
+
+    private bool IsValid() =>
+        !string.IsNullOrWhiteSpace(_firmName) &&
+        !string.IsNullOrWhiteSpace(_challengeName) &&
+        _accountSize > 0 &&
+        _phases.Count > 0;
+
+    private void Save()
+    {
+        var pack = new PropFirmRulePack(
+            $"custom-{_firmName.ToLowerInvariant().Replace(" ", "-")}-{_challengeName.ToLowerInvariant().Replace(" ", "-")}",
+            _firmName, _challengeName, _accountSize,
+            _phases.Select(p => new ChallengePhase(p.Name, p.ProfitTarget, p.MaxDailyDD, p.MaxTotalDD, p.MinDays, TrailingDrawdown: p.TrailingDD)).ToList(),
+            _payoutSplit, _scalingThreshold, null, false, _notes);
+
+        // Save to data/firms/ directory
+        var dir = Path.Combine(Directory.GetCurrentDirectory(), "data", "firms");
+        if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+        var path = Path.Combine(dir, $"{pack.RulePackId}.json");
+        var json = System.Text.Json.JsonSerializer.Serialize(pack,
+            new System.Text.Json.JsonSerializerOptions { WriteIndented = true, PropertyNameCaseInsensitive = true });
+        File.WriteAllText(path, json);
+
+        Snackbar.Add($"Rule pack '{_firmName} — {_challengeName}' saved.", Severity.Success);
+        Nav.NavigateTo("/propfirm/evaluate");
+    }
+}

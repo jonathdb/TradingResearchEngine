@@ -1,0 +1,127 @@
+@page "/research/study/{StudyId}"
+@inject TradingResearchEngine.Application.Research.IStudyRepository StudyRepo
+@inject IStrategyRepository StrategyRepo
+@inject NavigationManager Nav
+
+<PageTitle>Study Detail — TradingResearchEngine</PageTitle>
+
+@if (_loading)
+{
+    <MudProgressCircular Indeterminate="true" />
+}
+else if (_study is null)
+{
+    <MudAlert Severity="Severity.Warning">Study not found.</MudAlert>
+}
+else
+{
+    @* Header *@
+    <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2">
+        <MudStack Spacing="0">
+            <MudText Typo="Typo.h4">@_study.Type Study</MudText>
+            <MudText Typo="Typo.caption" Style="opacity:0.6">
+                @(_strategyName ?? "Unknown strategy") · @_study.CreatedAt.ToString("yyyy-MM-dd HH:mm")
+            </MudText>
+        </MudStack>
+        <MudSpacer />
+        <MudChip T="string" Size="MudBlazor.Size.Large"
+                 Color="@(_study.Status == TradingResearchEngine.Application.Research.StudyStatus.Completed ? Color.Success : Color.Warning)">
+            @_study.Status
+        </MudChip>
+    </MudStack>
+
+    @* KPI row *@
+    <MudGrid Class="mb-4">
+        <MudItem xs="6" sm="3">
+            <MudPaper Class="pa-3" Elevation="1">
+                <MudText Typo="Typo.caption" Style="opacity:0.6">Type</MudText>
+                <MudText Typo="Typo.h6">@_study.Type</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="6" sm="3">
+            <MudPaper Class="pa-3" Elevation="1">
+                <MudText Typo="Typo.caption" Style="opacity:0.6">Status</MudText>
+                <MudText Typo="Typo.h6">@_study.Status</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="6" sm="3">
+            <MudPaper Class="pa-3" Elevation="1">
+                <MudText Typo="Typo.caption" Style="opacity:0.6">Source Run</MudText>
+                <MudText Typo="Typo.h6">@(_study.SourceRunId?[..Math.Min(8, _study.SourceRunId.Length)] ?? "—")…</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="6" sm="3">
+            <MudPaper Class="pa-3" Elevation="1">
+                <MudText Typo="Typo.caption" Style="opacity:0.6">Strategy Version</MudText>
+                <MudText Typo="Typo.h6">@_study.StrategyVersionId[..Math.Min(12, _study.StrategyVersionId.Length)]…</MudText>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    @if (_study.Status == TradingResearchEngine.Application.Research.StudyStatus.Failed && _study.ErrorSummary is not null)
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-4">
+            <MudText Typo="Typo.body1">Study failed: @_study.ErrorSummary</MudText>
+        </MudAlert>
+    }
+
+    @* Interpretation *@
+    <MudPaper Class="pa-4 mb-4" Elevation="1">
+        <MudText Typo="Typo.subtitle1">Interpretation</MudText>
+        <MudText Typo="Typo.body2" Style="opacity:0.8">
+            @GetInterpretation()
+        </MudText>
+    </MudPaper>
+
+    @* Actions *@
+    <MudStack Row="true" Spacing="2">
+        <MudButton Variant="Variant.Outlined" Color="Color.Primary"
+                   StartIcon="@Icons.Material.Filled.AccountBalance"
+                   Href="/propfirm/evaluate">Evaluate for Prop Firm</MudButton>
+        @if (_study.SourceRunId is not null)
+        {
+            <MudButton Variant="Variant.Text" Color="Color.Primary"
+                       Href="@($"/backtests/{_study.SourceRunId}")">View Source Run</MudButton>
+        }
+    </MudStack>
+}
+
+@code {
+    [Parameter] public string StudyId { get; set; } = "";
+
+    private TradingResearchEngine.Application.Research.StudyRecord? _study;
+    private string? _strategyName;
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _study = await StudyRepo.GetAsync(StudyId);
+        if (_study is not null)
+        {
+            var strategies = await StrategyRepo.ListAsync();
+            foreach (var s in strategies)
+            {
+                var versions = await StrategyRepo.GetVersionsAsync(s.StrategyId);
+                if (versions.Any(v => v.StrategyVersionId == _study.StrategyVersionId))
+                {
+                    _strategyName = s.StrategyName;
+                    break;
+                }
+            }
+        }
+        _loading = false;
+    }
+
+    private string GetInterpretation() => _study?.Type switch
+    {
+        TradingResearchEngine.Application.Research.StudyType.MonteCarlo =>
+            "Monte Carlo simulation resamples trade returns to estimate the distribution of possible outcomes. Look at P10 (worst case), P50 (median), and P90 (best case) end equity, plus ruin probability.",
+        TradingResearchEngine.Application.Research.StudyType.WalkForward =>
+            "Walk-forward analysis validates that in-sample optimized parameters generalize to out-of-sample data. Check the composite OOS equity curve and parameter drift score.",
+        TradingResearchEngine.Application.Research.StudyType.Sensitivity =>
+            "Sensitivity analysis tests how performance degrades under increased costs and execution delays. A robust strategy should maintain positive Sharpe under most perturbations.",
+        TradingResearchEngine.Application.Research.StudyType.ParameterStability =>
+            "Parameter stability evaluates whether the best parameter set is robust or fragile. A low fragility score means nearby parameter combinations also perform well.",
+        _ => "This study evaluates strategy robustness from a specific angle. Review the results to assess whether the strategy's edge is reliable."
+    };
+}

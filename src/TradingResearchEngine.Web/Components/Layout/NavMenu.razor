@@ -1,32 +1,19 @@
-﻿<MudNavMenu>
+﻿<MudNavMenu Dense="true">
     <MudNavLink Href="/" Match="NavLinkMatch.All"
                 Icon="@Icons.Material.Filled.Dashboard">Dashboard</MudNavLink>
 
     <MudNavLink Href="/strategies/library"
-                Icon="@Icons.Material.Filled.Psychology">Strategies</MudNavLink>
+                Icon="@Icons.Material.Filled.Psychology">Strategy Library</MudNavLink>
 
-    <MudNavLink Href="/strategies/builder"
-                Icon="@Icons.Material.Filled.Add">New Strategy</MudNavLink>
+    <MudNavLink Href="/research/explorer"
+                Icon="@Icons.Material.Filled.Science">Research Explorer</MudNavLink>
 
-    <MudNavLink Href="/backtests/history"
-                Icon="@Icons.Material.Filled.History">Run History</MudNavLink>
+    <MudNavLink Href="/propfirm/evaluate"
+                Icon="@Icons.Material.Filled.AccountBalance">Prop Firm Lab</MudNavLink>
 
-    <MudNavGroup Title="Research" Icon="@Icons.Material.Filled.Science" Expanded="false">
-        <MudNavLink Href="/research/explorer">Explorer</MudNavLink>
-        <MudNavLink Href="/research/sweep">Parameter Sweep</MudNavLink>
-        <MudNavLink Href="/research/montecarlo">Monte Carlo</MudNavLink>
-        <MudNavLink Href="/research/walkforward">Walk-Forward</MudNavLink>
-        <MudNavLink Href="/research/perturbation">Perturbation</MudNavLink>
-        <MudNavLink Href="/research/benchmark">Benchmark</MudNavLink>
-    </MudNavGroup>
+    <MudNavLink Href="/data"
+                Icon="@Icons.Material.Filled.Storage">Data Files</MudNavLink>
 
-    <MudNavGroup Title="Prop Firm" Icon="@Icons.Material.Filled.AccountBalance" Expanded="false">
-        <MudNavLink Href="/propfirm/evaluate">Evaluate Strategy</MudNavLink>
-        <MudNavLink Href="/propfirm/challenge">Challenge</MudNavLink>
-        <MudNavLink Href="/propfirm/funding">Instant Funding</MudNavLink>
-    </MudNavGroup>
-
-    <MudNavLink Href="/compare" Icon="@Icons.Material.Filled.CompareArrows">Compare</MudNavLink>
-    <MudNavLink Href="/data" Icon="@Icons.Material.Filled.Storage">Data</MudNavLink>
-    <MudNavLink Href="/settings" Icon="@Icons.Material.Filled.Settings">Settings</MudNavLink>
+    <MudNavLink Href="/settings"
+                Icon="@Icons.Material.Filled.Settings">Settings</MudNavLink>
 </MudNavMenu>
