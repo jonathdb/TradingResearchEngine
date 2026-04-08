@@ -1,0 +1,33 @@
+{
+  "rulePackId": "ftmo-100k-phase1",
+  "firmName": "FTMO",
+  "challengeName": "100k Challenge",
+  "accountSizeUsd": 100000,
+  "phases": [
+    {
+      "phaseName": "Phase 1",
+      "profitTargetPercent": 10,
+      "maxDailyDrawdownPercent": 5,
+      "maxTotalDrawdownPercent": 10,
+      "minTradingDays": 4,
+      "maxTradingDays": null,
+      "consistencyRulePercent": 30,
+      "trailingDrawdown": false
+    },
+    {
+      "phaseName": "Phase 2",
+      "profitTargetPercent": 5,
+      "maxDailyDrawdownPercent": 5,
+      "maxTotalDrawdownPercent": 10,
+      "minTradingDays": 4,
+      "maxTradingDays": null,
+      "consistencyRulePercent": 30,
+      "trailingDrawdown": false
+    }
+  ],
+  "payoutSplitPercent": 80,
+  "scalingThresholdPercent": null,
+  "unsupportedRules": ["Weekend holding restrictions", "News trading restrictions"],
+  "isBuiltIn": true,
+  "notes": "FTMO 100k challenge as of Q1 2025. Payout split increases to 90% after scaling."
+}

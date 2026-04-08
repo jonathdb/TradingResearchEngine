@@ -409,7 +409,8 @@ All tasks are coding tasks executable by a coding agent. No deployment, user tes
 - [ ] 31.3 Write unit tests
   - _Requirements: 29.2, 29.4_
 
-- [-] 32. Update steering documents for V2 + V2.1
+- [x] 32. Update steering documents for V2 + V2.1
+
 
 - [ ] 32.1 Add `## V2 Scope` section to `product.md`
   - _Requirements: 15.1_

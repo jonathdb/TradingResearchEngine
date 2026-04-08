@@ -34,7 +34,8 @@ public sealed record BacktestResult(
     long RunDurationMs,
     decimal? RecoveryFactor = null,
     ExperimentMetadata? Metadata = null,
-    IReadOnlyList<EventTraceRecord>? EventTrace = null) : IHasId
+    IReadOnlyList<EventTraceRecord>? EventTrace = null,
+    string? StrategyVersionId = null) : IHasId
 {
     /// <inheritdoc/>
     public string Id => RunId.ToString();

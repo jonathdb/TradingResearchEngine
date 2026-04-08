@@ -59,3 +59,55 @@ Any violation marks `ChallengeOutcome = Failed`.
 | Base | unchanged | unchanged | unchanged |
 | Strong | base × 1.30 | base × 1.10 | base × 1.15 |
 | UserDefined | from config | from config | from config |
+
+## V3 Enriched Prop Firm Model
+
+V3 introduces a richer prop firm model alongside the existing `FirmRuleSet`. The new types live in `Application/PropFirm/`.
+
+### PropFirmRulePack
+
+Replaces/extends `FirmRuleSet` for firms with multi-phase challenges. Implements `IHasId` via `RulePackId`.
+
+| Field | Type | Description |
+|---|---|---|
+| RulePackId | string | Unique identifier (e.g. `ftmo-100k-phase1`) |
+| FirmName | string | Firm name (e.g. `FTMO`) |
+| ChallengeName | string | Challenge description (e.g. `100k Challenge Phase 1`) |
+| AccountSizeUsd | decimal | Account size in USD |
+| Phases | IReadOnlyList\<ChallengePhase\> | One or more challenge phases |
+| PayoutSplitPercent | decimal? | Payout split percentage |
+| ScalingThresholdPercent | decimal? | Scaling plan threshold |
+| UnsupportedRules | IReadOnlyList\<string\>? | Rules that cannot be modelled |
+| IsBuiltIn | bool | Whether this is a shipped rule pack |
+| Notes | string? | Free-text notes |
+
+### ChallengePhase
+
+A single phase in a prop firm challenge (e.g. Phase 1, Phase 2, Funded).
+
+| Field | Type | Description |
+|---|---|---|
+| PhaseName | string | Phase identifier (e.g. `Phase 1`) |
+| ProfitTargetPercent | decimal | Required profit target as percentage |
+| MaxDailyDrawdownPercent | decimal | Maximum daily drawdown limit |
+| MaxTotalDrawdownPercent | decimal | Maximum total drawdown limit |
+| MinTradingDays | int | Minimum required trading days |
+| MaxTradingDays | int? | Maximum allowed trading days (null = unlimited) |
+| ConsistencyRulePercent | decimal? | Max single-trade profit as % of total (null = no rule) |
+| TrailingDrawdown | bool | Whether drawdown is trailing vs static |
+
+### PhaseEvaluationResult
+
+Per-phase evaluation output. Fields: `PhaseName`, `Passed` (bool), `Rules` (list of `RuleResult`).
+
+### RuleResult
+
+Per-rule evaluation output. Fields: `RuleName`, `Status` (`RuleStatus`), `ActualValue`, `LimitValue`, `Margin` (positive = within limit, negative = breached).
+
+### RuleStatus Enum
+
+| Value | Meaning |
+|---|---|
+| `Passed` | Rule passed with comfortable margin |
+| `NearBreach` | Rule passed but within 20% of the limit |
+| `Failed` | Rule violated |

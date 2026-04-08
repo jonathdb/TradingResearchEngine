@@ -46,6 +46,36 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IRepository<TradingResearchEngine.Application.PropFirm.FirmRuleSet>,
             JsonFileRepository<TradingResearchEngine.Application.PropFirm.FirmRuleSet>>();
 
+        // V3: Strategy and study repositories
+        services.AddSingleton<TradingResearchEngine.Application.Strategy.IStrategyRepository>(sp =>
+        {
+            var baseDir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "TradingResearchEngine", "Strategies");
+            return new JsonStrategyRepository(baseDir);
+        });
+
+        services.AddSingleton<TradingResearchEngine.Application.Research.IStudyRepository>(sp =>
+        {
+            var baseDir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "TradingResearchEngine", "Studies");
+            return new JsonStudyRepository(baseDir);
+        });
+
+        // V3: Settings service
+        services.AddSingleton(sp =>
+        {
+            var settingsPath = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "TradingResearchEngine", "settings.json");
+            return new Settings.SettingsService(settingsPath);
+        });
+
+        // V3: Strategy templates
+        services.AddSingleton<IReadOnlyList<TradingResearchEngine.Application.Strategy.StrategyTemplate>>(
+            TradingResearchEngine.Application.Strategy.DefaultStrategyTemplates.All);
+
         return services;
     }
 }

@@ -295,6 +295,44 @@ Two additional optional records on `ScenarioConfig`:
 - `SessionOptions` — configures session calendar filtering (`SessionCalendarType`, `SessionFilterOptions`). When set, the engine filters bars outside the active trading session.
 - `TraceOptions` — enables event trace recording (`EnableEventTrace`). The computed property `ScenarioConfig.EnableEventTrace` resolves this.
 
+## Session Calendar Support
+
+The engine supports session-aware bar filtering via the `ISessionCalendar` interface (defined in `Core/Sessions/`). When `SessionOptions` is configured on `ScenarioConfig`, the engine skips bars that fall outside tradable hours and classifies each bar into a named session bucket for regime analysis.
+
+### Core Types
+
+- `TradingSession` (`Core/Sessions/TradingSession.cs`) — a `readonly record struct` with `Name`, `Start` (`TimeOnly`), `End` (`TimeOnly`), and `TimeZoneId`.
+- `ISessionCalendar` (`Core/Sessions/ISessionCalendar.cs`) — interface with `IsTradable(DateTimeOffset)`, `ClassifySession(DateTimeOffset)`, and `Sessions` property.
+
+### ForexSessionCalendar
+
+Covers the 24-hour forex market (Sunday 17:00 ET to Friday 17:00 ET). All times are UTC.
+
+| Session | Start | End | Notes |
+|---|---|---|---|
+| Asia | 00:00 | 09:00 | Tokyo/Sydney |
+| London | 07:00 | 16:00 | European session |
+| NewYork | 12:00 | 21:00 | US session |
+| Overlap | 12:00 | 16:00 | London/NewYork overlap (highest liquidity) |
+
+- Weekends (Saturday and Sunday UTC) are not tradable.
+- `ClassifySession` returns `"Overlap"` when both London and NewYork are active, otherwise the single active session name, or `"AfterHours"` for gaps between named sessions.
+
+### UsEquitySessionCalendar
+
+Covers US equity market hours in Eastern Time.
+
+| Session | Start (ET) | End (ET) | Notes |
+|---|---|---|---|
+| PreMarket | 04:00 | 09:30 | Extended hours |
+| Regular | 09:30 | 16:00 | NYSE/NASDAQ regular trading |
+| AfterHours | 16:00 | 20:00 | Extended hours |
+
+- Weekends (Saturday and Sunday) are not tradable.
+- `IsTradable` returns `true` for any time within the 04:00–20:00 ET window on weekdays.
+- `ClassifySession` returns `"Regular"`, `"PreMarket"`, `"AfterHours"`, or `"Closed"`.
+- Timezone conversion uses `"Eastern Standard Time"` (handles DST automatically on Windows).
+
 ### ExecutionOutcome
 
 `FillEvent` carries an `ExecutionOutcome` enum (default `Filled`) along with `RemainingQuantity` and an optional `RejectionReason`. Defined in `Core/Events/ExecutionOutcome.cs`.
@@ -308,6 +346,40 @@ Two additional optional records on `ScenarioConfig`:
 | `Expired` | Expired after exceeding `MaxBarsPending` |
 
 The default execution path remains simple full fills (`Outcome = Filled`, `RemainingQuantity = 0`) unless partial fills are explicitly enabled via `ExecutionOptions`.
+
+## V3 Product Domain Model
+
+V3 adds a product domain model to the Application layer. Core remains untouched. All new types live in `Application/Strategy/`, `Application/Research/`, and `Application/PropFirm/`.
+
+### Strategy Identity and Versioning
+
+- `StrategyIdentity` (`Application/Strategy/`) — a user-owned, named research concept (e.g. "my EURUSD mean reversion idea"). Implements `IHasId` via `StrategyId`. Fields: `StrategyId`, `StrategyName`, `StrategyType`, `CreatedAt`, optional `Description`.
+- `StrategyVersion` (`Application/Strategy/`) — a specific parameter configuration of a strategy. Implements `IHasId` via `StrategyVersionId`. Fields: `StrategyVersionId`, `StrategyId` (parent), `VersionNumber`, `Parameters` dictionary, `BaseScenarioConfig` (full config snapshot), `CreatedAt`, optional `ChangeNote`.
+- `IStrategyRepository` (`Application/Strategy/`) — persistence interface for strategies and versions. Methods: `GetAsync`, `ListAsync`, `SaveAsync`, `DeleteAsync`, `GetVersionsAsync`, `SaveVersionAsync`, `GetLatestVersionAsync`.
+
+### Strategy Templates
+
+- `StrategyTemplate` (`Application/Strategy/`) — a pre-built starting point for strategy creation. Implements `IHasId` via `TemplateId`. Fields: `TemplateId`, `Name`, `Description`, `StrategyType`, `TypicalUseCase`, `DefaultParameters`, `RecommendedTimeframe`, `RecommendedProfile`.
+- `DefaultStrategyTemplates.All` provides 6 built-in templates: SMA Crossover, Mean Reversion, RSI Momentum, Bollinger Bands, Donchian Breakout, Stationary Mean Reversion.
+
+### Study Records
+
+- `StudyRecord` (`Application/Research/`) — a research workflow execution linked to a strategy version. A Monte Carlo study with 1000 paths is ONE study, not 1000 runs. Implements `IHasId` via `StudyId`. Fields: `StudyId`, `StrategyVersionId`, `Type` (`StudyType` enum), `Status` (`StudyStatus` enum), `CreatedAt`, optional `SourceRunId`, optional `ErrorSummary`.
+- `StudyType` enum: `MonteCarlo`, `WalkForward`, `Sensitivity`, `ParameterSweep`, `Realism`, `ParameterStability`.
+- `StudyStatus` enum: `Running`, `Completed`, `Failed`, `Incomplete`, `Cancelled`.
+- `IStudyRepository` (`Application/Research/`) — persistence interface for study records. Methods: `GetAsync`, `ListByVersionAsync`, `ListAsync`, `SaveAsync`, `DeleteAsync`.
+
+### Enriched Prop Firm Model
+
+- `PropFirmRulePack` (`Application/PropFirm/`) — a specific firm's challenge rules with multi-phase support. Richer than `FirmRuleSet`. Implements `IHasId` via `RulePackId`. Fields: `RulePackId`, `FirmName`, `ChallengeName`, `AccountSizeUsd`, `Phases` (list of `ChallengePhase`), optional `PayoutSplitPercent`, `ScalingThresholdPercent`, `UnsupportedRules`, `IsBuiltIn`, `Notes`.
+- `ChallengePhase` (`Application/PropFirm/`) — a single phase in a prop firm challenge (e.g. Phase 1, Phase 2, Funded). Fields: `PhaseName`, `ProfitTargetPercent`, `MaxDailyDrawdownPercent`, `MaxTotalDrawdownPercent`, `MinTradingDays`, optional `MaxTradingDays`, `ConsistencyRulePercent`, `TrailingDrawdown`.
+- `PhaseEvaluationResult` (`Application/PropFirm/Results/`) — evaluation result for a single challenge phase. Fields: `PhaseName`, `Passed`, `Rules` (list of `RuleResult`).
+- `RuleResult` (`Application/PropFirm/Results/`) — result of evaluating a single rule. Fields: `RuleName`, `Status` (`RuleStatus` enum), `ActualValue`, `LimitValue`, `Margin` (positive = within limit, negative = breached).
+- `RuleStatus` enum: `Passed`, `NearBreach` (within 20% of limit), `Failed`.
+
+### BacktestResult Amendment
+
+`BacktestResult` gains an optional trailing parameter `StrategyVersionId` (default `null`). When a run is launched from a strategy version context, this field links the result back to the version. Legacy runs without a version link continue to work unchanged.
 
 ## Deterministic Replay
 

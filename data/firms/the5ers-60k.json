@@ -1,0 +1,23 @@
+{
+  "rulePackId": "the5ers-60k",
+  "firmName": "The5ers",
+  "challengeName": "60k Hyper Growth",
+  "accountSizeUsd": 60000,
+  "phases": [
+    {
+      "phaseName": "Hyper Growth",
+      "profitTargetPercent": 8,
+      "maxDailyDrawdownPercent": 3,
+      "maxTotalDrawdownPercent": 6,
+      "minTradingDays": 3,
+      "maxTradingDays": null,
+      "consistencyRulePercent": null,
+      "trailingDrawdown": false
+    }
+  ],
+  "payoutSplitPercent": 80,
+  "scalingThresholdPercent": 10,
+  "unsupportedRules": ["Leverage restrictions vary by instrument"],
+  "isBuiltIn": true,
+  "notes": "The5ers 60k Hyper Growth as of Q1 2025. Scaling at 10% profit."
+}

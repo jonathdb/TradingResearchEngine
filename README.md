@@ -22,8 +22,9 @@ Dependency rule: `Core ← Application ← Infrastructure ← { Cli, Api, Web }`
 ## Module Boundaries
 
 - **Core Engine**: event hierarchy, heartbeat loop, dispatch table, portfolio, metrics (Sharpe, Sortino, Calmar, RoMaD, equity curve smoothness, average holding period, and more)
+- **Application — Product Domain (V3)**: strategy identity and versioning (`StrategyIdentity`, `StrategyVersion`), study records (`StudyRecord`), strategy templates (`StrategyTemplate`), enriched prop firm model (`PropFirmRulePack`, `ChallengePhase`, `PhaseEvaluationResult`), persistence interfaces (`IStrategyRepository`, `IStudyRepository`)
 - **Research Workflows**: parameter sweep, variance testing, Monte Carlo, walk-forward, parameter perturbation, randomized out-of-sample, scenario comparison, benchmark comparison
-- **PropFirmModule**: challenge/instant-funding economics, rule evaluation, variance presets
+- **PropFirmModule**: challenge/instant-funding economics, rule evaluation, variance presets, multi-phase rule packs (V3)
 - **Infrastructure**: CSV, HTTP, and in-memory data providers, data file discovery/metadata service, JSON file repository, console/markdown reporters
 
 ## Built-in Strategies
@@ -65,3 +66,7 @@ dotnet run --project src/TradingResearchEngine.Web
 - Research workflows as first-class capabilities
 - Prop-firm evaluation without modifying core engine
 - Clean architecture with enforced layer boundaries
+- V3: strategy identity and versioning — name, version, and track strategies as persistent research concepts
+- V3: studies as first-class entities linking research workflows to strategy versions
+- V3: enriched prop firm model with multi-phase challenge rules and per-rule pass/near-breach/fail evaluation
+- V3: strategy templates for guided creation from pre-built starting points

@@ -1,0 +1,23 @@
+{
+  "rulePackId": "topstep-100k",
+  "firmName": "TopStep",
+  "challengeName": "100k Trading Combine",
+  "accountSizeUsd": 100000,
+  "phases": [
+    {
+      "phaseName": "Trading Combine",
+      "profitTargetPercent": 6,
+      "maxDailyDrawdownPercent": 2,
+      "maxTotalDrawdownPercent": 3,
+      "minTradingDays": 5,
+      "maxTradingDays": null,
+      "consistencyRulePercent": null,
+      "trailingDrawdown": true
+    }
+  ],
+  "payoutSplitPercent": 90,
+  "scalingThresholdPercent": null,
+  "unsupportedRules": ["Futures-only (no forex)", "Position size limits per contract"],
+  "isBuiltIn": true,
+  "notes": "TopStep 100k Trading Combine as of Q1 2025. Trailing drawdown."
+}

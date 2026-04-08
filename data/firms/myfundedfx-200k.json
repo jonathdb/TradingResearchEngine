@@ -1,0 +1,23 @@
+{
+  "rulePackId": "myfundedfx-200k",
+  "firmName": "MyFundedFX",
+  "challengeName": "200k Evaluation",
+  "accountSizeUsd": 200000,
+  "phases": [
+    {
+      "phaseName": "Evaluation",
+      "profitTargetPercent": 8,
+      "maxDailyDrawdownPercent": 5,
+      "maxTotalDrawdownPercent": 12,
+      "minTradingDays": 5,
+      "maxTradingDays": null,
+      "consistencyRulePercent": null,
+      "trailingDrawdown": false
+    }
+  ],
+  "payoutSplitPercent": 80,
+  "scalingThresholdPercent": null,
+  "unsupportedRules": [],
+  "isBuiltIn": true,
+  "notes": "MyFundedFX 200k one-phase evaluation as of Q1 2025."
+}
