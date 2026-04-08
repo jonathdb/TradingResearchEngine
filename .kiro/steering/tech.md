@@ -55,3 +55,14 @@ Named constant classes: `MonteCarloDefaults`, `RiskDefaults`, `ReportingDefaults
 
 All `public` types and members in Core and Application carry XML doc comments (`/// <summary>`).
 Infrastructure, Cli, and Api public members are documented where non-obvious.
+
+## Annualisation
+
+`ScenarioConfig.BarsPerYear` is the canonical source of truth for Sharpe/Sortino annualisation.
+No hardcoded `252` or `Math.Sqrt(252)` may appear in `MetricsCalculator` or any other computation.
+Defaults: Daily=252, H4=1512, H1=6048, M15=24192.
+
+## Deterministic Stochastic Workflows
+
+All stochastic workflows (Monte Carlo, bootstrap, perturbation) must accept explicit seeds
+and produce deterministic outputs when the same seed and inputs are supplied.

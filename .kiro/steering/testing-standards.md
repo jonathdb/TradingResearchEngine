@@ -59,3 +59,22 @@ The eight required properties are:
 - Test classes: `<SubjectUnderTest>Tests`
 - Test methods: `<MethodOrScenario>_<Condition>_<ExpectedOutcome>`
 - Property test classes: `<SubjectUnderTest>Properties`
+
+## Backtest Correctness Tests
+
+Any fix to engine-level numeric output must be accompanied by a unit test demonstrating the fix.
+V2 regression tests live in `UnitTests/V2Regression/` and must be kept permanently.
+
+Required regression tests:
+- BUG-01: Strategy signalling on bar N fills at bar N+1's Open, not bar N's Close
+- BUG-02: Sharpe from flat equity curve is null; linearly rising curve produces expected ratio
+- BUG-03: Portfolio.TotalEquity updates between fill events when marked to market
+- BUG-04: Direction.Flat fill with no open position does not inflate cash
+- BUG-05: Monte Carlo paths from same seed are identical regardless of position size variation
+
+V2.1 test guidance:
+- Realism profile tests: verify three profiles produce different results
+- Sensitivity workflow: deterministic given same inputs
+- Session calendar: edge cases around session boundaries and timezone handling
+- Trace mode: enabled records events, disabled produces null/empty with zero allocation
+- All stochastic workflows must accept explicit seeds and produce deterministic outputs

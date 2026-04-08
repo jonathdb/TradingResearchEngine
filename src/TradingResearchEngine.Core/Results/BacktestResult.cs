@@ -31,7 +31,10 @@ public sealed record BacktestResult(
     decimal? EquityCurveSmoothness,
     int MaxConsecutiveLosses,
     int MaxConsecutiveWins,
-    long RunDurationMs) : IHasId
+    long RunDurationMs,
+    decimal? RecoveryFactor = null,
+    ExperimentMetadata? Metadata = null,
+    IReadOnlyList<EventTraceRecord>? EventTrace = null) : IHasId
 {
     /// <inheritdoc/>
     public string Id => RunId.ToString();

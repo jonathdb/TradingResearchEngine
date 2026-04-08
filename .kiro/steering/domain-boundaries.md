@@ -14,7 +14,14 @@ No upward references. No circular references. Violations are caught by the `arch
   `DataHandler`, `IDataProvider`, `IStrategy`, `IRiskLayer`, `IExecutionHandler`,
   `ISlippageModel`, `ICommissionModel`, `Portfolio`, `MetricsCalculator`,
   `BacktestResult`, `ScenarioConfig`, `PropFirmOptions`, `IReporter`, `IRepository<T>`, `IHasId`,
-  `ConfigurationException` (in `Exceptions/`)
+  `ConfigurationException` (in `Exceptions/`),
+  `FillMode`, `ExecutionRealismProfile`, `ExecutionOptions`, `SessionOptions`, `TraceOptions`,
+  `ExecutionOutcome`, `ExecutionResult`, `ExperimentMetadata`, `EventTraceRecord`,
+  `EquityCurvePoint` (enriched: CashBalance, UnrealisedPnl, RealisedPnl, OpenPositionCount),
+  `ClosedTrade` (with `ReturnOnRisk` computed property),
+  `ISessionCalendar`, `TradingSession`, `IPositionSizingPolicy`
+- `Direction` enum: `{ Long, Flat }` — `Short` removed in V2 (long-only scope)
+- `BarsPerYear` on `ScenarioConfig` is the canonical source of truth for annualisation
 - Must not reference Application, Infrastructure, Cli, or Api
 - Must not contain concrete I/O, HTTP, file system, or DI registration code
 - All public types carry XML doc comments

@@ -45,3 +45,41 @@ No business logic in hosts.
 - Database persistence (designed for substitution; V1 is JSON files)
 - Named third-party data provider integrations (Alpaca, Polygon) beyond the HTTP stub
 - Multi-currency portfolio tracking
+
+## V2 Scope — Engine Correctness Overhaul
+
+V2 is engine-only. UI rework is V3.
+
+- Eliminated look-ahead bias: pending-order queue with 4-step per-bar processing (BUG-01)
+- Sharpe/Sortino computed from equity curve period returns with configurable BarsPerYear (BUG-02)
+- Continuous mark-to-market on every bar with enriched EquityCurvePoint (BUG-03)
+- Direction.Short removed; long-only V2 scope (BUG-04)
+- Monte Carlo resamples normalised ReturnOnRisk, multiplicative path reconstruction (BUG-05)
+- O(1) rolling SMA in all strategies (IMP-01)
+- ADF stationarity test cached with recheck interval (IMP-02)
+- K-Ratio replaces R² smoothness (IMP-03)
+- Bid/ask-aware tick fills (IMP-04)
+- Intra-bar limit, stop-market, and stop-limit fill logic (IMP-05)
+- FillMode (NextBarOpen default) and BarsPerYear (252 default) on ScenarioConfig
+- ClosedTrade.ReturnOnRisk computed property
+- V2 regression unit tests for all bug fixes
+
+## V2.1 Scope — Execution Realism, Research Robustness, and Engine Maturity
+
+V2.1 is still engine-only. UI rework remains V3.
+
+- Execution realism profiles (FastResearch, StandardBacktest, BrokerConservative)
+- ExecutionResult as canonical IExecutionHandler return type with partial fill support
+- Advanced slippage models: ATR-scaled, percent-of-price, session-aware, volatility-bucket
+- Session calendar support (ISessionCalendar, ForexSessionCalendar, UsEquitySessionCalendar)
+- IPositionSizingPolicy with 4 implementations; DefaultRiskLayer delegates sizing
+- Configurable portfolio constraints (max positions, max capital per symbol, max gross exposure)
+- Walk-forward upgrade: composite OOS equity curve, parameter drift score
+- Parameter stability workflow with fragility scoring
+- Sensitivity analysis workflow (cost and delay perturbations)
+- Realism sensitivity workflow (same strategy across 3 profiles)
+- Regime segmentation (volatility, trend, session)
+- ExperimentMetadata on BacktestResult for reproducibility
+- Optional event trace mode (zero overhead when disabled)
+- Extended analytics: recovery factor, longest flat period
+- Strategy comparison workflow under matched assumptions

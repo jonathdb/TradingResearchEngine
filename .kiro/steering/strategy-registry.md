@@ -68,3 +68,14 @@ When full plugin isolation is needed:
 
 - `IStrategy` implementations in UnitTests and IntegrationTests do not need `[StrategyName]`
   — they are constructed directly in tests, not resolved via the registry.
+
+## Strategy Responsibility Boundaries
+
+Strategies must remain focused on signal generation. They must not embed:
+- Market-hours or session logic (handled by `ISessionCalendar` and engine session filtering)
+- Execution cost modelling (handled by `ISlippageModel` and `ICommissionModel`)
+- Position sizing logic (handled by `IPositionSizingPolicy`)
+- Report generation or analytics concerns
+
+Strategies emit `Direction.Long` to enter and `Direction.Flat` to exit.
+V2 is long-only; short-selling is out of scope.

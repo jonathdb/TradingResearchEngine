@@ -252,6 +252,40 @@ public static class MetricsCalculator
         return returns;
     }
 
+    /// <summary>
+    /// Recovery factor: net profit / (max drawdown * start equity).
+    /// Returns null when max drawdown is zero.
+    /// </summary>
+    public static decimal? ComputeRecoveryFactor(
+        IReadOnlyList<EquityCurvePoint> curve, decimal startEquity, decimal endEquity)
+    {
+        if (curve.Count < 2 || startEquity == 0m) return null;
+        decimal maxDd = ComputeMaxDrawdown(curve);
+        if (maxDd == 0m) return null;
+        decimal netProfit = endEquity - startEquity;
+        return netProfit / (maxDd * startEquity);
+    }
+
+    /// <summary>
+    /// Longest flat period: maximum number of bars between consecutive trades.
+    /// Returns 0 when there are fewer than 2 trades.
+    /// </summary>
+    public static int ComputeLongestFlatPeriod(
+        IReadOnlyList<ClosedTrade> trades, IReadOnlyList<EquityCurvePoint> curve)
+    {
+        if (trades.Count < 2 || curve.Count == 0) return 0;
+
+        int maxGap = 0;
+        for (int i = 1; i < trades.Count; i++)
+        {
+            var gap = trades[i].EntryTime - trades[i - 1].ExitTime;
+            // Approximate bars from equity curve timestamps
+            int barGap = curve.Count(p => p.Timestamp > trades[i - 1].ExitTime && p.Timestamp <= trades[i].EntryTime);
+            if (barGap > maxGap) maxGap = barGap;
+        }
+        return maxGap;
+    }
+
     private static decimal StdDev(IEnumerable<decimal> values)
     {
         var list = values.ToList();

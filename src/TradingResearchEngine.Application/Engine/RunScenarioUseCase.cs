@@ -83,6 +83,10 @@ public sealed class RunScenarioUseCase
         var engine = new BacktestEngine(dataProvider, strategy, riskLayer, executionHandler, engineLogger, sessionCalendar);
         var result = await engine.RunAsync(config, ct);
 
+        // Attach experiment metadata for reproducibility
+        var metadata = BuildMetadata(config);
+        result = result with { Metadata = metadata };
+
         // Auto-save result if repository is available
         if (_repository is not null && result.Status == BacktestStatus.Completed)
         {
@@ -164,5 +168,26 @@ public sealed class RunScenarioUseCase
         if (targetType == typeof(long)) return je.GetInt64();
         if (targetType == typeof(float)) return je.GetSingle();
         return je.ToString();
+    }
+
+    private static Core.Results.ExperimentMetadata BuildMetadata(ScenarioConfig config)
+    {
+        var dataOpts = config.DataProviderOptions;
+        var from = dataOpts.TryGetValue("From", out var f) && f is DateTimeOffset df ? df : DateTimeOffset.MinValue;
+        var to = dataOpts.TryGetValue("To", out var t) && t is DateTimeOffset dt ? dt : DateTimeOffset.MaxValue;
+
+        return new Core.Results.ExperimentMetadata(
+            config.StrategyType,
+            new Dictionary<string, object>(config.StrategyParameters),
+            config.DataProviderType,
+            from, to,
+            config.RealismProfile,
+            config.SlippageModelType,
+            config.ExecutionOptions?.SlippageModelOptions,
+            config.CommissionModelType,
+            config.EffectiveFillMode,
+            config.BarsPerYear,
+            config.RandomSeed,
+            null); // EngineVersion populated at composition root if available
     }
 }

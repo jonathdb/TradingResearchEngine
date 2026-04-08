@@ -229,30 +229,68 @@ All tasks are coding tasks executable by a coding agent. No deployment, user tes
 
   - _Requirements: 18.2_
 
-- [ ] 20. Implement partial fills and execution outcomes (EXR-04)
-- [ ] 20.1 Update `IExecutionHandler` or add overload for partial fill support
+
+
+
+
+- [x] 20. Implement partial fills and execution outcomes (EXR-04)
+
+- [x] 20.1 Update `IExecutionHandler` or add overload for partial fill support
+
   - _Requirements: 19.2_
-- [ ] 20.2 Implement partial fill logic in `SimulatedExecutionHandler`
+
+- [x] 20.2 Implement partial fill logic in `SimulatedExecutionHandler`
+
+
+
   - _Requirements: 19.3_
-- [ ] 20.3 Implement order expiry with `ExecutionOutcome.Expired`
+
+- [x] 20.3 Implement order expiry with `ExecutionOutcome.Expired`
+
   - _Requirements: 19.4_
-- [ ] 20.4 Implement rejection reasons
+
+- [x] 20.4 Implement rejection reasons
+
+
+
   - _Requirements: 19.5_
-- [ ] 20.5 Ensure default path remains simple full fills
+
+- [x] 20.5 Ensure default path remains simple full fills
+
   - _Requirements: 19.6_
 
-- [ ] 21. Implement `IPositionSizingPolicy` and sizing implementations (PRM-02)
-- [ ] 21.1 Create `IPositionSizingPolicy` interface in `Core/Risk/`
+
+
+
+
+- [x] 21. Implement `IPositionSizingPolicy` and sizing implementations (PRM-02)
+
+- [x] 21.1 Create `IPositionSizingPolicy` interface in `Core/Risk/`
+
   - _Requirements: 25.1_
-- [ ] 21.2 Implement `FixedQuantitySizingPolicy` in `Application/Risk/`
+
+
+
+- [x] 21.2 Implement `FixedQuantitySizingPolicy` in `Application/Risk/`
+
   - _Requirements: 25.2_
-- [ ] 21.3 Implement `FixedDollarRiskSizingPolicy`
+
+- [x] 21.3 Implement `FixedDollarRiskSizingPolicy`
+
   - _Requirements: 25.2_
-- [ ] 21.4 Implement `PercentEquitySizingPolicy`
+
+- [x] 21.4 Implement `PercentEquitySizingPolicy`
+
+
+
   - _Requirements: 25.2_
-- [ ] 21.5 Implement `VolatilityTargetSizingPolicy`
+
+- [x] 21.5 Implement `VolatilityTargetSizingPolicy`
+
   - _Requirements: 25.2_
-- [ ] 21.6 Refactor `DefaultRiskLayer` to delegate sizing to active `IPositionSizingPolicy`
+
+- [-] 21.6 Refactor `DefaultRiskLayer` to delegate sizing to active `IPositionSizingPolicy`
+
   - _Requirements: 25.3_
 - [ ] 21.7 Write unit tests for each sizing policy
   - _Requirements: 25.4, 25.5_
@@ -330,18 +368,24 @@ All tasks are coding tasks executable by a coding agent. No deployment, user tes
   - _Requirements: 26.2_
 
 - [ ] 29. Implement optional event trace mode (RAD-02)
-- [ ] 29.1 Create `EventTraceRecord` record in `Core/Results/`
+- [x] 29.1 Create `EventTraceRecord` record in `Core/Results/`
+
   - _Requirements: 27.2_
+
 - [ ] 29.2 Add trace recording to `BacktestEngine` dispatch
   - _Requirements: 27.2, 27.5_
+
 - [ ] 29.3 Attach trace to `BacktestResult`
   - _Requirements: 27.3_
-- [ ] 29.4 Ensure zero allocation overhead when disabled
+- [x] 29.4 Ensure zero allocation overhead when disabled
+
   - _Requirements: 27.4_
+
 - [ ] 29.5 Write unit tests
   - _Requirements: 27.4_
 
-- [ ] 30. Extend trade analytics: MAE, MFE, recovery factor, average bars, longest flat period (RPT-01)
+- [-] 30. Extend trade analytics: MAE, MFE, recovery factor, average bars, longest flat period (RPT-01)
+
 - [ ] 30.1 Add MAE/MFE tracking to engine loop
   - _Requirements: 28.2_
 - [ ] 30.2 Add `MAE` and `MFE` fields to `ClosedTrade` record
@@ -365,7 +409,8 @@ All tasks are coding tasks executable by a coding agent. No deployment, user tes
 - [ ] 31.3 Write unit tests
   - _Requirements: 29.2, 29.4_
 
-- [ ] 32. Update steering documents for V2 + V2.1
+- [-] 32. Update steering documents for V2 + V2.1
+
 - [ ] 32.1 Add `## V2 Scope` section to `product.md`
   - _Requirements: 15.1_
 - [ ] 32.2 Add `## V2.1 Scope` section to `product.md`

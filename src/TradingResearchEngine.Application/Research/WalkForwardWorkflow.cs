@@ -120,4 +120,100 @@ public sealed class WalkForwardWorkflow : IResearchWorkflow<WalkForwardOptions, 
         var ratios = windows.Where(w => w.EfficiencyRatio.HasValue).Select(w => w.EfficiencyRatio!.Value).ToList();
         return ratios.Count > 0 ? ratios.Average() : null;
     }
+
+    /// <summary>Builds a <see cref="WalkForwardSummary"/> from a completed walk-forward result.</summary>
+    public static WalkForwardSummary BuildSummary(WalkForwardResult result)
+    {
+        var windows = result.Windows;
+        var composite = StitchOosEquityCurves(windows);
+        var avgOosSharpe = windows
+            .Where(w => w.OutOfSampleResult.SharpeRatio.HasValue)
+            .Select(w => w.OutOfSampleResult.SharpeRatio!.Value)
+            .DefaultIfEmpty(0m)
+            .Average();
+        var worstDd = windows
+            .Select(w => w.OutOfSampleResult.MaxDrawdown)
+            .DefaultIfEmpty(0m)
+            .Max();
+        var drift = ComputeParameterDrift(windows);
+
+        return new WalkForwardSummary(
+            windows, composite, avgOosSharpe, worstDd, drift, result.MeanEfficiencyRatio);
+    }
+
+    /// <summary>
+    /// Stitches OOS equity curves by chaining end equity of window N as start of window N+1.
+    /// </summary>
+    private static List<Core.Portfolio.EquityCurvePoint> StitchOosEquityCurves(
+        IReadOnlyList<WalkForwardWindow> windows)
+    {
+        var composite = new List<Core.Portfolio.EquityCurvePoint>();
+        decimal equityOffset = 0m;
+
+        foreach (var window in windows)
+        {
+            var curve = window.OutOfSampleResult.EquityCurve;
+            if (curve.Count == 0) continue;
+
+            decimal windowStart = curve[0].TotalEquity;
+            foreach (var point in curve)
+            {
+                decimal adjusted = point.TotalEquity - windowStart + (composite.Count > 0
+                    ? composite[^1].TotalEquity
+                    : windowStart);
+                composite.Add(point with { TotalEquity = adjusted });
+            }
+        }
+        return composite;
+    }
+
+    /// <summary>
+    /// Computes parameter drift score: normalised standard deviation of selected parameter values
+    /// across windows. High drift = parameters are unstable across time.
+    /// </summary>
+    private static decimal ComputeParameterDrift(IReadOnlyList<WalkForwardWindow> windows)
+    {
+        if (windows.Count < 2) return 0m;
+
+        // Collect all parameter names
+        var allKeys = windows
+            .SelectMany(w => w.SelectedParameters.Keys)
+            .Distinct()
+            .ToList();
+
+        if (allKeys.Count == 0) return 0m;
+
+        decimal totalDrift = 0m;
+        int paramCount = 0;
+
+        foreach (var key in allKeys)
+        {
+            var values = windows
+                .Where(w => w.SelectedParameters.ContainsKey(key))
+                .Select(w =>
+                {
+                    var val = w.SelectedParameters[key];
+                    if (val is decimal d) return d;
+                    if (val is int i) return (decimal)i;
+                    if (val is double dbl) return (decimal)dbl;
+                    if (decimal.TryParse(val?.ToString(), out var parsed)) return parsed;
+                    return (decimal?)null;
+                })
+                .Where(v => v.HasValue)
+                .Select(v => v!.Value)
+                .ToList();
+
+            if (values.Count < 2) continue;
+
+            decimal mean = values.Average();
+            if (mean == 0m) continue;
+
+            decimal variance = values.Sum(v => (v - mean) * (v - mean)) / (values.Count - 1);
+            decimal stdDev = (decimal)Math.Sqrt((double)variance);
+            totalDrift += stdDev / Math.Abs(mean); // coefficient of variation
+            paramCount++;
+        }
+
+        return paramCount > 0 ? totalDrift / paramCount : 0m;
+    }
 }

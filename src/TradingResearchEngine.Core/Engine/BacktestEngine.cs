@@ -54,7 +54,7 @@ public sealed class BacktestEngine : IBacktestEngine
             loggerFactory.CreateLogger<Portfolio.Portfolio>());
         var queue = new EventQueue();
         var dataHandler = new DataHandler(_dataProvider, config, loggerFactory.CreateLogger<DataHandler>());
-        var state = new RunState(config.EffectiveFillMode);
+        var state = new RunState(config.EffectiveFillMode, config.EnableEventTrace);
 
         try
         {
@@ -93,7 +93,7 @@ public sealed class BacktestEngine : IBacktestEngine
         }
 
         sw.Stop();
-        return BuildResult(config, portfolio, state.Status, sw.ElapsedMilliseconds, dataHandler.MalformedRecordCount);
+        return BuildResult(config, portfolio, state, sw.ElapsedMilliseconds, dataHandler.MalformedRecordCount);
     }
 
     /// <summary>
@@ -157,9 +157,17 @@ public sealed class BacktestEngine : IBacktestEngine
         switch (evt)
         {
             case SignalEvent signal:
+                state.Trace(signal.Timestamp, "Signal", signal.Symbol, $"Direction={signal.Direction} Strength={signal.Strength}");
                 var order = _riskLayer.ConvertSignal(signal, portfolio.TakeSnapshot());
                 if (order is not null)
+                {
+                    state.Trace(signal.Timestamp, "RiskApproved", signal.Symbol, $"Qty={order.Quantity} Type={order.OrderType}");
                     RouteApprovedOrder(order with { RiskApproved = true }, queue, portfolio, state);
+                }
+                else
+                {
+                    state.Trace(signal.Timestamp, "RiskRejected", signal.Symbol, "Signal rejected by risk layer");
+                }
                 break;
 
             case OrderEvent { RiskApproved: false } rawOrder:
@@ -370,17 +378,29 @@ public sealed class BacktestEngine : IBacktestEngine
 
     private sealed class RunState
     {
-        public RunState(FillMode fillMode) => FillMode = fillMode;
+        public RunState(FillMode fillMode, bool enableTrace)
+        {
+            FillMode = fillMode;
+            TraceEnabled = enableTrace;
+            if (enableTrace) TraceRecords = new List<Results.EventTraceRecord>();
+        }
         public BacktestStatus Status { get; set; } = BacktestStatus.Completed;
         public MarketDataEvent? LastMarketEvent { get; set; }
         public FillMode FillMode { get; }
         public List<OrderEvent> PendingOrders { get; } = new();
+        public bool TraceEnabled { get; }
+        public List<Results.EventTraceRecord>? TraceRecords { get; }
+
+        public void Trace(DateTimeOffset ts, string eventType, string symbol, string description)
+        {
+            TraceRecords?.Add(new Results.EventTraceRecord(ts, eventType, symbol, description));
+        }
     }
 
     private static BacktestResult BuildResult(
         ScenarioConfig config,
         Portfolio.Portfolio portfolio,
-        BacktestStatus status,
+        RunState state,
         long durationMs,
         int malformedCount)
     {
@@ -391,7 +411,7 @@ public sealed class BacktestEngine : IBacktestEngine
         return new BacktestResult(
             RunId: Guid.NewGuid(),
             ScenarioConfig: config,
-            Status: status,
+            Status: state.Status,
             EquityCurve: curve,
             Trades: trades,
             StartEquity: startEq,
@@ -411,6 +431,7 @@ public sealed class BacktestEngine : IBacktestEngine
             EquityCurveSmoothness: MetricsCalculator.ComputeEquityCurveSmoothness(curve),
             MaxConsecutiveLosses: MetricsCalculator.ComputeMaxConsecutiveLosses(trades),
             MaxConsecutiveWins: MetricsCalculator.ComputeMaxConsecutiveWins(trades),
-            RunDurationMs: durationMs);
+            RunDurationMs: durationMs,
+            EventTrace: state.TraceRecords?.AsReadOnly());
     }
 }
