@@ -98,14 +98,26 @@ V3 transforms the engine into a user-facing research product. All tasks are codi
   - Load/save `AppSettings` from JSON
   - _Requirements: REQ-V3-13_
 
-- [ ] 5. Wire new services into DI
-- [ ] 5.1 Register `IStrategyRepository`, `IStudyRepository`, `DataFileService`, `SettingsService` in Infrastructure `ServiceCollectionExtensions`
+- [x] 5. Wire new services into DI
+
+
+
+- [x] 5.1 Register `IStrategyRepository`, `IStudyRepository`, `DataFileService`, `SettingsService` in Infrastructure `ServiceCollectionExtensions`
+
   - _Requirements: REQ-V3-01, REQ-V3-02, REQ-V3-06, REQ-V3-13_
-- [ ] 5.2 Register `StrategyTemplate` list in Application `ServiceCollectionExtensions`
+
+- [x] 5.2 Register `StrategyTemplate` list in Application `ServiceCollectionExtensions`
+
   - _Requirements: REQ-V3-03_
 
-- [ ] 6. Write unit tests for Phase 1
-- [ ] 6.1 Test `StrategyIdentity` and `StrategyVersion` JSON round-trip
+
+
+
+
+- [x] 6. Write unit tests for Phase 1
+
+- [x] 6.1 Test `StrategyIdentity` and `StrategyVersion` JSON round-trip
+
   - _Requirements: REQ-V3-01_
 - [ ] 6.2 Test `PropFirmRulePack` multi-phase evaluation with margin and near-breach
   - _Requirements: REQ-V3-04_

@@ -22,6 +22,23 @@ else
     <MudChip T="string" Color="@(_result.Status == BacktestStatus.Completed ? Color.Success : Color.Error)"
              Class="mb-4">@_result.Status</MudChip>
 
+    @if (_result.Status == BacktestStatus.Failed)
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-4">
+            <MudText Typo="Typo.body1">This backtest failed.</MudText>
+            <MudButton Variant="Variant.Text" Color="Color.Primary" Class="mt-1"
+                       Href="@($"/backtests/new?strategy={_result.ScenarioConfig.StrategyType}")">
+                Edit Config & Retry
+            </MudButton>
+        </MudAlert>
+    }
+    else if (_result.Status == BacktestStatus.Cancelled)
+    {
+        <MudAlert Severity="Severity.Warning" Class="mb-4">
+            <MudText Typo="Typo.body1">This backtest was cancelled. Partial results may be shown.</MudText>
+        </MudAlert>
+    }
+
     @* Metrics Grid *@
     <MudGrid>
         <MudItem xs="6" sm="4" md="2"><MetricCard Label="Start Equity" Value="@($"${_result.StartEquity:F2}")" /></MudItem>
@@ -36,7 +53,7 @@ else
         <MudItem xs="6" sm="4" md="2"><MetricCard Label="Win Rate" Value="@(_result.WinRate?.ToString("P1") ?? "N/A")" /></MudItem>
         <MudItem xs="6" sm="4" md="2"><MetricCard Label="Profit Factor" Value="@(_result.ProfitFactor?.ToString("F2") ?? "N/A")" /></MudItem>
         <MudItem xs="6" sm="4" md="2"><MetricCard Label="Expectancy" Value="@($"${_result.Expectancy?.ToString("F2") ?? "N/A"}")" /></MudItem>
-        <MudItem xs="6" sm="4" md="2"><MetricCard Label="Smoothness R²" Value="@(_result.EquityCurveSmoothness?.ToString("F4") ?? "N/A")" /></MudItem>
+        <MudItem xs="6" sm="4" md="2"><MetricCard Label="K-Ratio" Value="@(_result.EquityCurveSmoothness?.ToString("F4") ?? "N/A")" /></MudItem>
         <MudItem xs="6" sm="4" md="2"><MetricCard Label="Trades" Value="@_result.TotalTrades.ToString()" /></MudItem>
     </MudGrid>
     <MudGrid Class="mt-2 mb-4">
