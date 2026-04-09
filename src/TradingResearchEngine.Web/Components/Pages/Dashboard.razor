@@ -12,13 +12,14 @@
 }
 else
 {
-    @* Zone 1 — Strategy Status Strip *@
+    @* Zone 1 — Strategy Status Strip (Fix 1: CSS vars instead of hex) *@
     <MudText Typo="Typo.subtitle2" Class="text-muted mb-2">YOUR STRATEGIES</MudText>
     <div style="display:flex; gap:12px; overflow-x:auto; padding-bottom:8px; margin-bottom:24px;">
         @foreach (var s in _strategies)
         {
             var lastRun = _lastRunMap.GetValueOrDefault(s.StrategyType);
-            <MudPaper Class="pa-3" Style="@($"min-width:180px; cursor:pointer; border-left:3px solid {(lastRun is not null ? "#4F98A3" : "#555")};")"
+            <MudPaper Class="@($"pa-3 strategy-strip-card {(lastRun is not null ? "strip-active" : "strip-untested")}")"
+                      Style="min-width:180px; cursor:pointer;"
                       Elevation="1" @onclick="@(() => Nav.NavigateTo($"/strategies/{s.StrategyId}"))">
                 <MudText Typo="Typo.subtitle2" Style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">@s.StrategyName</MudText>
                 <MudText Typo="Typo.body2" Class="@GetSharpeClass(lastRun?.SharpeRatio)">
@@ -75,16 +76,28 @@ else
             }
             else
             {
+                @* Fix 3+4: Strategy as hub link + Date column *@
                 <MudTable Items="_recentRuns" Dense="true" Hover="true" Class="mb-4">
                     <HeaderContent>
                         <MudTh>Strategy</MudTh>
+                        <MudTh>Date</MudTh>
                         <MudTh>Sharpe</MudTh>
                         <MudTh>Max DD</MudTh>
                         <MudTh>Trades</MudTh>
                         <MudTh></MudTh>
                     </HeaderContent>
                     <RowTemplate>
-                        <MudTd>@context.ScenarioConfig.StrategyType</MudTd>
+                        <MudTd>
+                            @if (_strategyIdByType.TryGetValue(context.ScenarioConfig.StrategyType, out var sid))
+                            {
+                                <MudLink Href="@($"/strategies/{sid}")">@context.ScenarioConfig.StrategyType</MudLink>
+                            }
+                            else
+                            {
+                                <MudText Typo="Typo.body2">@context.ScenarioConfig.StrategyType</MudText>
+                            }
+                        </MudTd>
+                        <MudTd><MudText Typo="Typo.body2" Class="text-muted">@(TryParseRunDate(context.Id)?.ToString("yyyy-MM-dd") ?? "—")</MudText></MudTd>
                         <MudTd Class="@GetSharpeClass(context.SharpeRatio)">@(context.SharpeRatio?.ToString("F2") ?? "—")</MudTd>
                         <MudTd>@context.MaxDrawdown.ToString("P1")</MudTd>
                         <MudTd>@context.TotalTrades</MudTd>
@@ -96,12 +109,24 @@ else
         <MudItem xs="12" md="4">
             @if (_warningRuns.Count > 0)
             {
+                @* Fix 5: Hub link + run icon *@
                 <MudText Typo="Typo.subtitle2" Class="text-muted mb-2">⚠ ROBUSTNESS FLAGS</MudText>
                 @foreach (var (run, warnings) in _warningRuns)
                 {
                     <MudPaper Outlined="true" Class="pa-2 mb-2">
-                        <MudLink Href="@($"/backtests/{run.Id}")" Typo="Typo.body2">@run.ScenarioConfig.ScenarioId</MudLink>
-                        <MudStack Row="true" Spacing="1" Class="mt-1" Wrap="Wrap.Wrap">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Class="mb-1">
+                            @if (_strategyIdByType.TryGetValue(run.ScenarioConfig.StrategyType, out var flagSid))
+                            {
+                                <MudLink Href="@($"/strategies/{flagSid}")" Typo="Typo.body2">@run.ScenarioConfig.StrategyType</MudLink>
+                            }
+                            else
+                            {
+                                <MudText Typo="Typo.body2">@run.ScenarioConfig.StrategyType</MudText>
+                            }
+                            <MudIconButton Icon="@Icons.Material.Filled.OpenInNew" Size="MudBlazor.Size.Small" Class="text-muted"
+                                           Href="@($"/backtests/{run.Id}")" Title="View run result" />
+                        </MudStack>
+                        <MudStack Row="true" Spacing="1" Wrap="Wrap.Wrap">
                             @foreach (var w in warnings)
                             {
                                 <MudChip T="string" Size="MudBlazor.Size.Small" Color="Color.Warning">@w</MudChip>
@@ -113,19 +138,43 @@ else
         </MudItem>
     </MudGrid>
 
-    @* Zone 4 — Quick nav *@
+    @* Zone 4 — Nav cards (Fix 6) *@
     <MudGrid Class="mt-4">
         <MudItem xs="12" sm="4">
-            <MudButton Variant="Variant.Outlined" FullWidth="true" Href="/research/explorer"
-                       StartIcon="@Icons.Material.Filled.Science">Research Explorer</MudButton>
+            <MudPaper Class="pa-3" Elevation="1" Style="cursor:pointer"
+                      @onclick="@(() => Nav.NavigateTo("/research/explorer"))">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                    <MudIcon Icon="@Icons.Material.Filled.Science" Class="text-muted" />
+                    <MudStack Spacing="0">
+                        <MudText Typo="Typo.subtitle2">Research Explorer</MudText>
+                        <MudText Typo="Typo.caption" Class="text-muted">Browse all studies</MudText>
+                    </MudStack>
+                </MudStack>
+            </MudPaper>
         </MudItem>
         <MudItem xs="12" sm="4">
-            <MudButton Variant="Variant.Outlined" FullWidth="true" Href="/propfirm/evaluate"
-                       StartIcon="@Icons.Material.Filled.AccountBalance">Prop Firm Lab</MudButton>
+            <MudPaper Class="pa-3" Elevation="1" Style="cursor:pointer"
+                      @onclick="@(() => Nav.NavigateTo("/propfirm/evaluate"))">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                    <MudIcon Icon="@Icons.Material.Filled.AccountBalance" Class="text-muted" />
+                    <MudStack Spacing="0">
+                        <MudText Typo="Typo.subtitle2">Prop Firm Lab</MudText>
+                        <MudText Typo="Typo.caption" Class="text-muted">Evaluate against firm rules</MudText>
+                    </MudStack>
+                </MudStack>
+            </MudPaper>
         </MudItem>
         <MudItem xs="12" sm="4">
-            <MudButton Variant="Variant.Outlined" FullWidth="true" Href="/data"
-                       StartIcon="@Icons.Material.Filled.Storage">Data Files</MudButton>
+            <MudPaper Class="pa-3" Elevation="1" Style="cursor:pointer"
+                      @onclick="@(() => Nav.NavigateTo("/data"))">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                    <MudIcon Icon="@Icons.Material.Filled.Storage" Class="text-muted" />
+                    <MudStack Spacing="0">
+                        <MudText Typo="Typo.subtitle2">Data Files</MudText>
+                        <MudText Typo="Typo.caption" Class="text-muted">Manage market data</MudText>
+                    </MudStack>
+                </MudStack>
+            </MudPaper>
         </MudItem>
     </MudGrid>
 }
@@ -137,6 +186,7 @@ else
     private BacktestResult? _latestRun;
     private int _activeStudies;
     private Dictionary<string, BacktestResult> _lastRunMap = new();
+    private Dictionary<string, string> _strategyIdByType = new(); // Fix 2
     private List<(BacktestResult Run, List<string> Warnings)> _warningRuns = new();
     private bool _loading = true;
 
@@ -152,6 +202,11 @@ else
         _lastRunMap = _runs
             .GroupBy(r => r.ScenarioConfig.StrategyType)
             .ToDictionary(g => g.Key, g => g.First());
+
+        // Fix 2: strategy ID lookup by type
+        _strategyIdByType = _strategies
+            .GroupBy(s => s.StrategyType)
+            .ToDictionary(g => g.Key, g => g.First().StrategyId);
 
         foreach (var run in _runs.Where(r => r.Status == BacktestStatus.Completed).Take(10))
         {
@@ -171,4 +226,15 @@ else
         >= 0.8m => "mud-warning-text",
         _ => "mud-error-text"
     };
+
+    // Fix 4: Parse run date from RunId prefix
+    private static DateTime? TryParseRunDate(string? runId)
+    {
+        if (string.IsNullOrWhiteSpace(runId) || runId.Length < 15) return null;
+        if (DateTime.TryParseExact(runId[..15], "yyyyMMdd-HHmmss",
+            System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.None, out var dt))
+            return dt;
+        return null;
+    }
 }

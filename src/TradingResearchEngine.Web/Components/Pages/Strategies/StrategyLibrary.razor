@@ -17,7 +17,7 @@
     <MudSelect T="string" @bind-Value="_statusFilter" Label="Status" Variant="Variant.Outlined"
                Style="min-width:140px" Clearable="true">
         <MudSelectItem Value="@("Active")">Active</MudSelectItem>
-        <MudSelectItem Value="@("Stale")">Stale</MudSelectItem>
+        <MudSelectItem Value="@("Stale")" Disabled="true">Stale (coming soon)</MudSelectItem>
         <MudSelectItem Value="@("Untested")">Untested</MudSelectItem>
     </MudSelect>
     <MudButton Variant="Variant.Filled" Color="Color.Primary"
@@ -61,6 +61,11 @@ else
                             <MudText Typo="Typo.subtitle1" Style="font-weight:600">@s.StrategyName</MudText>
                         </MudStack>
                         <MudChip T="string" Size="MudBlazor.Size.Small" Variant="Variant.Outlined" Class="mb-2">@s.StrategyType</MudChip>
+                        @if (_strategiesWithWarnings.Contains(s.StrategyType))
+                        {
+                            <MudChip T="string" Size="MudBlazor.Size.Small" Color="Color.Warning"
+                                     Icon="@Icons.Material.Filled.Warning" Class="mb-2">Robustness flags</MudChip>
+                        }
 
                         <MudText Typo="Typo.body2" Class="text-muted mb-1">@vCount version(s)</MudText>
 
@@ -78,6 +83,9 @@ else
                                     <MudText Typo="Typo.body1">@lastRun.MaxDrawdown.ToString("P1")</MudText>
                                 </MudStack>
                             </MudStack>
+                            <MudText Typo="Typo.caption" Class="text-muted mt-2">
+                                Last run: @(TryParseRunDate(lastRun.Id)?.ToString("yyyy-MM-dd") ?? lastRun.Id[..Math.Min(8, lastRun.Id.Length)])
+                            </MudText>
                         }
                         else
                         {
@@ -85,10 +93,10 @@ else
                         }
                     </MudCardContent>
                     <MudCardActions>
-                        <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Text" Color="Color.Primary"
+                        <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Filled" Color="Color.Primary"
                                    Href="@($"/strategies/{s.StrategyId}")">Open Hub</MudButton>
-                        <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Text" Color="Color.Primary"
-                                   Href="@($"/backtests/new?strategy={s.StrategyType}")">Run</MudButton>
+                        <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Text"
+                                   Href="@($"/strategies/builder?fromStrategyId={s.StrategyId}&asVersion=true")">New Version</MudButton>
                         <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Text"
                                    Href="@($"/strategies/builder?fromStrategyId={s.StrategyId}")">Clone</MudButton>
                     </MudCardActions>
@@ -102,6 +110,7 @@ else
     private List<StrategyIdentity> _strategies = new();
     private Dictionary<string, BacktestResult> _lastRunMap = new();
     private Dictionary<string, int> _versionCounts = new();
+    private HashSet<string> _strategiesWithWarnings = new(); // Fix 10
     private List<string> _allTypes = new();
     private string _search = "";
     private string? _typeFilter;
@@ -119,6 +128,8 @@ else
         _strategies = (await StrategyRepo.ListAsync()).ToList();
         var allRuns = (await ResultRepo.ListAsync()).OrderByDescending(r => r.RunId).ToList();
 
+        // NOTE: _lastRunMap is keyed on StrategyType, not StrategyId.
+        // TODO (V3.3): Re-key on StrategyId via StrategyVersionId once reliably populated.
         _lastRunMap = allRuns
             .GroupBy(r => r.ScenarioConfig.StrategyType)
             .ToDictionary(g => g.Key, g => g.First());
@@ -129,6 +140,14 @@ else
             _versionCounts[s.StrategyId] = versions.Count;
         }
 
+        // Fix 10: Compute robustness warnings per strategy type
+        foreach (var (type, run) in _lastRunMap)
+        {
+            bool hasWarning = (run.SharpeRatio > 3.0m) || (run.TotalTrades < 30) ||
+                              (run.EquityCurveSmoothness < 0m) || (run.MaxDrawdown > 0.20m);
+            if (hasWarning) _strategiesWithWarnings.Add(type);
+        }
+
         _allTypes = _strategies.Select(s => s.StrategyType).Distinct().OrderBy(t => t).ToList();
         _loading = false;
     }
@@ -136,7 +155,8 @@ else
     private static string GetStatus(StrategyIdentity s, BacktestResult? lastRun)
     {
         if (lastRun is null) return "Untested";
-        return "Active"; // TODO: check date for Stale vs Active when CreatedAt is available
+        // TODO (V3.3): Add Stale detection once BacktestResult.RunDate or CreatedAt is available.
+        return "Active";
     }
 
     private static Color GetStatusColor(string status) => status switch
@@ -152,4 +172,14 @@ else
         >= 0.8m => "mud-warning-text",
         _ => "mud-error-text"
     };
+
+    private static DateTime? TryParseRunDate(string? runId)
+    {
+        if (string.IsNullOrWhiteSpace(runId) || runId.Length < 15) return null;
+        if (DateTime.TryParseExact(runId[..15], "yyyyMMdd-HHmmss",
+            System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.None, out var dt))
+            return dt;
+        return null;
+    }
 }

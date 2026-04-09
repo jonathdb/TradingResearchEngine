@@ -21,6 +21,9 @@ else if (_strategy is null)
 }
 else
 {
+    @* Fix 11: Breadcrumb *@
+    <MudBreadcrumbs Items="@_breadcrumbs" Class="pa-0 mb-2" Separator=">" />
+
     @* Header Band *@
     <MudPaper Elevation="0" Class="pa-4 mb-0" Style="border-bottom: 1px solid var(--mud-palette-divider)">
         <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3" Wrap="Wrap.Wrap">
@@ -39,7 +42,7 @@ else
             @* Version selector *@
             @if (_versions.Count > 0)
             {
-                <MudSelect T="StrategyVersion" Value="_selectedVersion" ValueChanged="OnVersionChanged"
+                <MudSelect T="StrategyVersion" Value="_selectedVersion" ValueChanged="@(async (StrategyVersion v) => await OnVersionChanged(v))"
                            Label="Version" Variant="Variant.Outlined" Style="min-width:220px"
                            ToStringFunc="@(v => v is null ? "" : $"v{v.VersionNumber} — {v.ChangeNote ?? v.CreatedAt.ToString("yyyy-MM-dd")}")">
                     @foreach (var v in _versions)
@@ -53,6 +56,17 @@ else
                        StartIcon="@Icons.Material.Filled.PlayArrow"
                        OnClick="@(() => _runDialogOpen = true)"
                        Disabled="@(_selectedVersion is null)">Run</MudButton>
+            @* Fix 12: Overflow menu *@
+            <MudMenu Icon="@Icons.Material.Filled.MoreVert" Variant="Variant.Outlined"
+                     Size="MudBlazor.Size.Small" AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
+                <MudMenuItem Href="@($"/strategies/builder?fromStrategyId={_strategy.StrategyId}&fromVersionId={_selectedVersion?.StrategyVersionId}&asVersion=true")">
+                    New Version from This
+                </MudMenuItem>
+                <MudMenuItem OnClick="OpenRenameDialog">Rename Strategy</MudMenuItem>
+                <MudMenuItem Href="@($"/strategies/builder?fromStrategyId={_strategy.StrategyId}")">
+                    Clone as New Strategy
+                </MudMenuItem>
+            </MudMenu>
         </MudStack>
     </MudPaper>
 
@@ -263,6 +277,19 @@ else
             </MudButton>
         </DialogActions>
     </MudDialog>
+
+    @* Rename Dialog (Fix 12) *@
+    <MudDialog @bind-Visible="_renameDialogOpen">
+        <TitleContent>Rename Strategy</TitleContent>
+        <DialogContent>
+            <MudTextField @bind-Value="_newName" Label="Strategy Name" Variant="Variant.Outlined" AutoFocus="true" />
+        </DialogContent>
+        <DialogActions>
+            <MudButton OnClick="@(() => _renameDialogOpen = false)">Cancel</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ConfirmRename"
+                       Disabled="@string.IsNullOrWhiteSpace(_newName)">Save</MudButton>
+        </DialogActions>
+    </MudDialog>
 }
 
 @code {
@@ -277,6 +304,9 @@ else
     private bool _loading = true;
     private bool _runDialogOpen;
     private bool _running;
+    private List<BreadcrumbItem> _breadcrumbs = new(); // Fix 11
+    private bool _renameDialogOpen; // Fix 12
+    private string _newName = ""; // Fix 12
 
     // Prop firm eval state
     private List<PropFirmRulePack> _firmPacks = new();
@@ -290,6 +320,12 @@ else
         _strategy = await StrategyRepo.GetAsync(StrategyId);
         if (_strategy is not null)
         {
+            _breadcrumbs = new List<BreadcrumbItem>
+            {
+                new("Dashboard", href: "/"),
+                new("My Strategies", href: "/strategies/library"),
+                new(_strategy.StrategyName, href: null, disabled: true)
+            };
             _versions = (await StrategyRepo.GetVersionsAsync(StrategyId)).ToList();
             _selectedVersion = _versions.LastOrDefault();
             await LoadVersionData();
@@ -298,7 +334,7 @@ else
         _loading = false;
     }
 
-    private async void OnVersionChanged(StrategyVersion v)
+    private async Task OnVersionChanged(StrategyVersion v)
     {
         _selectedVersion = v;
         await LoadVersionData();
@@ -368,6 +404,8 @@ else
         _ => "mud-error-text"
     };
 
+    // TODO (V3.3): LoadBuiltInPacks is duplicated in PropFirmEvaluation.razor.
+    // Extract to a shared IPropFirmPackLoader service.
     private static List<PropFirmRulePack> LoadBuiltInPacks()
     {
         var packs = new List<PropFirmRulePack>();
@@ -385,5 +423,33 @@ else
             catch { }
         }
         return packs.OrderBy(p => p.FirmName).ToList();
+    }
+
+    // Fix 12: Rename
+    private void OpenRenameDialog()
+    {
+        _newName = _strategy?.StrategyName ?? "";
+        _renameDialogOpen = true;
+    }
+
+    private async Task ConfirmRename()
+    {
+        if (_strategy is null || string.IsNullOrWhiteSpace(_newName)) return;
+        _strategy = _strategy with { StrategyName = _newName };
+        await StrategyRepo.SaveAsync(_strategy);
+        _breadcrumbs[^1] = new(_newName, href: null, disabled: true);
+        _renameDialogOpen = false;
+        StateHasChanged();
+    }
+
+    // Fix 16: Parse run date from RunId
+    private static DateTime? TryParseRunDate(string? runId)
+    {
+        if (string.IsNullOrWhiteSpace(runId) || runId.Length < 15) return null;
+        if (DateTime.TryParseExact(runId[..15], "yyyyMMdd-HHmmss",
+            System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.None, out var dt))
+            return dt;
+        return null;
     }
 }

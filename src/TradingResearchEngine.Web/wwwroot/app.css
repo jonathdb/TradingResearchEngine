@@ -1,2 +1,5 @@
 .text-muted { opacity: 0.6; }
 .text-faint { opacity: 0.4; }
+.strategy-strip-card { border-left: 3px solid var(--mud-palette-text-disabled); }
+.strip-active        { border-left-color: var(--mud-palette-primary) !important; }
+.strip-untested      { border-left-color: var(--mud-palette-text-disabled) !important; }
