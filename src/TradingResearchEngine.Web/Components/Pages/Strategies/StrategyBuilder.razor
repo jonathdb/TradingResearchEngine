@@ -7,20 +7,22 @@
 @inject NavigationManager Nav
 @inject ISnackbar Snackbar
 
-<PageTitle>New Strategy — TradingResearchEngine</PageTitle>
+<PageTitle>New Strategy — Research Engine</PageTitle>
 
 <MudText Typo="Typo.h4" Class="mb-2">New Strategy</MudText>
-<MudText Typo="Typo.caption" Class="mb-4">Step @(_step + 1) of 5</MudText>
+<MudText Typo="Typo.caption" Class="text-muted mb-4">Step @(_step + 1) of 5</MudText>
 
 <MudStack Row="true" Spacing="1" Class="mb-4" AlignItems="AlignItems.Center">
-    @foreach (var (title, idx) in new[] { ("Template", 0), ("Market", 1), ("Rules", 2), ("Execution", 3), ("Save", 4) })
+    @foreach (var (title, idx) in new[] { ("Template", 0), ("Market", 1), ("Rules", 2), ("Execution", 3), ("Review", 4) })
     {
         <MudChip T="string" Size="MudBlazor.Size.Small"
                  Color="@(idx < _step ? Color.Success : idx == _step ? Color.Primary : Color.Default)"
-                 Variant="@(idx == _step ? Variant.Filled : Variant.Outlined)">
-            @(idx + 1). @title
+                 Variant="@(idx <= _step ? Variant.Filled : Variant.Outlined)"
+                 Disabled="@(idx > _step)"
+                 Icon="@(idx < _step ? Icons.Material.Filled.Check : null)">
+            @title
         </MudChip>
-        @if (idx < 4) { <MudIcon Icon="@Icons.Material.Filled.ChevronRight" Size="MudBlazor.Size.Small" /> }
+        @if (idx < 4) { <MudIcon Icon="@Icons.Material.Filled.ChevronRight" Size="MudBlazor.Size.Small" Class="text-faint" /> }
     }
 </MudStack>
 
@@ -32,8 +34,10 @@
         @foreach (var tpl in Templates)
         {
             <MudItem xs="12" sm="6" md="4">
-                <MudCard Outlined="true" Class="@(_selectedTemplate?.TemplateId == tpl.TemplateId ? "border-primary" : "")"
-                         Style="cursor:pointer" @onclick="() => SelectTemplate(tpl)">
+                <MudCard Outlined="@(_selectedTemplate?.TemplateId != tpl.TemplateId)"
+                         Elevation="@(_selectedTemplate?.TemplateId == tpl.TemplateId ? 4 : 1)"
+                         Style="@(_selectedTemplate?.TemplateId == tpl.TemplateId ? "border: 2px solid var(--mud-palette-primary); cursor:pointer" : "cursor:pointer")"
+                         @onclick="() => SelectTemplate(tpl)">
                     <MudCardContent>
                         <MudText Typo="Typo.subtitle1">@tpl.Name</MudText>
                         <MudText Typo="Typo.body2" Class="text-muted">@tpl.Description</MudText>
@@ -61,19 +65,28 @@ else if (_step == 1)
         <MudSelectItem Value="@("H1")">H1 (6048 bars/year)</MudSelectItem>
         <MudSelectItem Value="@("M15")">M15 (24192 bars/year)</MudSelectItem>
     </MudSelect>
-    <MudSelect @bind-Value="_dataFilePath" Label="Data File" Class="mb-3">
-        @foreach (var file in _dataFiles)
-        {
-            <MudSelectItem Value="@file.FullPath">@file.FileName (@file.RowCount rows)</MudSelectItem>
-        }
-    </MudSelect>
+    @if (_dataFiles.Count == 0)
+    {
+        <MudAlert Severity="Severity.Warning" Class="mb-3">
+            No data files found. <MudLink Href="/data">Go to Data Files</MudLink> to add one.
+        </MudAlert>
+    }
+    else
+    {
+        <MudSelect @bind-Value="_dataFilePath" Label="Data File" Class="mb-3">
+            @foreach (var file in _dataFiles)
+            {
+                <MudSelectItem Value="@file.FullPath">@file.FileName (@file.RowCount rows)</MudSelectItem>
+            }
+        </MudSelect>
+    }
     <MudAlert Severity="Severity.Info" Dense="true" Class="mb-3">
         @_timeframe bars use @BarsPerYear bars/year for annualisation.
     </MudAlert>
     <MudStack Row="true" Class="mt-4" Justify="Justify.SpaceBetween">
         <MudButton Variant="Variant.Text" OnClick="@(() => _step = 0)">← Back</MudButton>
         <MudButton Variant="Variant.Filled" Color="Color.Primary"
-                   Disabled="@(string.IsNullOrWhiteSpace(_symbol) || string.IsNullOrWhiteSpace(_dataFilePath))"
+                   Disabled="@(string.IsNullOrWhiteSpace(_symbol) || string.IsNullOrWhiteSpace(_dataFilePath) || _dataFiles.Count == 0)"
                    OnClick="@(() => _step = 2)">Next: Rules →</MudButton>
     </MudStack>
 }

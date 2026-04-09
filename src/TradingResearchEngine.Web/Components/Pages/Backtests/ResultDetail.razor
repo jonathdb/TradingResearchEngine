@@ -2,7 +2,7 @@
 @inject TradingResearchEngine.Core.Persistence.IRepository<BacktestResult> ResultRepo
 @inject ISnackbar Snackbar
 
-<PageTitle>Result — TradingResearchEngine</PageTitle>
+<PageTitle>Run Detail — Research Engine</PageTitle>
 
 @if (_loading)
 {
@@ -14,190 +14,199 @@ else if (_result is null)
 }
 else
 {
-    <MudText Typo="Typo.h4" Class="mb-2">@_result.ScenarioConfig.ScenarioId</MudText>
-    <MudText Typo="Typo.subtitle1" Class="mb-4 text-muted">
-        @_result.ScenarioConfig.Description — @_result.ScenarioConfig.StrategyType
+    @* Header *@
+    <MudText Typo="Typo.h4" Class="mb-1">@_result.ScenarioConfig.ScenarioId</MudText>
+    <MudText Typo="Typo.subtitle1" Class="mb-2 text-muted">
+        @_result.ScenarioConfig.StrategyType · @_result.TotalTrades trades · @(_result.RunDurationMs)ms
     </MudText>
 
+    @* Breadcrumbs *@
+    <MudBreadcrumbs Items="_breadcrumbs" Class="pa-0 mb-3" />
+
+    @* Status *@
     <MudChip T="string" Color="@(_result.Status == BacktestStatus.Completed ? Color.Success : Color.Error)"
-             Class="mb-4">@_result.Status</MudChip>
+             Class="mb-3">@_result.Status</MudChip>
 
     @if (_result.Status == BacktestStatus.Failed)
     {
         <MudAlert Severity="Severity.Error" Class="mb-4">
-            <MudText Typo="Typo.body1">This backtest failed.</MudText>
-            <MudButton Variant="Variant.Text" Color="Color.Primary" Class="mt-1"
-                       Href="@($"/backtests/new?strategy={_result.ScenarioConfig.StrategyType}")">
-                Edit Config & Retry
-            </MudButton>
-        </MudAlert>
-    }
-    else if (_result.Status == BacktestStatus.Cancelled)
-    {
-        <MudAlert Severity="Severity.Warning" Class="mb-4">
-            <MudText Typo="Typo.body1">This backtest was cancelled. Partial results may be shown.</MudText>
+            This backtest failed.
+            <MudButton Variant="Variant.Text" Color="Color.Primary"
+                       Href="@($"/backtests/new?strategy={_result.ScenarioConfig.StrategyType}")">Edit & Retry</MudButton>
         </MudAlert>
     }
 
-    @* Metrics Grid *@
-    <MudGrid>
-        <MudItem xs="6" sm="4" md="2"><MetricCard Label="Start Equity" Value="@($"${_result.StartEquity:F2}")" /></MudItem>
-        <MudItem xs="6" sm="4" md="2"><MetricCard Label="End Equity" Value="@($"${_result.EndEquity:F2}")" /></MudItem>
-        <MudItem xs="6" sm="4" md="2"><MetricCard Label="Max Drawdown" Value="@($"{_result.MaxDrawdown:P2}")" /></MudItem>
-        <MudItem xs="6" sm="4" md="2"><MetricCard Label="Sharpe" Value="@(_result.SharpeRatio?.ToString("F2") ?? "N/A")" /></MudItem>
-        <MudItem xs="6" sm="4" md="2"><MetricCard Label="Sortino" Value="@(_result.SortinoRatio?.ToString("F2") ?? "N/A")" /></MudItem>
-        <MudItem xs="6" sm="4" md="2"><MetricCard Label="Calmar" Value="@(_result.CalmarRatio?.ToString("F2") ?? "N/A")" /></MudItem>
+    @* Tier 1 — Decision metrics *@
+    <MudGrid Class="mb-3">
+        <MudItem xs="6" sm="3">
+            <MudPaper Class="pa-4" Elevation="2"
+                      Style="@($"border-left: 3px solid {SharpeColor}")">
+                <MudText Typo="Typo.caption" Class="text-muted">Sharpe Ratio</MudText>
+                <MudText Typo="Typo.h4">@(_result.SharpeRatio?.ToString("F2") ?? "—")</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="6" sm="3">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.caption" Class="text-muted">Max Drawdown</MudText>
+                <MudText Typo="Typo.h4">@_result.MaxDrawdown.ToString("P1")</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="6" sm="3">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.caption" Class="text-muted">Win Rate</MudText>
+                <MudText Typo="Typo.h4">@(_result.WinRate?.ToString("P0") ?? "—")</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="6" sm="3">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.caption" Class="text-muted">K-Ratio</MudText>
+                <MudText Typo="Typo.h4">@(_result.EquityCurveSmoothness?.ToString("F3") ?? "—")</MudText>
+            </MudPaper>
+        </MudItem>
     </MudGrid>
-    <MudGrid Class="mt-2">
-        <MudItem xs="6" sm="4" md="2"><MetricCard Label="RoMaD" Value="@(_result.ReturnOnMaxDrawdown?.ToString("F2") ?? "N/A")" /></MudItem>
-        <MudItem xs="6" sm="4" md="2"><MetricCard Label="Win Rate" Value="@(_result.WinRate?.ToString("P1") ?? "N/A")" /></MudItem>
-        <MudItem xs="6" sm="4" md="2"><MetricCard Label="Profit Factor" Value="@(_result.ProfitFactor?.ToString("F2") ?? "N/A")" /></MudItem>
-        <MudItem xs="6" sm="4" md="2"><MetricCard Label="Expectancy" Value="@($"${_result.Expectancy?.ToString("F2") ?? "N/A"}")" /></MudItem>
-        <MudItem xs="6" sm="4" md="2"><MetricCard Label="K-Ratio" Value="@(_result.EquityCurveSmoothness?.ToString("F4") ?? "N/A")" /></MudItem>
-        <MudItem xs="6" sm="4" md="2"><MetricCard Label="Trades" Value="@_result.TotalTrades.ToString()" /></MudItem>
+
+    @* Tier 2 — Supporting metrics *@
+    <MudGrid Class="mb-3">
+        <MudItem xs="4" sm="2">
+            <MudPaper Class="pa-3" Elevation="1">
+                <MudText Typo="Typo.caption" Class="text-muted">Sortino</MudText>
+                <MudText Typo="Typo.h6">@(_result.SortinoRatio?.ToString("F2") ?? "—")</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="4" sm="2">
+            <MudPaper Class="pa-3" Elevation="1">
+                <MudText Typo="Typo.caption" Class="text-muted">Calmar</MudText>
+                <MudText Typo="Typo.h6">@(_result.CalmarRatio?.ToString("F2") ?? "—")</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="4" sm="2">
+            <MudPaper Class="pa-3" Elevation="1">
+                <MudText Typo="Typo.caption" Class="text-muted">RoMaD</MudText>
+                <MudText Typo="Typo.h6">@(_result.ReturnOnMaxDrawdown?.ToString("F2") ?? "—")</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="4" sm="2">
+            <MudPaper Class="pa-3" Elevation="1">
+                <MudText Typo="Typo.caption" Class="text-muted">Profit Factor</MudText>
+                <MudText Typo="Typo.h6">@(_result.ProfitFactor?.ToString("F2") ?? "—")</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="4" sm="2">
+            <MudPaper Class="pa-3" Elevation="1">
+                <MudText Typo="Typo.caption" Class="text-muted">Expectancy</MudText>
+                <MudText Typo="Typo.h6">@(_result.Expectancy?.ToString("F2") ?? "—")</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="4" sm="2">
+            <MudPaper Class="pa-3" Elevation="1">
+                <MudText Typo="Typo.caption" Class="text-muted">Trades</MudText>
+                <MudText Typo="Typo.h6">@_result.TotalTrades</MudText>
+            </MudPaper>
+        </MudItem>
     </MudGrid>
-    <MudGrid Class="mt-2 mb-4">
-        <MudItem xs="6" sm="3"><MetricCard Label="Avg Win" Value="@($"${_result.AverageWin?.ToString("F2") ?? "N/A"}")" /></MudItem>
-        <MudItem xs="6" sm="3"><MetricCard Label="Avg Loss" Value="@($"${_result.AverageLoss?.ToString("F2") ?? "N/A"}")" /></MudItem>
-        <MudItem xs="6" sm="3"><MetricCard Label="Max Consec Losses" Value="@_result.MaxConsecutiveLosses.ToString()" /></MudItem>
-        <MudItem xs="6" sm="3"><MetricCard Label="Max Consec Wins" Value="@_result.MaxConsecutiveWins.ToString()" /></MudItem>
-    </MudGrid>
+
+    @* Tier 3 — Collapsible trade statistics *@
+    <MudExpansionPanels Class="mb-4">
+        <MudExpansionPanel Text="Trade Statistics">
+            <MudGrid>
+                <MudItem xs="4" sm="2"><MetricCard Label="Avg Win" Value="@($"${_result.AverageWin?.ToString("F2") ?? "—"}")" /></MudItem>
+                <MudItem xs="4" sm="2"><MetricCard Label="Avg Loss" Value="@($"${_result.AverageLoss?.ToString("F2") ?? "—"}")" /></MudItem>
+                <MudItem xs="4" sm="2"><MetricCard Label="Consec Wins" Value="@_result.MaxConsecutiveWins.ToString()" /></MudItem>
+                <MudItem xs="4" sm="2"><MetricCard Label="Consec Losses" Value="@_result.MaxConsecutiveLosses.ToString()" /></MudItem>
+                <MudItem xs="4" sm="2"><MetricCard Label="Start Equity" Value="@($"${_result.StartEquity:F0}")" /></MudItem>
+                <MudItem xs="4" sm="2"><MetricCard Label="End Equity" Value="@($"${_result.EndEquity:F0}")" /></MudItem>
+            </MudGrid>
+        </MudExpansionPanel>
+    </MudExpansionPanels>
 
     @* Robustness warnings *@
     <RobustnessWarnings Result="_result" />
 
-    @* Tabbed content: Charts + Trades *@
-    <MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-4">
-        <MudTabPanel Text="Equity Curve">
+    @* Action band — Study + Prop Firm *@
+    @if (_result.Status == BacktestStatus.Completed)
+    {
+        <MudPaper Outlined="true" Class="pa-3 mb-4">
+            <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap">
+                <MudText Typo="Typo.caption" Class="text-muted mr-2">STUDY</MudText>
+                <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Outlined" Color="Color.Primary"
+                           Href="@($"/research/montecarlo?result={_result.Id}")">Monte Carlo</MudButton>
+                <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Outlined" Color="Color.Primary"
+                           Href="@($"/research/walkforward?strategy={_result.ScenarioConfig.StrategyType}")">Walk-Forward</MudButton>
+                <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Outlined" Color="Color.Primary"
+                           Href="@($"/research/sweep?strategy={_result.ScenarioConfig.StrategyType}")">Sweep</MudButton>
+                <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Outlined" Color="Color.Primary"
+                           Href="@($"/research/perturbation?result={_result.Id}")">Perturbation</MudButton>
+                <MudDivider Vertical="true" FlexItem="true" Class="mx-2" />
+                <MudText Typo="Typo.caption" Class="text-muted mr-2">PROP FIRM</MudText>
+                <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Outlined" Color="Color.Warning"
+                           Href="@($"/propfirm/evaluate?resultId={_result.Id}")">Evaluate</MudButton>
+            </MudStack>
+        </MudPaper>
+    }
+
+    @* Chart tabs *@
+    <MudTabs Elevation="1" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-4">
+        <MudTabPanel Text="Equity">
             <EquityCurveChart Data="_result.EquityCurve" />
         </MudTabPanel>
-
         <MudTabPanel Text="Drawdown">
             <DrawdownChart Data="_result.EquityCurve" />
         </MudTabPanel>
-
-        <MudTabPanel Text="P&L Distribution">
-            <MudGrid>
-                <MudItem xs="12" md="8">
-                    <TradePnlHistogram Trades="_result.Trades" />
-                </MudItem>
-                <MudItem xs="12" md="4">
-                    <WinLossDonut TotalTrades="_result.TotalTrades" WinRate="_result.WinRate" />
-                </MudItem>
-            </MudGrid>
-        </MudTabPanel>
-
         <MudTabPanel Text="Trades">
             <MudTable Items="_result.Trades" Dense="true" Hover="true" Striped="true">
                 <HeaderContent>
                     <MudTh>Symbol</MudTh>
-                    <MudTh>Direction</MudTh>
                     <MudTh>Entry</MudTh>
                     <MudTh>Exit</MudTh>
                     <MudTh>Qty</MudTh>
-                    <MudTh>Entry Price</MudTh>
-                    <MudTh>Exit Price</MudTh>
-                    <MudTh>Gross P&amp;L</MudTh>
-                    <MudTh>Commission</MudTh>
+                    <MudTh>Entry $</MudTh>
+                    <MudTh>Exit $</MudTh>
                     <MudTh>Net P&amp;L</MudTh>
                 </HeaderContent>
                 <RowTemplate>
                     <MudTd>@context.Symbol</MudTd>
-                    <MudTd>@context.Direction</MudTd>
-                    <MudTd>@context.EntryTime.ToString("yyyy-MM-dd HH:mm")</MudTd>
-                    <MudTd>@context.ExitTime.ToString("yyyy-MM-dd HH:mm")</MudTd>
+                    <MudTd>@context.EntryTime.ToString("yyyy-MM-dd")</MudTd>
+                    <MudTd>@context.ExitTime.ToString("yyyy-MM-dd")</MudTd>
                     <MudTd>@context.Quantity</MudTd>
                     <MudTd>$@context.EntryPrice.ToString("F2")</MudTd>
                     <MudTd>$@context.ExitPrice.ToString("F2")</MudTd>
-                    <MudTd>$@context.GrossPnl.ToString("F2")</MudTd>
-                    <MudTd>$@context.Commission.ToString("F2")</MudTd>
-                    <MudTd Style="@(context.NetPnl >= 0 ? "color: #4CAF50" : "color: #F44336")">
+                    <MudTd Class="@(context.NetPnl >= 0 ? "mud-success-text" : "mud-error-text")">
                         $@context.NetPnl.ToString("F2")
                     </MudTd>
                 </RowTemplate>
-                <PagerContent>
-                    <MudTablePager />
-                </PagerContent>
+                <PagerContent><MudTablePager /></PagerContent>
             </MudTable>
         </MudTabPanel>
-
+        <MudTabPanel Text="P&amp;L">
+            <MudGrid>
+                <MudItem xs="12" md="8"><TradePnlHistogram Trades="_result.Trades" /></MudItem>
+                <MudItem xs="12" md="4"><WinLossDonut TotalTrades="_result.TotalTrades" WinRate="_result.WinRate" /></MudItem>
+            </MudGrid>
+        </MudTabPanel>
         <MudTabPanel Text="Config">
             <MudSimpleTable Dense="true" Hover="true" Striped="true">
-                <thead><tr><th>Field</th><th>Value</th></tr></thead>
                 <tbody>
-                    <tr><td>Scenario ID</td><td>@_result.ScenarioConfig.ScenarioId</td></tr>
                     <tr><td>Strategy</td><td>@_result.ScenarioConfig.StrategyType</td></tr>
-                    <tr><td>Replay Mode</td><td>@_result.ScenarioConfig.ReplayMode</td></tr>
                     <tr><td>Data Provider</td><td>@_result.ScenarioConfig.DataProviderType</td></tr>
-                    <tr><td>Initial Cash</td><td>$@_result.ScenarioConfig.InitialCash.ToString("F2")</td></tr>
-                    <tr><td>Risk-Free Rate</td><td>@_result.ScenarioConfig.AnnualRiskFreeRate.ToString("P2")</td></tr>
-                    <tr><td>Slippage Model</td><td>@_result.ScenarioConfig.SlippageModelType</td></tr>
-                    <tr><td>Commission Model</td><td>@_result.ScenarioConfig.CommissionModelType</td></tr>
-                    <tr><td>Random Seed</td><td>@(_result.ScenarioConfig.RandomSeed?.ToString() ?? "None")</td></tr>
-                    <tr><td>Run Duration</td><td>@(_result.RunDurationMs)ms</td></tr>
+                    <tr><td>Initial Cash</td><td>$@_result.ScenarioConfig.InitialCash.ToString("F0")</td></tr>
+                    <tr><td>Fill Mode</td><td>@_result.ScenarioConfig.FillMode</td></tr>
+                    <tr><td>Bars/Year</td><td>@_result.ScenarioConfig.BarsPerYear</td></tr>
+                    <tr><td>Slippage</td><td>@_result.ScenarioConfig.SlippageModelType</td></tr>
+                    <tr><td>Commission</td><td>@_result.ScenarioConfig.CommissionModelType</td></tr>
                     <tr><td>Equity Points</td><td>@_result.EquityCurve.Count</td></tr>
                 </tbody>
             </MudSimpleTable>
         </MudTabPanel>
-
-        <MudTabPanel Text="Monthly Returns">
-            <MonthlyReturnHeatmap EquityCurve="_result.EquityCurve" />
-        </MudTabPanel>
     </MudTabs>
 
-    @* Study launch buttons *@
-    @if (_result.Status == BacktestStatus.Completed)
-    {
-        <MudText Typo="Typo.h6" Class="mt-6 mb-2">Run Study</MudText>
-        <MudStack Row="true" Spacing="2" Class="mb-4">
-            <MudButton Variant="Variant.Filled" Color="Color.Primary"
-                       StartIcon="@Icons.Material.Filled.Casino"
-                       Href="@($"/research/montecarlo?result={_result.Id}")">
-                Monte Carlo
-            </MudButton>
-            <MudButton Variant="Variant.Filled" Color="Color.Secondary"
-                       StartIcon="@Icons.Material.Filled.Timeline"
-                       Href="@($"/research/walkforward?strategy={_result.ScenarioConfig.StrategyType}")">
-                Walk-Forward
-            </MudButton>
-            <MudButton Variant="Variant.Outlined" Color="Color.Primary"
-                       StartIcon="@Icons.Material.Filled.GridOn"
-                       Href="@($"/research/sweep?strategy={_result.ScenarioConfig.StrategyType}")">
-                Parameter Sweep
-            </MudButton>
-            <MudButton Variant="Variant.Outlined" Color="Color.Primary"
-                       StartIcon="@Icons.Material.Filled.Tune"
-                       Href="@($"/research/perturbation?result={_result.Id}")">
-                Perturbation
-            </MudButton>
-        </MudStack>
-
-        <MudText Typo="Typo.h6" Class="mb-2">Prop Firm</MudText>
-        <MudButton Variant="Variant.Outlined" Color="Color.Warning"
-                   StartIcon="@Icons.Material.Filled.AccountBalance"
-                   Href="@($"/propfirm/evaluate")">
-            Evaluate for Prop Firm
-        </MudButton>
-    }
-
-    @* Export buttons *@
-    <MudText Typo="Typo.h6" Class="mt-6 mb-2">Export</MudText>
-    <MudStack Row="true" Spacing="2" Class="mb-4">
-        <MudButton Variant="Variant.Outlined" Color="MudBlazor.Color.Secondary"
-                   StartIcon="@Icons.Material.Filled.Description"
-                   OnClick="ExportMarkdown">
-            Markdown
-        </MudButton>
-        <MudButton Variant="Variant.Outlined" Color="MudBlazor.Color.Secondary"
-                   StartIcon="@Icons.Material.Filled.TableChart"
-                   OnClick="ExportCsvTradeLog">
-            CSV Trades
-        </MudButton>
-        <MudButton Variant="Variant.Outlined" Color="MudBlazor.Color.Secondary"
-                   StartIcon="@Icons.Material.Filled.Code"
-                   OnClick="ExportJson">
-            JSON
-        </MudButton>
+    @* Export *@
+    <MudStack Row="true" Spacing="2" Class="mt-4 mb-4">
+        <MudButton Variant="Variant.Outlined" Size="MudBlazor.Size.Small" OnClick="ExportMarkdown"
+                   StartIcon="@Icons.Material.Filled.Description">Markdown</MudButton>
+        <MudButton Variant="Variant.Outlined" Size="MudBlazor.Size.Small" OnClick="ExportCsvTradeLog"
+                   StartIcon="@Icons.Material.Filled.TableChart">CSV Trades</MudButton>
+        <MudButton Variant="Variant.Outlined" Size="MudBlazor.Size.Small" OnClick="ExportJson"
+                   StartIcon="@Icons.Material.Filled.Code">JSON</MudButton>
     </MudStack>
 }
 
@@ -206,10 +215,27 @@ else
 
     private BacktestResult? _result;
     private bool _loading = true;
+    private List<BreadcrumbItem> _breadcrumbs = new();
+
+    private string SharpeColor => _result?.SharpeRatio switch
+    {
+        > 1.5m => "#4CAF50",
+        > 0.5m => "#FF9800",
+        _ => "#F44336"
+    };
 
     protected override async Task OnInitializedAsync()
     {
         _result = await ResultRepo.GetByIdAsync(Id);
+        if (_result is not null)
+        {
+            _breadcrumbs = new List<BreadcrumbItem>
+            {
+                new("Dashboard", href: "/"),
+                new(_result.ScenarioConfig.StrategyType, href: $"/strategies/{_result.StrategyVersionId ?? _result.ScenarioConfig.StrategyType}"),
+                new(_result.ScenarioConfig.ScenarioId, href: null, disabled: true)
+            };
+        }
         _loading = false;
     }
 
@@ -220,11 +246,9 @@ else
             Microsoft.Extensions.Options.Options.Create(
                 new TradingResearchEngine.Application.Configuration.ReportingOptions()));
         var md = reporter.RenderToMarkdown(_result);
-
-        var fileName = $"{_result.ScenarioConfig.ScenarioId}-report.md";
-        var path = GetExportPath(fileName);
+        var path = GetExportPath($"{_result.ScenarioConfig.ScenarioId}-report.md");
         await File.WriteAllTextAsync(path, md);
-        Snackbar.Add($"Report saved to {path}", Severity.Success);
+        Snackbar.Add($"Saved to {path}", Severity.Success);
     }
 
     private async Task ExportCsvTradeLog()
@@ -233,32 +257,25 @@ else
         var sb = new System.Text.StringBuilder();
         sb.AppendLine("Symbol,EntryTime,ExitTime,EntryPrice,ExitPrice,Quantity,Direction,GrossPnl,Commission,NetPnl,ReturnOnRisk");
         foreach (var t in _result.Trades)
-        {
             sb.AppendLine($"{t.Symbol},{t.EntryTime:O},{t.ExitTime:O},{t.EntryPrice},{t.ExitPrice},{t.Quantity},{t.Direction},{t.GrossPnl},{t.Commission},{t.NetPnl},{t.ReturnOnRisk:F6}");
-        }
-        var fileName = $"{_result.ScenarioConfig.ScenarioId}-trades.csv";
-        var path = GetExportPath(fileName);
+        var path = GetExportPath($"{_result.ScenarioConfig.ScenarioId}-trades.csv");
         await File.WriteAllTextAsync(path, sb.ToString());
-        Snackbar.Add($"Trade log saved to {path}", Severity.Success);
+        Snackbar.Add($"Saved to {path}", Severity.Success);
     }
 
     private async Task ExportJson()
     {
         if (_result is null) return;
-        var json = System.Text.Json.JsonSerializer.Serialize(_result,
-            new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
-        var fileName = $"{_result.ScenarioConfig.ScenarioId}-result.json";
-        var path = GetExportPath(fileName);
+        var json = System.Text.Json.JsonSerializer.Serialize(_result, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+        var path = GetExportPath($"{_result.ScenarioConfig.ScenarioId}-result.json");
         await File.WriteAllTextAsync(path, json);
-        Snackbar.Add($"JSON result saved to {path}", Severity.Success);
+        Snackbar.Add($"Saved to {path}", Severity.Success);
     }
 
     private static string GetExportPath(string fileName)
     {
-        var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "TradingResearchEngine", "Exports");
+        var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TradingResearchEngine", "Exports");
         if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
         return Path.Combine(dir, fileName);
     }
 }
-
