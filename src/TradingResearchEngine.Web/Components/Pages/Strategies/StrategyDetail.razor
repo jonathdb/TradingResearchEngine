@@ -1,8 +1,13 @@
 @page "/strategies/{StrategyId}"
+@using TradingResearchEngine.Application.PropFirm
+@using TradingResearchEngine.Application.PropFirm.Results
 @inject IStrategyRepository StrategyRepo
 @inject TradingResearchEngine.Core.Persistence.IRepository<BacktestResult> ResultRepo
 @inject TradingResearchEngine.Application.Research.IStudyRepository StudyRepo
+@inject RunScenarioUseCase RunUseCase
+@inject PropFirmEvaluator Evaluator
 @inject NavigationManager Nav
+@inject ISnackbar Snackbar
 
 <PageTitle>@(_strategy?.StrategyName ?? "Strategy") — Research Engine</PageTitle>
 
@@ -16,182 +21,248 @@ else if (_strategy is null)
 }
 else
 {
-    @* Header *@
-    <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2">
-        <MudStack Spacing="0">
-            <MudText Typo="Typo.h4">@_strategy.StrategyName</MudText>
-            <MudText Typo="Typo.caption" Class="text-muted">
-                @_strategy.StrategyType · Created @_strategy.CreatedAt.ToString("yyyy-MM-dd")
-            </MudText>
+    @* Header Band *@
+    <MudPaper Elevation="0" Class="pa-4 mb-0" Style="border-bottom: 1px solid var(--mud-palette-divider)">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3" Wrap="Wrap.Wrap">
+            <MudStack Spacing="0">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                    <MudText Typo="Typo.h5">@_strategy.StrategyName</MudText>
+                    <MudChip T="string" Size="MudBlazor.Size.Small" Color="Color.Default">@_strategy.StrategyType</MudChip>
+                </MudStack>
+                <MudText Typo="Typo.body2" Class="text-muted">
+                    Created @_strategy.CreatedAt.ToString("yyyy-MM-dd")
+                    @if (!string.IsNullOrWhiteSpace(_strategy.Description))
+                    { <text> · @_strategy.Description</text> }
+                </MudText>
+            </MudStack>
+            <MudSpacer />
+            @* Version selector *@
+            @if (_versions.Count > 0)
+            {
+                <MudSelect T="StrategyVersion" Value="_selectedVersion" ValueChanged="OnVersionChanged"
+                           Label="Version" Variant="Variant.Outlined" Style="min-width:220px"
+                           ToStringFunc="@(v => v is null ? "" : $"v{v.VersionNumber} — {v.ChangeNote ?? v.CreatedAt.ToString("yyyy-MM-dd")}")">
+                    @foreach (var v in _versions)
+                    {
+                        <MudSelectItem Value="@v">v@(v.VersionNumber) — @(v.ChangeNote ?? v.CreatedAt.ToString("yyyy-MM-dd"))</MudSelectItem>
+                    }
+                </MudSelect>
+            }
+            @* Run button *@
+            <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                       StartIcon="@Icons.Material.Filled.PlayArrow"
+                       OnClick="@(() => _runDialogOpen = true)"
+                       Disabled="@(_selectedVersion is null)">Run</MudButton>
         </MudStack>
-        <MudSpacer />
-        <MudButton Variant="Variant.Filled" Color="Color.Primary"
-                   StartIcon="@Icons.Material.Filled.PlayArrow"
-                   Href="@($"/backtests/new?strategy={_strategy.StrategyType}&strategyId={_strategy.StrategyId}&versionId={_selectedVersion?.StrategyVersionId}")">Run</MudButton>
-    </MudStack>
+    </MudPaper>
 
-    @if (!string.IsNullOrWhiteSpace(_strategy.Description))
-    {
-        <MudText Typo="Typo.body2" Class="text-muted mb-4">@_strategy.Description</MudText>
-    }
+    @* Two-zone layout *@
+    <MudGrid Class="mt-4">
+        @* Left Panel — Version Config *@
+        <MudItem xs="12" md="4">
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudText Typo="Typo.subtitle2" Class="text-muted mb-3">VERSION PARAMETERS</MudText>
 
-    @* Version bar with tooltips *@
-    <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center" Class="mb-4">
-        @foreach (var v in _versions)
-        {
-            <MudTooltip Text="@($"v{v.VersionNumber} · {v.CreatedAt:yyyy-MM-dd} · {v.ChangeNote ?? "no notes"}")">
-                <MudChip T="string" Size="MudBlazor.Size.Small"
-                         Color="@(v.StrategyVersionId == _selectedVersion?.StrategyVersionId ? Color.Primary : Color.Default)"
-                         Variant="@(v.StrategyVersionId == _selectedVersion?.StrategyVersionId ? Variant.Filled : Variant.Outlined)"
-                         OnClick="@(() => SelectVersion(v))">
-                    v@(v.VersionNumber)
-                </MudChip>
-            </MudTooltip>
-        }
-    </MudStack>
-
-    @* KPI row — always visible *@
-    <MudGrid Class="mb-4">
-        <MudItem xs="6" sm="3">
-            <MudPaper Class="pa-3" Elevation="1">
-                <MudText Typo="Typo.caption" Class="text-muted">Sharpe</MudText>
-                <MudText Typo="Typo.h5">@(_latestRun?.SharpeRatio?.ToString("F2") ?? "—")</MudText>
-            </MudPaper>
-        </MudItem>
-        <MudItem xs="6" sm="3">
-            <MudPaper Class="pa-3" Elevation="1">
-                <MudText Typo="Typo.caption" Class="text-muted">Max DD</MudText>
-                <MudText Typo="Typo.h5">@(_latestRun?.MaxDrawdown.ToString("P1") ?? "—")</MudText>
-            </MudPaper>
-        </MudItem>
-        <MudItem xs="6" sm="3">
-            <MudPaper Class="pa-3" Elevation="1">
-                <MudText Typo="Typo.caption" Class="text-muted">Studies</MudText>
-                <MudText Typo="Typo.h5">@_versionStudies.Count</MudText>
-            </MudPaper>
-        </MudItem>
-        <MudItem xs="6" sm="3">
-            <MudPaper Class="pa-3" Elevation="1">
-                <MudText Typo="Typo.caption" Class="text-muted">Runs</MudText>
-                <MudText Typo="Typo.h5">@_versionRuns.Count</MudText>
-                @if (_versionRuns.Count == 0)
+                @if (_selectedVersion is not null)
                 {
-                    <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Text" Color="Color.Primary" Class="mt-1"
-                               Href="@($"/backtests/new?strategy={_strategy.StrategyType}")">Run Now</MudButton>
+                    <MudText Typo="Typo.caption" Class="text-faint mb-1">PARAMETERS</MudText>
+                    <MudSimpleTable Dense="true" Class="mb-3">
+                        <tbody>
+                            @foreach (var p in _selectedVersion.Parameters)
+                            {
+                                <tr><td class="text-muted">@p.Key</td><td>@p.Value</td></tr>
+                            }
+                        </tbody>
+                    </MudSimpleTable>
+
+                    <MudText Typo="Typo.caption" Class="text-faint mb-1">EXECUTION</MudText>
+                    <MudSimpleTable Dense="true" Class="mb-3">
+                        <tbody>
+                            <tr><td class="text-muted">Fill Mode</td><td>@_selectedVersion.BaseScenarioConfig.FillMode</td></tr>
+                            <tr><td class="text-muted">Bars/Year</td><td>@_selectedVersion.BaseScenarioConfig.BarsPerYear</td></tr>
+                            <tr><td class="text-muted">Initial Cash</td><td>$@_selectedVersion.BaseScenarioConfig.InitialCash.ToString("F0")</td></tr>
+                            <tr><td class="text-muted">Slippage</td><td>@_selectedVersion.BaseScenarioConfig.SlippageModelType</td></tr>
+                        </tbody>
+                    </MudSimpleTable>
+
+                    <MudButton Variant="Variant.Outlined" Color="Color.Primary" FullWidth="true" Size="MudBlazor.Size.Small"
+                               Href="@($"/strategies/builder?fromStrategyId={_strategy.StrategyId}&fromVersionId={_selectedVersion.StrategyVersionId}")">
+                        New Version from This
+                    </MudButton>
                 }
             </MudPaper>
         </MudItem>
+
+        @* Right Panel — Tabbed Content *@
+        <MudItem xs="12" md="8">
+            <MudTabs Elevation="1" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-4">
+                @* Runs Tab *@
+                <MudTabPanel Text="Runs">
+                    @if (_versionRuns.Count == 0)
+                    {
+                        <MudStack AlignItems="AlignItems.Center" Class="pa-8">
+                            <MudIcon Icon="@Icons.Material.Filled.PlayArrow" Size="MudBlazor.Size.Large" Class="text-faint mb-2" />
+                            <MudText Typo="Typo.body1">No runs yet</MudText>
+                            <MudText Typo="Typo.body2" Class="text-muted mb-4">Click Run to launch a backtest</MudText>
+                        </MudStack>
+                    }
+                    else
+                    {
+                        @* KPI summary *@
+                        <MudPaper Outlined="true" Class="pa-3 mb-4">
+                            <MudStack Row="true" Spacing="6">
+                                <MudStack Spacing="0">
+                                    <MudText Typo="Typo.caption" Class="text-muted">Best Sharpe</MudText>
+                                    <MudText Typo="Typo.h5" Color="Color.Success">@(_versionRuns.Where(r => r.SharpeRatio.HasValue).Max(r => r.SharpeRatio)?.ToString("F2") ?? "—")</MudText>
+                                </MudStack>
+                                <MudStack Spacing="0">
+                                    <MudText Typo="Typo.caption" Class="text-muted">Latest</MudText>
+                                    <MudText Typo="Typo.h5">@(_latestRun?.SharpeRatio?.ToString("F2") ?? "—")</MudText>
+                                </MudStack>
+                                <MudStack Spacing="0">
+                                    <MudText Typo="Typo.caption" Class="text-muted">Runs</MudText>
+                                    <MudText Typo="Typo.h5">@_versionRuns.Count</MudText>
+                                </MudStack>
+                            </MudStack>
+                        </MudPaper>
+
+                        <MudTable Items="_versionRuns" Dense="true" Hover="true">
+                            <HeaderContent>
+                                <MudTh>Scenario</MudTh>
+                                <MudTh>Sharpe</MudTh>
+                                <MudTh>Max DD</MudTh>
+                                <MudTh>Trades</MudTh>
+                                <MudTh>Status</MudTh>
+                                <MudTh></MudTh>
+                            </HeaderContent>
+                            <RowTemplate>
+                                <MudTd>@context.ScenarioConfig.ScenarioId</MudTd>
+                                <MudTd Class="@GetSharpeClass(context.SharpeRatio)">@(context.SharpeRatio?.ToString("F2") ?? "—")</MudTd>
+                                <MudTd>@context.MaxDrawdown.ToString("P1")</MudTd>
+                                <MudTd>@context.TotalTrades</MudTd>
+                                <MudTd><MudChip T="string" Size="MudBlazor.Size.Small" Color="@(context.Status == BacktestStatus.Completed ? Color.Success : Color.Error)">@context.Status</MudChip></MudTd>
+                                <MudTd><MudIconButton Icon="@Icons.Material.Filled.OpenInNew" Size="MudBlazor.Size.Small" Href="@($"/backtests/{context.Id}")" /></MudTd>
+                            </RowTemplate>
+                        </MudTable>
+                    }
+                </MudTabPanel>
+
+                @* Research Tab *@
+                <MudTabPanel Text="Research">
+                    @* Launch bar *@
+                    <MudPaper Outlined="true" Class="pa-3 mb-4">
+                        <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap">
+                            <MudText Typo="Typo.caption" Class="text-muted mr-2">LAUNCH STUDY</MudText>
+                            @if (_latestRun is not null)
+                            {
+                                <MudButton Variant="Variant.Outlined" Size="MudBlazor.Size.Small" Href="@($"/research/montecarlo?result={_latestRun.Id}")">Monte Carlo</MudButton>
+                                <MudButton Variant="Variant.Outlined" Size="MudBlazor.Size.Small" Href="@($"/research/walkforward?strategy={_strategy.StrategyType}")">Walk-Forward</MudButton>
+                                <MudButton Variant="Variant.Outlined" Size="MudBlazor.Size.Small" Href="@($"/research/sweep?strategy={_strategy.StrategyType}")">Sweep</MudButton>
+                                <MudButton Variant="Variant.Outlined" Size="MudBlazor.Size.Small" Href="@($"/research/perturbation?result={_latestRun.Id}")">Perturbation</MudButton>
+                            }
+                            else
+                            {
+                                <MudText Typo="Typo.body2" Class="text-muted">Run a backtest first</MudText>
+                            }
+                        </MudStack>
+                    </MudPaper>
+
+                    @if (_versionStudies.Count == 0)
+                    {
+                        <MudStack AlignItems="AlignItems.Center" Class="pa-8">
+                            <MudIcon Icon="@Icons.Material.Filled.Science" Size="MudBlazor.Size.Large" Class="text-faint mb-2" />
+                            <MudText Typo="Typo.body1">No studies yet</MudText>
+                        </MudStack>
+                    }
+                    else
+                    {
+                        <MudTable Items="_versionStudies" Dense="true" Hover="true">
+                            <HeaderContent>
+                                <MudTh>Type</MudTh>
+                                <MudTh>Status</MudTh>
+                                <MudTh>Created</MudTh>
+                                <MudTh></MudTh>
+                            </HeaderContent>
+                            <RowTemplate>
+                                <MudTd><MudChip T="string" Size="MudBlazor.Size.Small">@context.Type</MudChip></MudTd>
+                                <MudTd><MudChip T="string" Size="MudBlazor.Size.Small" Color="@(context.Status == TradingResearchEngine.Application.Research.StudyStatus.Completed ? Color.Success : Color.Warning)">@context.Status</MudChip></MudTd>
+                                <MudTd>@context.CreatedAt.ToString("yyyy-MM-dd")</MudTd>
+                                <MudTd><MudIconButton Icon="@Icons.Material.Filled.OpenInNew" Size="MudBlazor.Size.Small" Href="@($"/research/study/{context.StudyId}")" /></MudTd>
+                            </RowTemplate>
+                        </MudTable>
+                    }
+                </MudTabPanel>
+
+                @* Prop Firm Tab *@
+                <MudTabPanel Text="Prop Firm">
+                    <MudGrid>
+                        <MudItem xs="12" md="5">
+                            <MudPaper Class="pa-4" Elevation="1">
+                                <MudText Typo="Typo.subtitle2" Class="text-muted mb-3">EVALUATE A RUN</MudText>
+                                <MudSelect T="BacktestResult" @bind-Value="_evalRun" Label="Select Run" Variant="Variant.Outlined" Class="mb-3"
+                                           ToStringFunc="@(r => r is null ? "" : $"Sharpe {r.SharpeRatio?.ToString("F2") ?? "—"} · {r.TotalTrades} trades")">
+                                    @foreach (var run in _versionRuns.Where(r => r.Status == BacktestStatus.Completed))
+                                    {
+                                        <MudSelectItem Value="@run">Sharpe @(run.SharpeRatio?.ToString("F2") ?? "—") · @run.TotalTrades trades</MudSelectItem>
+                                    }
+                                </MudSelect>
+                                <MudSelect T="PropFirmRulePack" @bind-Value="_evalPack" Label="Firm" Variant="Variant.Outlined" Class="mb-4"
+                                           ToStringFunc="@(p => p is null ? "" : $"{p.FirmName} — {p.ChallengeName}")">
+                                    @foreach (var pack in _firmPacks)
+                                    {
+                                        <MudSelectItem Value="@pack">@pack.FirmName — @pack.ChallengeName</MudSelectItem>
+                                    }
+                                </MudSelect>
+                                <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true"
+                                           OnClick="EvaluateForFirm" Disabled="@(_evalRun is null || _evalPack is null)">Evaluate</MudButton>
+                            </MudPaper>
+                        </MudItem>
+                        <MudItem xs="12" md="7">
+                            @if (_evalPhaseResults is not null)
+                            {
+                                <MudChip T="string" Size="MudBlazor.Size.Large" Color="@(_evalAllPassed ? Color.Success : Color.Error)" Class="mb-3">
+                                    @(_evalAllPassed ? "✅ PASS" : "❌ FAIL")
+                                </MudChip>
+                                @foreach (var phase in _evalPhaseResults)
+                                {
+                                    <MudText Typo="Typo.subtitle2" Class="mt-2 mb-1">@phase.PhaseName</MudText>
+                                    <MudTable Items="phase.Rules" Dense="true" Hover="true" Class="mb-2">
+                                        <HeaderContent>
+                                            <MudTh>Rule</MudTh><MudTh>Status</MudTh><MudTh>Actual</MudTh><MudTh>Limit</MudTh><MudTh>Margin</MudTh>
+                                        </HeaderContent>
+                                        <RowTemplate>
+                                            <MudTd>@context.RuleName</MudTd>
+                                            <MudTd><MudChip T="string" Size="MudBlazor.Size.Small" Color="@(context.Status == RuleStatus.Passed ? Color.Success : context.Status == RuleStatus.NearBreach ? Color.Warning : Color.Error)">@context.Status</MudChip></MudTd>
+                                            <MudTd>@context.ActualValue.ToString("F2")</MudTd>
+                                            <MudTd>@context.LimitValue.ToString("F2")</MudTd>
+                                            <MudTd>@(context.Margin >= 0 ? "+" : "")@context.Margin.ToString("F2")</MudTd>
+                                        </RowTemplate>
+                                    </MudTable>
+                                }
+                            }
+                        </MudItem>
+                    </MudGrid>
+                </MudTabPanel>
+            </MudTabs>
+        </MudItem>
     </MudGrid>
 
-    @* Tabs *@
-    <MudTabs Elevation="1" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-4">
-        <MudTabPanel Text="Runs">
-            @if (_versionRuns.Count == 0)
-            {
-                <MudStack AlignItems="AlignItems.Center" Class="pa-8">
-                    <MudIcon Icon="@Icons.Material.Filled.PlayArrow" Size="MudBlazor.Size.Large" Class="text-faint mb-2" />
-                    <MudText Typo="Typo.body1">No runs yet</MudText>
-                    <MudText Typo="Typo.body2" Class="text-muted mb-4">Run a backtest to see results here</MudText>
-                    <MudButton Variant="Variant.Outlined" Color="Color.Primary"
-                               Href="@($"/backtests/new?strategy={_strategy.StrategyType}")">Run Backtest →</MudButton>
-                </MudStack>
-            }
-            else
-            {
-                <MudTable Items="_versionRuns" Dense="true" Hover="true">
-                    <HeaderContent>
-                        <MudTh>Scenario</MudTh>
-                        <MudTh>Status</MudTh>
-                        <MudTh>Sharpe</MudTh>
-                        <MudTh>Max DD</MudTh>
-                        <MudTh>Trades</MudTh>
-                        <MudTh>Actions</MudTh>
-                    </HeaderContent>
-                    <RowTemplate>
-                        <MudTd><MudLink Href="@($"/backtests/{context.Id}")">@context.ScenarioConfig.ScenarioId</MudLink></MudTd>
-                        <MudTd>
-                            <MudChip T="string" Size="MudBlazor.Size.Small"
-                                     Color="@(context.Status == BacktestStatus.Completed ? Color.Success : Color.Error)">
-                                @context.Status
-                            </MudChip>
-                        </MudTd>
-                        <MudTd>@(context.SharpeRatio?.ToString("F2") ?? "—")</MudTd>
-                        <MudTd>@context.MaxDrawdown.ToString("P1")</MudTd>
-                        <MudTd>@context.TotalTrades</MudTd>
-                        <MudTd>
-                            <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Text" Color="Color.Primary"
-                                       Href="@($"/backtests/{context.Id}")">Open</MudButton>
-                        </MudTd>
-                    </RowTemplate>
-                </MudTable>
-            }
-        </MudTabPanel>
-
-        <MudTabPanel Text="Studies">
-            @if (_versionStudies.Count == 0)
-            {
-                <MudStack AlignItems="AlignItems.Center" Class="pa-8">
-                    <MudIcon Icon="@Icons.Material.Filled.Science" Size="MudBlazor.Size.Large" Class="text-faint mb-2" />
-                    <MudText Typo="Typo.body1">No studies yet</MudText>
-                    <MudText Typo="Typo.body2" Class="text-muted mb-4">Run a backtest, then launch a study from the result page</MudText>
-                    @if (_latestRun is not null)
-                    {
-                        <MudButton Variant="Variant.Outlined" Color="Color.Primary"
-                                   Href="@($"/backtests/{_latestRun.Id}")">Go to Latest Run →</MudButton>
-                    }
-                </MudStack>
-            }
-            else
-            {
-                <MudTable Items="_versionStudies" Dense="true" Hover="true">
-                    <HeaderContent>
-                        <MudTh>Type</MudTh>
-                        <MudTh>Status</MudTh>
-                        <MudTh>Created</MudTh>
-                        <MudTh>Actions</MudTh>
-                    </HeaderContent>
-                    <RowTemplate>
-                        <MudTd>@context.Type</MudTd>
-                        <MudTd>
-                            <MudChip T="string" Size="MudBlazor.Size.Small"
-                                     Color="@(context.Status == TradingResearchEngine.Application.Research.StudyStatus.Completed ? Color.Success : Color.Warning)">
-                                @context.Status
-                            </MudChip>
-                        </MudTd>
-                        <MudTd>@context.CreatedAt.ToString("yyyy-MM-dd HH:mm")</MudTd>
-                        <MudTd>
-                            <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Text" Color="Color.Primary"
-                                       Href="@($"/research/study/{context.StudyId}")">Open</MudButton>
-                        </MudTd>
-                    </RowTemplate>
-                </MudTable>
-            }
-        </MudTabPanel>
-
-        <MudTabPanel Text="Evaluations">
-            <MudStack AlignItems="AlignItems.Center" Class="pa-8">
-                <MudIcon Icon="@Icons.Material.Filled.AccountBalance" Size="MudBlazor.Size.Large" Class="text-faint mb-2" />
-                <MudText Typo="Typo.body1">Prop firm evaluations</MudText>
-                <MudText Typo="Typo.body2" Class="text-muted mb-4">Evaluations for this strategy will appear here</MudText>
-                <MudButton Variant="Variant.Outlined" Color="Color.Primary"
-                           Href="/propfirm/evaluate">Run an evaluation →</MudButton>
-            </MudStack>
-        </MudTabPanel>
-
-        <MudTabPanel Text="Parameters">
-            @if (_selectedVersion is not null)
-            {
-                <MudSimpleTable Dense="true" Striped="true">
-                    <tbody>
-                        @foreach (var p in _selectedVersion.Parameters)
-                        {
-                            <tr><td>@p.Key</td><td>@p.Value</td></tr>
-                        }
-                    </tbody>
-                </MudSimpleTable>
-            }
-        </MudTabPanel>
-    </MudTabs>
+    @* Run Dialog *@
+    <MudDialog @bind-Visible="_runDialogOpen">
+        <TitleContent>Run Backtest</TitleContent>
+        <DialogContent>
+            <MudText Typo="Typo.body1">
+                Run <strong>@_strategy.StrategyName</strong> v@(_selectedVersion?.VersionNumber)
+                with the parameters shown in the config panel?
+            </MudText>
+        </DialogContent>
+        <DialogActions>
+            <MudButton OnClick="@(() => _runDialogOpen = false)">Cancel</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ConfirmRun" Disabled="_running">
+                @(_running ? "Running..." : "Run Now")
+            </MudButton>
+        </DialogActions>
+    </MudDialog>
 }
 
 @code {
@@ -204,6 +275,15 @@ else
     private List<TradingResearchEngine.Application.Research.StudyRecord> _versionStudies = new();
     private BacktestResult? _latestRun;
     private bool _loading = true;
+    private bool _runDialogOpen;
+    private bool _running;
+
+    // Prop firm eval state
+    private List<PropFirmRulePack> _firmPacks = new();
+    private BacktestResult? _evalRun;
+    private PropFirmRulePack? _evalPack;
+    private IReadOnlyList<PhaseEvaluationResult>? _evalPhaseResults;
+    private bool _evalAllPassed;
 
     protected override async Task OnInitializedAsync()
     {
@@ -214,10 +294,11 @@ else
             _selectedVersion = _versions.LastOrDefault();
             await LoadVersionData();
         }
+        _firmPacks = LoadBuiltInPacks();
         _loading = false;
     }
 
-    private async void SelectVersion(StrategyVersion v)
+    private async void OnVersionChanged(StrategyVersion v)
     {
         _selectedVersion = v;
         await LoadVersionData();
@@ -227,14 +308,82 @@ else
     private async Task LoadVersionData()
     {
         if (_selectedVersion is null) return;
-
         var allResults = await ResultRepo.ListAsync();
         _versionRuns = allResults
             .Where(r => r.StrategyVersionId == _selectedVersion.StrategyVersionId)
-            .OrderByDescending(r => r.RunId)
-            .ToList();
+            .OrderByDescending(r => r.RunId).ToList();
         _latestRun = _versionRuns.FirstOrDefault();
-
         _versionStudies = (await StudyRepo.ListByVersionAsync(_selectedVersion.StrategyVersionId)).ToList();
+    }
+
+    private async Task ConfirmRun()
+    {
+        if (_selectedVersion is null) return;
+        _running = true;
+        _runDialogOpen = false;
+        StateHasChanged();
+
+        try
+        {
+            var config = _selectedVersion.BaseScenarioConfig with
+            {
+                ScenarioId = $"run-{DateTime.Now:yyyyMMdd-HHmmss}"
+            };
+            var result = await Task.Run(() => RunUseCase.RunAsync(config));
+            if (result.IsSuccess && result.Result is not null)
+            {
+                // Link to strategy version
+                var linked = result.Result with { StrategyVersionId = _selectedVersion.StrategyVersionId };
+                await ResultRepo.SaveAsync(linked);
+                Snackbar.Add($"Backtest completed: Sharpe {linked.SharpeRatio?.ToString("F2") ?? "N/A"}", Severity.Success);
+                await LoadVersionData();
+            }
+            else
+            {
+                Snackbar.Add($"Run failed: {string.Join("; ", result.Errors ?? Array.Empty<string>())}", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _running = false;
+            StateHasChanged();
+        }
+    }
+
+    private void EvaluateForFirm()
+    {
+        if (_evalRun is null || _evalPack is null) return;
+        _evalPhaseResults = Evaluator.EvaluateRulePack(_evalRun, _evalPack);
+        _evalAllPassed = _evalPhaseResults.All(p => p.Passed);
+    }
+
+    private static string GetSharpeClass(decimal? sharpe) => sharpe switch
+    {
+        >= 1.5m => "mud-success-text",
+        >= 0.8m => "mud-warning-text",
+        _ => "mud-error-text"
+    };
+
+    private static List<PropFirmRulePack> LoadBuiltInPacks()
+    {
+        var packs = new List<PropFirmRulePack>();
+        var firmsDir = Path.Combine(Directory.GetCurrentDirectory(), "data", "firms");
+        if (!Directory.Exists(firmsDir)) return packs;
+        foreach (var file in Directory.GetFiles(firmsDir, "*.json"))
+        {
+            try
+            {
+                var json = File.ReadAllText(file);
+                var pack = System.Text.Json.JsonSerializer.Deserialize<PropFirmRulePack>(json,
+                    new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                if (pack is not null) packs.Add(pack);
+            }
+            catch { }
+        }
+        return packs.OrderBy(p => p.FirmName).ToList();
     }
 }
