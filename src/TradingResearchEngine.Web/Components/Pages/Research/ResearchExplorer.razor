@@ -3,9 +3,17 @@
 @inject IStrategyRepository StrategyRepo
 @inject NavigationManager Nav
 
-<PageTitle>Research Explorer — TradingResearchEngine</PageTitle>
+<PageTitle>Research Explorer — Research Engine</PageTitle>
 
-<MudText Typo="Typo.h4" Class="mb-4">Research Explorer</MudText>
+<MudText Typo="Typo.h4" Class="mb-2">Research Explorer</MudText>
+
+@if (!string.IsNullOrEmpty(StrategyId))
+{
+    <MudText Typo="Typo.caption" Class="text-muted mb-3">
+        Showing studies for strategy: <strong>@StrategyId</strong>
+        <MudLink Href="/research/explorer"> Show all</MudLink>
+    </MudText>
+}
 
 @if (_loading)
 {
@@ -48,6 +56,8 @@ else
 }
 
 @code {
+    [SupplyParameterFromQuery] public string? StrategyId { get; set; }
+
     private record StudyRow(TradingResearchEngine.Application.Research.StudyRecord Study, string? StrategyName);
 
     private List<StudyRow> _studies = new();

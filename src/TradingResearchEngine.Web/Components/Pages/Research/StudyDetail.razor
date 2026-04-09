@@ -19,7 +19,7 @@ else
     <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2">
         <MudStack Spacing="0">
             <MudText Typo="Typo.h4">@_study.Type Study</MudText>
-            <MudText Typo="Typo.caption" Style="opacity:0.6">
+            <MudText Typo="Typo.caption" Class="text-muted">
                 @(_strategyName ?? "Unknown strategy") · @_study.CreatedAt.ToString("yyyy-MM-dd HH:mm")
             </MudText>
         </MudStack>
@@ -34,25 +34,25 @@ else
     <MudGrid Class="mb-4">
         <MudItem xs="6" sm="3">
             <MudPaper Class="pa-3" Elevation="1">
-                <MudText Typo="Typo.caption" Style="opacity:0.6">Type</MudText>
+                <MudText Typo="Typo.caption" Class="text-muted">Type</MudText>
                 <MudText Typo="Typo.h6">@_study.Type</MudText>
             </MudPaper>
         </MudItem>
         <MudItem xs="6" sm="3">
             <MudPaper Class="pa-3" Elevation="1">
-                <MudText Typo="Typo.caption" Style="opacity:0.6">Status</MudText>
+                <MudText Typo="Typo.caption" Class="text-muted">Status</MudText>
                 <MudText Typo="Typo.h6">@_study.Status</MudText>
             </MudPaper>
         </MudItem>
         <MudItem xs="6" sm="3">
             <MudPaper Class="pa-3" Elevation="1">
-                <MudText Typo="Typo.caption" Style="opacity:0.6">Source Run</MudText>
+                <MudText Typo="Typo.caption" Class="text-muted">Source Run</MudText>
                 <MudText Typo="Typo.h6">@(_study.SourceRunId?[..Math.Min(8, _study.SourceRunId.Length)] ?? "—")…</MudText>
             </MudPaper>
         </MudItem>
         <MudItem xs="6" sm="3">
             <MudPaper Class="pa-3" Elevation="1">
-                <MudText Typo="Typo.caption" Style="opacity:0.6">Strategy Version</MudText>
+                <MudText Typo="Typo.caption" Class="text-muted">Strategy Version</MudText>
                 <MudText Typo="Typo.h6">@_study.StrategyVersionId[..Math.Min(12, _study.StrategyVersionId.Length)]…</MudText>
             </MudPaper>
         </MudItem>
@@ -125,3 +125,4 @@ else
         _ => "This study evaluates strategy robustness from a specific angle. Review the results to assess whether the strategy's edge is reliable."
     };
 }
+

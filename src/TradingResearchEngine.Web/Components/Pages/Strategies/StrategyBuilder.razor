@@ -36,7 +36,7 @@
                          Style="cursor:pointer" @onclick="() => SelectTemplate(tpl)">
                     <MudCardContent>
                         <MudText Typo="Typo.subtitle1">@tpl.Name</MudText>
-                        <MudText Typo="Typo.body2" Style="opacity:0.7">@tpl.Description</MudText>
+                        <MudText Typo="Typo.body2" Class="text-muted">@tpl.Description</MudText>
                         <MudChip T="string" Size="MudBlazor.Size.Small" Class="mt-2">@tpl.TypicalUseCase</MudChip>
                     </MudCardContent>
                 </MudCard>
@@ -84,7 +84,7 @@ else if (_step == 2)
     <MudText Typo="Typo.h6" Class="mb-3">Entry & Exit Rules</MudText>
     @if (_selectedTemplate is not null)
     {
-        <MudText Typo="Typo.body2" Class="mb-3" Style="opacity:0.7">
+        <MudText Typo="Typo.body2" Class="mb-3" Class="text-muted">
             Configure parameters for @_selectedTemplate.Name. Defaults are pre-filled.
         </MudText>
         @foreach (var param in _parameters.Keys.ToList())
@@ -310,3 +310,4 @@ else if (_step == 4)
             fillMode, BarsPerYear);
     }
 }
+

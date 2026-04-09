@@ -15,7 +15,7 @@ else if (_result is null)
 else
 {
     <MudText Typo="Typo.h4" Class="mb-2">@_result.ScenarioConfig.ScenarioId</MudText>
-    <MudText Typo="Typo.subtitle1" Class="mb-4" Style="opacity:0.7">
+    <MudText Typo="Typo.subtitle1" Class="mb-4" Class="text-muted">
         @_result.ScenarioConfig.Description — @_result.ScenarioConfig.StrategyType
     </MudText>
 
@@ -261,3 +261,4 @@ else
         return Path.Combine(dir, fileName);
     }
 }
+

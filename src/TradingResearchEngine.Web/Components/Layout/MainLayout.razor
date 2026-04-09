@@ -9,13 +9,19 @@
     <MudAppBar Elevation="1" Dense="true">
         <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit"
                        Edge="Edge.Start" OnClick="ToggleDrawer" />
-        <MudText Typo="Typo.h6" Class="ml-3">TradingResearchEngine</MudText>
+        <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center" Class="ml-2">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <rect x="4" y="8" width="3" height="12" rx="1" fill="currentColor" opacity="0.6"/>
+                <rect x="10" y="3" width="3" height="17" rx="1" fill="currentColor"/>
+                <rect x="16" y="6" width="3" height="14" rx="1" fill="currentColor" opacity="0.6"/>
+            </svg>
+            <MudText Typo="Typo.subtitle1" Style="font-weight:600">Research Engine</MudText>
+        </MudStack>
         <MudSpacer />
-        <MudText Typo="Typo.caption" Class="mr-4" Style="opacity:0.6">v3.0</MudText>
+        <MudText Typo="Typo.caption" Class="text-faint mr-4">v3.1</MudText>
     </MudAppBar>
 
-    <MudDrawer @bind-Open="_drawerOpen" ClipMode="DrawerClipMode.Always"
-               Elevation="2">
+    <MudDrawer @bind-Open="_drawerOpen" ClipMode="DrawerClipMode.Always" Elevation="2">
         <NavMenu />
     </MudDrawer>
 
@@ -26,24 +32,21 @@
 
 @code {
     private bool _drawerOpen = true;
+    private void ToggleDrawer() => _drawerOpen = !_drawerOpen;
 
     private readonly MudTheme _theme = new()
     {
-        PaletteLight = new PaletteLight
-        {
-            Primary = "#1976D2",
-            Secondary = "#FF9800",
-            AppbarBackground = "#1565C0",
-        },
         PaletteDark = new PaletteDark
         {
-            Primary = "#42A5F5",
-            Secondary = "#FFB74D",
-            AppbarBackground = "#1E1E2E",
-            Surface = "#1E1E2E",
-            Background = "#121212",
+            Primary = "#4F98A3",
+            Secondary = "#2C7873",
+            AppbarBackground = "#0F0F0F",
+            Background = "#131313",
+            Surface = "#1C1C1C",
+            DrawerBackground = "#1C1C1C",
+            AppbarText = "#E0E0E0",
+            TextPrimary = "#E0E0E0",
+            TextSecondary = "#A0A0A0",
         }
     };
-
-    private void ToggleDrawer() => _drawerOpen = !_drawerOpen;
 }
