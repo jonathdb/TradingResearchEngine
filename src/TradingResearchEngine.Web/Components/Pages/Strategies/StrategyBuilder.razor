@@ -84,7 +84,7 @@ else if (_step == 2)
     <MudText Typo="Typo.h6" Class="mb-3">Entry & Exit Rules</MudText>
     @if (_selectedTemplate is not null)
     {
-        <MudText Typo="Typo.body2" Class="mb-3" Class="text-muted">
+        <MudText Typo="Typo.body2" Class="mb-3 text-muted">
             Configure parameters for @_selectedTemplate.Name. Defaults are pre-filled.
         </MudText>
         @foreach (var param in _parameters.Keys.ToList())
