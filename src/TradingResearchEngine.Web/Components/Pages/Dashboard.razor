@@ -18,7 +18,7 @@ else
         @foreach (var s in _strategies)
         {
             var lastRun = _lastRunMap.GetValueOrDefault(s.StrategyType);
-            <MudPaper Class="pa-3" Style="min-width:180px; cursor:pointer; border-left:3px solid @(lastRun is not null ? "#4F98A3" : "#555");"
+            <MudPaper Class="pa-3" Style="@($"min-width:180px; cursor:pointer; border-left:3px solid {(lastRun is not null ? "#4F98A3" : "#555")};")"
                       Elevation="1" @onclick="@(() => Nav.NavigateTo($"/strategies/{s.StrategyId}"))">
                 <MudText Typo="Typo.subtitle2" Style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">@s.StrategyName</MudText>
                 <MudText Typo="Typo.body2" Class="@GetSharpeClass(lastRun?.SharpeRatio)">
