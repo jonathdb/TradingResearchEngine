@@ -1,49 +1,38 @@
 @using ApexCharts
 @using TradingResearchEngine.Application.Research.Results
 
-@if (_series is not null && _series.Count > 0 && _simPaths is not null)
+@if (_hasData)
 {
     <ApexChart TItem="McPoint"
                Options="_options"
                Height="450">
-        @* Simulated paths — thin, semi-transparent *@
-        @foreach (var path in _simPaths)
-        {
-            <ApexPointSeries TItem="McPoint"
-                             Items="path"
-                             SeriesType="SeriesType.Line"
-                             Name=""
-                             XValue="@(p => (decimal)p.Step)"
-                             YValue="@(p => p.Equity)"
-                             Stroke="@(new SeriesStroke { Width = 1 })" />
-        }
 
-        @* P10 band *@
+        @* P10 band — dashed, muted *@
         <ApexPointSeries TItem="McPoint"
                          Items="_p10Band"
                          SeriesType="SeriesType.Line"
                          Name="P10"
                          XValue="@(p => (decimal)p.Step)"
                          YValue="@(p => p.Equity)"
-                         Stroke="@(new SeriesStroke { Width = 2, DashSpace = 4 })" />
+                         Stroke="@(new SeriesStroke { Width = 2, DashSpace = 6 })" />
 
-        @* P50 band *@
+        @* P50 band — dashed, slightly brighter *@
         <ApexPointSeries TItem="McPoint"
                          Items="_p50Band"
                          SeriesType="SeriesType.Line"
-                         Name="P50"
+                         Name="P50 (Median)"
                          XValue="@(p => (decimal)p.Step)"
                          YValue="@(p => p.Equity)"
                          Stroke="@(new SeriesStroke { Width = 2, DashSpace = 4 })" />
 
-        @* P90 band *@
+        @* P90 band — dashed, muted *@
         <ApexPointSeries TItem="McPoint"
                          Items="_p90Band"
                          SeriesType="SeriesType.Line"
                          Name="P90"
                          XValue="@(p => (decimal)p.Step)"
                          YValue="@(p => p.Equity)"
-                         Stroke="@(new SeriesStroke { Width = 2, DashSpace = 4 })" />
+                         Stroke="@(new SeriesStroke { Width = 2, DashSpace = 6 })" />
 
         @* Actual result — bold, highlighted *@
         <ApexPointSeries TItem="McPoint"
@@ -55,51 +44,61 @@
                          Stroke="@(new SeriesStroke { Width = 4 })" />
     </ApexChart>
 }
+else
+{
+    <MudAlert Severity="Severity.Info" Dense="true">No Monte Carlo data to display.</MudAlert>
+}
 
 @code {
     [Parameter] public MonteCarloResult? McResult { get; set; }
     [Parameter] public IReadOnlyList<TradingResearchEngine.Core.Portfolio.EquityCurvePoint>? ActualEquityCurve { get; set; }
     [Parameter] public decimal StartEquity { get; set; } = 100_000m;
 
-    private List<List<McPoint>>? _simPaths;
     private List<McPoint>? _p10Band;
     private List<McPoint>? _p50Band;
     private List<McPoint>? _p90Band;
     private List<McPoint>? _actualPath;
-    private List<object>? _series;
+    private bool _hasData;
 
     private ApexChartOptions<McPoint> _options = new()
     {
         Chart = new Chart
         {
-            Toolbar = new Toolbar { Show = true },
-            Animations = new Animations { Enabled = false }
+            Toolbar = new Toolbar { Show = false },
+            Animations = new Animations { Enabled = false },
+            Background = "transparent"
         },
+        Colors = new List<string> { "#555555", "#888888", "#555555", "#4F98A3" },
         Stroke = new Stroke { Curve = Curve.Straight },
         Xaxis = new XAxis { Title = new AxisTitle { Text = "Trade #" } },
         Yaxis = new List<YAxis>
         {
-            new() { Labels = new YAxisLabels { Formatter = "function(val) { return '$' + val.toFixed(0); }" },
-                    Title = new AxisTitle { Text = "Equity" } }
+            new()
+            {
+                Labels = new YAxisLabels { Formatter = "function(val) { return '$' + val.toFixed(0); }" },
+                Title = new AxisTitle { Text = "Equity" }
+            }
         },
-        Legend = new Legend { Show = true, Position = LegendPosition.Top },
-        Tooltip = new Tooltip { Enabled = false }
+        Legend = new Legend
+        {
+            Show = true,
+            Position = LegendPosition.Top,
+            FontSize = "12px"
+        },
+        Tooltip = new Tooltip { Enabled = true, Shared = false },
+        Grid = new Grid { BorderColor = "#333333" },
+        Theme = new Theme { Mode = Mode.Dark }
     };
 
     protected override void OnParametersSet()
     {
-        if (McResult is null) { _series = null; return; }
-
-        // Build simulation paths (limit display to 50 for performance)
-        int maxDisplay = Math.Min(50, McResult.SampledPaths.Count);
-        _simPaths = new List<List<McPoint>>(maxDisplay);
-        for (int i = 0; i < maxDisplay; i++)
+        if (McResult is null || McResult.PercentileBands.Count == 0)
         {
-            var path = McResult.SampledPaths[i * (McResult.SampledPaths.Count / maxDisplay)];
-            _simPaths.Add(path.EquityValues.Select((eq, step) => new McPoint(step, eq)).ToList());
+            _hasData = false;
+            return;
         }
 
-        // Percentile bands
+        // Percentile bands only — no individual sim paths (removes legend clutter)
         _p10Band = McResult.PercentileBands.Select(b => new McPoint(b.Step, b.P10)).ToList();
         _p50Band = McResult.PercentileBands.Select(b => new McPoint(b.Step, b.P50)).ToList();
         _p90Band = McResult.PercentileBands.Select(b => new McPoint(b.Step, b.P90)).ToList();
@@ -108,15 +107,21 @@
         if (ActualEquityCurve is not null && ActualEquityCurve.Count > 0)
         {
             _actualPath = new List<McPoint> { new(0, StartEquity) };
-            for (int i = 0; i < ActualEquityCurve.Count; i++)
-                _actualPath.Add(new McPoint(i + 1, ActualEquityCurve[i].TotalEquity));
+            int step = 1;
+            // Sample to match percentile band length
+            int sampleRate = Math.Max(1, ActualEquityCurve.Count / Math.Max(1, McResult.PercentileBands.Count - 1));
+            for (int i = 0; i < ActualEquityCurve.Count && step < McResult.PercentileBands.Count; i += sampleRate)
+            {
+                _actualPath.Add(new McPoint(step, ActualEquityCurve[i].TotalEquity));
+                step++;
+            }
         }
         else
         {
             _actualPath = new List<McPoint> { new(0, StartEquity) };
         }
 
-        _series = new List<object> { "trigger" }; // non-null to render
+        _hasData = true;
     }
 
     public record McPoint(int Step, decimal Equity);
