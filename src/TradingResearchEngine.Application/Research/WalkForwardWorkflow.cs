@@ -50,8 +50,10 @@ public sealed class WalkForwardWorkflow : IResearchWorkflow<WalkForwardOptions, 
         {
             ct.ThrowIfCancellationRequested();
 
-            var isStart = options.AnchoredWindow ? dataFrom : dataFrom + currentOffset;
-            var isEnd = isStart + options.InSampleLength;
+            var isStart = options.EffectiveMode == WalkForwardMode.Anchored ? dataFrom : dataFrom + currentOffset;
+            var isEnd = options.EffectiveMode == WalkForwardMode.Anchored
+                ? dataFrom + options.InSampleLength + currentOffset  // Anchored: start fixed, end advances (expanding window)
+                : isStart + options.InSampleLength;                  // Rolling: fixed-length window slides forward
             var oosStart = isEnd;
             var oosEnd = oosStart + options.OutOfSampleLength;
 

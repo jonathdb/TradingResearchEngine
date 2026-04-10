@@ -65,7 +65,7 @@ public sealed class SweepOptions
 /// <summary>Options for walk-forward analysis windowing.</summary>
 public sealed class WalkForwardOptions
 {
-    /// <summary>Length of the in-sample window.</summary>
+    /// <summary>Length of the in-sample window (used as initial IS length in Anchored mode).</summary>
     public TimeSpan InSampleLength { get; set; }
 
     /// <summary>Length of the out-of-sample window.</summary>
@@ -74,6 +74,15 @@ public sealed class WalkForwardOptions
     /// <summary>Step size between consecutive windows.</summary>
     public TimeSpan StepSize { get; set; }
 
-    /// <summary>When true, the in-sample window always starts at the data origin (anchored).</summary>
+    /// <summary>When true, the in-sample window always starts at the data origin (anchored). Deprecated: use <see cref="Mode"/> instead.</summary>
     public bool AnchoredWindow { get; set; }
+
+    /// <summary>V4: Walk-forward mode. When set, overrides <see cref="AnchoredWindow"/>.</summary>
+    public TradingResearchEngine.Application.Research.WalkForwardMode? Mode { get; set; }
+
+    /// <summary>Resolved mode: prefers <see cref="Mode"/> if set, falls back to <see cref="AnchoredWindow"/>.</summary>
+    public TradingResearchEngine.Application.Research.WalkForwardMode EffectiveMode =>
+        Mode ?? (AnchoredWindow
+            ? TradingResearchEngine.Application.Research.WalkForwardMode.Anchored
+            : TradingResearchEngine.Application.Research.WalkForwardMode.Rolling);
 }

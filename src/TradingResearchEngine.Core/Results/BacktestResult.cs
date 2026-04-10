@@ -35,7 +35,13 @@ public sealed record BacktestResult(
     decimal? RecoveryFactor = null,
     ExperimentMetadata? Metadata = null,
     IReadOnlyList<EventTraceRecord>? EventTrace = null,
-    string? StrategyVersionId = null) : IHasId
+    string? StrategyVersionId = null,
+    /// <summary>V4: Exception message and context when <see cref="Status"/> is <see cref="BacktestStatus.Failed"/>.</summary>
+    string? FailureDetail = null,
+    /// <summary>V4: Deflated Sharpe Ratio adjusted for multiple testing bias (Bailey &amp; López de Prado 2014).</summary>
+    decimal? DeflatedSharpeRatio = null,
+    /// <summary>V4: Snapshot of <c>StrategyVersion.TotalTrialsRun</c> at the time this run completed.</summary>
+    int? TrialCount = null) : IHasId
 {
     /// <inheritdoc/>
     public string Id => RunId.ToString();

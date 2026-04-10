@@ -20,6 +20,13 @@ builder.Services.AddRazorComponents()
 
 var app = builder.Build();
 
+// V4: Run migration on startup (non-blocking, failure-safe)
+using (var scope = app.Services.CreateScope())
+{
+    var migration = scope.ServiceProvider.GetRequiredService<TradingResearchEngine.Infrastructure.Persistence.MigrationService>();
+    await migration.MigrateIfNeededAsync();
+}
+
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Error");

@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using TradingResearchEngine.Application.Metrics;
 using TradingResearchEngine.Application.Strategy;
 using TradingResearchEngine.Core.Configuration;
 using TradingResearchEngine.Core.DataHandling;
@@ -90,6 +91,9 @@ public sealed class RunScenarioUseCase
         var metadata = BuildMetadata(config);
         result = result with { Metadata = metadata };
 
+        // V4: Enrich with trial count and DSR if linked to a strategy version
+        result = await EnrichWithTrialCountAndDsrAsync(result, ct);
+
         // Auto-save result if repository is available and autoSave is enabled
         if (autoSave && _repository is not null && result.Status == BacktestStatus.Completed)
         {
@@ -98,6 +102,89 @@ public sealed class RunScenarioUseCase
         }
 
         return ScenarioRunResult.Success(result);
+    }
+
+    /// <summary>
+    /// V4: Increments TotalTrialsRun on the parent StrategyVersion and computes DSR.
+    /// Only runs if the result is linked to a strategy version.
+    /// </summary>
+    private async Task<BacktestResult> EnrichWithTrialCountAndDsrAsync(
+        BacktestResult result, CancellationToken ct)
+    {
+        if (result.StrategyVersionId is null) return result;
+
+        var strategyRepo = _services.GetService<IStrategyRepository>();
+        if (strategyRepo is null) return result;
+
+        // Find the version
+        StrategyVersion? version = null;
+        var strategies = await strategyRepo.ListAsync(ct);
+        foreach (var s in strategies)
+        {
+            var versions = await strategyRepo.GetVersionsAsync(s.StrategyId, ct);
+            version = versions.FirstOrDefault(v => v.StrategyVersionId == result.StrategyVersionId);
+            if (version is not null) break;
+        }
+        if (version is null) return result;
+
+        // Increment trial count: completed/failed = +1, cancelled with bars = +1
+        bool shouldIncrement = result.Status is BacktestStatus.Completed or BacktestStatus.Failed
+            || (result.Status == BacktestStatus.Cancelled && result.EquityCurve.Count > 0);
+
+        if (shouldIncrement)
+        {
+            var updatedVersion = version with { TotalTrialsRun = version.TotalTrialsRun + 1 };
+            try { await strategyRepo.SaveVersionAsync(updatedVersion, ct); }
+            catch (Exception ex) { _logger.LogWarning(ex, "Failed to increment TotalTrialsRun for version {VersionId}.", version.StrategyVersionId); }
+            version = updatedVersion;
+        }
+
+        // Snapshot trial count
+        result = result with { TrialCount = version.TotalTrialsRun };
+
+        // Compute DSR for completed runs with a non-null Sharpe
+        if (result.Status == BacktestStatus.Completed && result.SharpeRatio is not null && result.SharpeRatio != 0)
+        {
+            // Compute skewness and kurtosis from equity curve returns
+            var (skewness, kurtosis) = ComputeReturnMoments(result);
+            var dsr = DsrCalculator.Compute(
+                result.SharpeRatio.Value,
+                version.TotalTrialsRun,
+                skewness, kurtosis,
+                result.EquityCurve.Count,
+                result.ScenarioConfig.BarsPerYear);
+            result = result with { DeflatedSharpeRatio = dsr };
+        }
+
+        return result;
+    }
+
+    /// <summary>Computes skewness and excess kurtosis from equity curve period returns.</summary>
+    private static (decimal Skewness, decimal Kurtosis) ComputeReturnMoments(BacktestResult result)
+    {
+        if (result.EquityCurve.Count < 3) return (0m, 0m);
+
+        var returns = new List<double>();
+        for (int i = 1; i < result.EquityCurve.Count; i++)
+        {
+            var prev = (double)result.EquityCurve[i - 1].TotalEquity;
+            var curr = (double)result.EquityCurve[i].TotalEquity;
+            if (prev > 0) returns.Add(curr / prev - 1.0);
+        }
+
+        if (returns.Count < 3) return (0m, 0m);
+
+        double n = returns.Count;
+        double mean = returns.Average();
+        double variance = returns.Sum(r => (r - mean) * (r - mean)) / (n - 1);
+        double std = Math.Sqrt(variance);
+        if (std <= 0) return (0m, 0m);
+
+        double skew = returns.Sum(r => Math.Pow((r - mean) / std, 3)) * n / ((n - 1) * (n - 2));
+        double kurt = returns.Sum(r => Math.Pow((r - mean) / std, 4)) * n * (n + 1) / ((n - 1) * (n - 2) * (n - 3))
+                      - 3.0 * (n - 1) * (n - 1) / ((n - 2) * (n - 3));
+
+        return ((decimal)Math.Round(skew, 6), (decimal)Math.Round(kurt, 6));
     }
 
     private static List<string> Validate(ScenarioConfig config)

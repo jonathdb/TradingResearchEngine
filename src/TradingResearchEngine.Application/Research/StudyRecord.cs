@@ -14,7 +14,13 @@ public sealed record StudyRecord(
     StudyStatus Status,
     DateTimeOffset CreatedAt,
     string? SourceRunId = null,
-    string? ErrorSummary = null) : IHasId
+    string? ErrorSummary = null,
+    /// <summary>V4: True when the study was cancelled before completion.</summary>
+    bool IsPartial = false,
+    /// <summary>V4: Number of completed units (paths, windows, combinations) when partial.</summary>
+    int CompletedCount = 0,
+    /// <summary>V4: Total planned units (paths, windows, combinations).</summary>
+    int TotalCount = 0) : IHasId
 {
     /// <inheritdoc/>
     public string Id => StudyId;
@@ -25,10 +31,16 @@ public enum StudyType
 {
     MonteCarlo,
     WalkForward,
+    /// <summary>V4: Walk-forward with fixed training start, expanding window.</summary>
+    AnchoredWalkForward,
+    /// <summary>V4: Combinatorial Purged Cross-Validation with PBO metric. Deferred to V4.1.</summary>
+    CombinatorialPurgedCV,
     Sensitivity,
     ParameterSweep,
     Realism,
-    ParameterStability
+    ParameterStability,
+    /// <summary>V4: Post-hoc regime segmentation analysis.</summary>
+    RegimeSegmentation
 }
 
 /// <summary>Lifecycle status of a study.</summary>

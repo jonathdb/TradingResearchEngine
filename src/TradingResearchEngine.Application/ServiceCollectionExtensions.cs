@@ -70,6 +70,13 @@ public static class ServiceCollectionExtensions
         services.AddScoped<PropFirmEvaluator>();
         services.AddScoped<PropFirmVarianceWorkflow>();
 
+        // V4: Research checklist and final validation
+        services.AddScoped<ResearchChecklistService>();
+        services.AddScoped<FinalValidationUseCase>();
+
+        // V4: Background study service (singleton — manages study lifecycle across navigations)
+        services.AddSingleton<BackgroundStudyService>();
+
         return services;
     }
 

@@ -72,6 +72,27 @@ public static class ServiceCollectionExtensions
             return new Settings.SettingsService(settingsPath);
         });
 
+        // V4: Data file repository
+        services.AddSingleton<TradingResearchEngine.Application.DataFiles.IDataFileRepository>(sp =>
+        {
+            var baseDir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "TradingResearchEngine", "DataFiles");
+            return new JsonDataFileRepository(baseDir);
+        });
+
+        // V4: Report exporter
+        services.AddSingleton<TradingResearchEngine.Application.Export.IReportExporter>(sp =>
+        {
+            var exportDir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "TradingResearchEngine", "Exports");
+            return new Export.ReportExporter(exportDir);
+        });
+
+        // V4: Migration service
+        services.AddSingleton<MigrationService>();
+
         // V3: Strategy templates
         services.AddSingleton<IReadOnlyList<TradingResearchEngine.Application.Strategy.StrategyTemplate>>(
             TradingResearchEngine.Application.Strategy.DefaultStrategyTemplates.All);

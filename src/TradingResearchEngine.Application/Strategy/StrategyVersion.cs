@@ -14,7 +14,11 @@ public sealed record StrategyVersion(
     Dictionary<string, object> Parameters,
     ScenarioConfig BaseScenarioConfig,
     DateTimeOffset CreatedAt,
-    string? ChangeNote = null) : IHasId
+    string? ChangeNote = null,
+    /// <summary>V4: Total number of trial executions against this version. Incremented per run (+1) or sweep (+N combinations).</summary>
+    int TotalTrialsRun = 0,
+    /// <summary>V4: Locked date range for the sealed held-out test set. Null if not configured.</summary>
+    DateRangeConstraint? SealedTestSet = null) : IHasId
 {
     /// <inheritdoc/>
     public string Id => StrategyVersionId;
