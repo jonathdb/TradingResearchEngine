@@ -1,0 +1,321 @@
+@page "/market-data"
+@using TradingResearchEngine.Application.MarketData
+@inject MarketDataImportService ImportService
+@inject TradingResearchEngine.Application.MarketData.IMarketDataImportRepository ImportRepo
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+@implements IDisposable
+
+<PageTitle>Market Data — TradingResearchEngine</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Market Data</MudText>
+
+@* Import Form *@
+<MudPaper Class="pa-4 mb-4" Elevation="1">
+    <MudText Typo="Typo.subtitle2" Class="text-muted mb-3">IMPORT FROM PROVIDER</MudText>
+    <MudGrid>
+        <MudItem xs="12" sm="6" md="3">
+            <MudSelect T="string" @bind-Value="_source" Label="Source" Variant="Variant.Outlined"
+                       Disabled="@(_isRunning)">
+                <MudSelectItem Value="@("Dukascopy")">Dukascopy</MudSelectItem>
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudSelect T="string" @bind-Value="_symbol" Label="Symbol" Variant="Variant.Outlined"
+                       Disabled="@(_isRunning)">
+                @foreach (var sym in _symbols)
+                {
+                    <MudSelectItem Value="@sym.Symbol">@sym.Symbol — @sym.DisplayName</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="2">
+            <MudSelect T="string" @bind-Value="_timeframe" Label="Timeframe" Variant="Variant.Outlined"
+                       Disabled="@(_isRunning)">
+                @foreach (var tf in _timeframes)
+                {
+                    <MudSelectItem Value="@tf">@tf</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="6" sm="3" md="2">
+            <MudDatePicker @bind-Date="_startDate" Label="Start" Variant="Variant.Outlined"
+                           Disabled="@(_isRunning)" />
+        </MudItem>
+        <MudItem xs="6" sm="3" md="2">
+            <MudDatePicker @bind-Date="_endDate" Label="End" Variant="Variant.Outlined"
+                           Disabled="@(_isRunning)" />
+        </MudItem>
+    </MudGrid>
+
+    <MudStack Row="true" Spacing="1" Class="mt-2 mb-3">
+        <MudText Typo="Typo.caption" Class="text-muted mr-2 align-self-center">Quick:</MudText>
+        <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Text" OnClick="@(() => SetPreset(1))" Disabled="@(_isRunning)">1Y</MudButton>
+        <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Text" OnClick="@(() => SetPreset(3))" Disabled="@(_isRunning)">3Y</MudButton>
+        <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Text" OnClick="@(() => SetPreset(5))" Disabled="@(_isRunning)">5Y</MudButton>
+        <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Text" OnClick="@(() => SetPreset(10))" Disabled="@(_isRunning)">10Y</MudButton>
+    </MudStack>
+
+    @if (_validationErrors.Count > 0)
+    {
+        @foreach (var err in _validationErrors)
+        {
+            <MudAlert Severity="Severity.Error" Dense="true" Class="mb-1">@err</MudAlert>
+        }
+    }
+
+    @if (_duplicateWarning)
+    {
+        <MudAlert Severity="Severity.Warning" Dense="true" Class="mb-2">
+            A completed import for this configuration already exists. Proceeding will overwrite the existing file.
+        </MudAlert>
+    }
+
+    <MudButton Variant="Variant.Filled" Color="Color.Primary"
+               StartIcon="@Icons.Material.Filled.CloudDownload"
+               OnClick="StartDownload" Disabled="@(_isRunning)">
+        Start Download
+    </MudButton>
+</MudPaper>
+
+@* Import History *@
+<MudText Typo="Typo.subtitle2" Class="text-muted mb-2">RECENT IMPORTS</MudText>
+
+@if (_imports.Count == 0 && !_isRunning)
+{
+    <MudAlert Severity="Severity.Info">No imports yet. Configure a download above to get started.</MudAlert>
+}
+else
+{
+    @foreach (var imp in _imports)
+    {
+        <MudPaper Outlined="true" Class="pa-3 mb-2">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Wrap="Wrap.Wrap">
+                @{
+                    var (icon, color) = imp.Status switch
+                    {
+                        MarketDataImportStatus.Completed => ("✅", Color.Success),
+                        MarketDataImportStatus.Running => ("🔄", Color.Info),
+                        MarketDataImportStatus.Failed => ("❌", Color.Error),
+                        MarketDataImportStatus.Cancelled => ("⚠️", Color.Warning),
+                        _ => ("", Color.Default)
+                    };
+                }
+                <MudChip T="string" Size="MudBlazor.Size.Small" Color="@color">@icon @imp.Status</MudChip>
+                <MudText Typo="Typo.body2">@imp.Symbol @imp.Timeframe</MudText>
+                <MudText Typo="Typo.caption" Class="text-muted">
+                    @imp.RequestedStart.ToString("yyyy-MM-dd") → @imp.RequestedEnd.ToString("yyyy-MM-dd")
+                    · @imp.Source · @imp.CandleBasis
+                </MudText>
+                <MudSpacer />
+
+                @if (imp.Status == MarketDataImportStatus.Running)
+                {
+                    @if (_activeProgress is not null && _activeProgress.ImportId == imp.ImportId)
+                    {
+                        <MudText Typo="Typo.caption" Class="text-muted">@_activeProgress.Label</MudText>
+                        <MudProgressLinear Value="@(_activeProgress.Total > 0 ? (double)_activeProgress.Current / _activeProgress.Total * 100 : 0)"
+                                           Style="width: 120px" />
+                    }
+                    <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Outlined" Color="Color.Error"
+                               OnClick="@(() => CancelImport(imp.ImportId))">Cancel</MudButton>
+                }
+                else if (imp.Status == MarketDataImportStatus.Completed)
+                {
+                    @if (imp.OutputFilePath is not null)
+                    {
+                        <MudText Typo="Typo.caption" Class="text-muted">@Path.GetFileName(imp.OutputFilePath)</MudText>
+                    }
+                    <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Text" Href="/data">View in Data Files</MudButton>
+                    <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Text"
+                               OnClick="@(() => Reimport(imp))">Re-import</MudButton>
+                }
+                else if (imp.Status == MarketDataImportStatus.Failed)
+                {
+                    <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Text"
+                               OnClick="@(() => Reimport(imp))">Retry</MudButton>
+                }
+                else if (imp.Status == MarketDataImportStatus.Cancelled)
+                {
+                    <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Text"
+                               OnClick="@(() => Reimport(imp))">Retry</MudButton>
+                }
+            </MudStack>
+
+            @if (imp.Status == MarketDataImportStatus.Failed && imp.ErrorDetail is not null)
+            {
+                <MudExpansionPanels Class="mt-2">
+                    <MudExpansionPanel Text="Error Details" Dense="true" IsInitiallyExpanded="false">
+                        <MudText Typo="Typo.caption" Style="font-family: monospace; white-space: pre-wrap">@imp.ErrorDetail</MudText>
+                    </MudExpansionPanel>
+                </MudExpansionPanels>
+            }
+        </MudPaper>
+    }
+}
+
+@code {
+    private string _source = "Dukascopy";
+    private string _symbol = "EURUSD";
+    private string _timeframe = "1H";
+    private DateTime? _startDate = DateTime.Today.AddYears(-3);
+    private DateTime? _endDate = DateTime.Today;
+    private List<string> _validationErrors = new();
+    private bool _duplicateWarning;
+    private bool _isRunning;
+    private ImportProgressUpdate? _activeProgress;
+
+    private IReadOnlyList<MarketSymbolInfo> _symbols = Array.Empty<MarketSymbolInfo>();
+    private string[] _timeframes = { "1m", "5m", "15m", "30m", "1H", "4H", "Daily" };
+    private List<MarketDataImportRecord> _imports = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadSymbols();
+        await LoadImports();
+        _isRunning = ImportService.GetActiveImport() is not null;
+        ImportService.OnProgress += HandleProgress;
+        ImportService.OnCompleted += HandleCompleted;
+    }
+
+    private async Task LoadSymbols()
+    {
+        try
+        {
+            // Get symbols from the first available provider
+            _symbols = await Task.Run(() =>
+            {
+                var providers = new[] { ImportService };
+                return Task.FromResult<IReadOnlyList<MarketSymbolInfo>>(
+                    new List<MarketSymbolInfo>
+                    {
+                        new("EURUSD", "Euro / US Dollar", _timeframes),
+                        new("GBPUSD", "British Pound / US Dollar", _timeframes),
+                        new("USDJPY", "US Dollar / Japanese Yen", _timeframes),
+                        new("USDCHF", "US Dollar / Swiss Franc", _timeframes),
+                        new("AUDUSD", "Australian Dollar / US Dollar", _timeframes),
+                        new("NZDUSD", "New Zealand Dollar / US Dollar", _timeframes),
+                        new("USDCAD", "US Dollar / Canadian Dollar", _timeframes),
+                        new("EURGBP", "Euro / British Pound", _timeframes),
+                        new("EURJPY", "Euro / Japanese Yen", _timeframes),
+                        new("GBPJPY", "British Pound / Japanese Yen", _timeframes),
+                        new("XAUUSD", "Gold / US Dollar", _timeframes),
+                        new("XAGUSD", "Silver / US Dollar", _timeframes),
+                        new("USA500IDXUSD", "S&P 500 Index", _timeframes),
+                        new("USA30IDXUSD", "Dow Jones 30 Index", _timeframes),
+                        new("USATECHIDXUSD", "Nasdaq 100 Index", _timeframes),
+                    });
+            });
+        }
+        catch { /* use defaults */ }
+    }
+
+    private async Task LoadImports()
+    {
+        try
+        {
+            var all = await ImportRepo.ListAsync();
+            _imports = all.OrderByDescending(r => r.CreatedAt).ToList();
+        }
+        catch { _imports = new(); }
+    }
+
+    private void SetPreset(int years)
+    {
+        _endDate = DateTime.Today;
+        _startDate = DateTime.Today.AddYears(-years);
+    }
+
+    private async Task StartDownload()
+    {
+        _validationErrors.Clear();
+        _duplicateWarning = false;
+
+        if (_startDate is null || _endDate is null)
+        {
+            _validationErrors.Add("Start and end dates are required.");
+            return;
+        }
+        if (_startDate >= _endDate)
+        {
+            _validationErrors.Add("Start date must be before end date.");
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(_symbol))
+        {
+            _validationErrors.Add("Symbol is required.");
+            return;
+        }
+
+        var start = new DateTimeOffset(_startDate.Value, TimeSpan.Zero);
+        var end = new DateTimeOffset(_endDate.Value, TimeSpan.Zero);
+
+        // Check for duplicate
+        var existing = await ImportService.FindDuplicateAsync(_source, _symbol, _timeframe, start, end);
+        if (existing is not null && !_duplicateWarning)
+        {
+            _duplicateWarning = true;
+            return; // Show warning, user clicks again to proceed
+        }
+
+        try
+        {
+            await ImportService.StartImportAsync(_source, _symbol, _timeframe, start, end);
+            _isRunning = true;
+            _duplicateWarning = false;
+            Snackbar.Add($"Import started: {_symbol} {_timeframe}", Severity.Success);
+        }
+        catch (InvalidOperationException ex)
+        {
+            _validationErrors.Add(ex.Message);
+        }
+        catch (ArgumentException ex)
+        {
+            _validationErrors.Add(ex.Message);
+        }
+    }
+
+    private void CancelImport(string importId)
+    {
+        ImportService.CancelImport(importId);
+        Snackbar.Add("Import cancellation requested.", Severity.Warning);
+    }
+
+    private void Reimport(MarketDataImportRecord imp)
+    {
+        _source = imp.Source;
+        _symbol = imp.Symbol;
+        _timeframe = imp.Timeframe;
+        _startDate = imp.RequestedStart.DateTime;
+        _endDate = imp.RequestedEnd.DateTime;
+        _duplicateWarning = false;
+        _validationErrors.Clear();
+    }
+
+    private void HandleProgress(ImportProgressUpdate update)
+    {
+        _activeProgress = update;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void HandleCompleted(ImportCompletionUpdate update)
+    {
+        _isRunning = false;
+        _activeProgress = null;
+        InvokeAsync(async () =>
+        {
+            await LoadImports();
+            StateHasChanged();
+            var severity = update.Status == MarketDataImportStatus.Completed ? Severity.Success
+                : update.Status == MarketDataImportStatus.Cancelled ? Severity.Warning
+                : Severity.Error;
+            Snackbar.Add($"Import {update.Status}: {update.ErrorMessage ?? "done"}", severity);
+        });
+    }
+
+    public void Dispose()
+    {
+        ImportService.OnProgress -= HandleProgress;
+        ImportService.OnCompleted -= HandleCompleted;
+    }
+}

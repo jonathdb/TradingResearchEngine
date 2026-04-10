@@ -114,20 +114,37 @@
 
 
     - _Requirements: design duplicate handling_
-  - [ ] 5.4 Write unit tests for MarketDataImportService
+
+  - [x] 5.4 Write unit tests for MarketDataImportService
+
+
     - Start creates Running record, completion creates DataFileRecord, failure sets Failed
     - Concurrency guard throws on second start, cancel sets Cancelled
     - Startup recovery resets Running to Failed
+
     - _Requirements: 10.1_
   - [ ] 5.5 Wire MarketDataImportService and DukascopyImportProvider into DI
     - Register in ServiceCollectionExtensions
+
+
     - Call RecoverOnStartupAsync on Web startup
+
     - _Requirements: 5.6_
 
-- [ ] 6. Web UI — Market Data screen
-  - [ ] 6.1 Create `MarketData.razor` page at /market-data
+
+
+
+
+- [x] 6. Web UI — Market Data screen
+
+
+  - [x] 6.1 Create `MarketData.razor` page at /market-data
+
     - Import form: source selector, symbol selector, timeframe selector, date pickers, quick presets
+
+
     - Validation: inline errors for invalid range, unsupported symbol
+
     - Start Download button, disabled while import running
     - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7_
   - [ ] 6.2 Add import history list to MarketData.razor

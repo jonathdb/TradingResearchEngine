@@ -5,9 +5,15 @@
 <PageTitle>Data Files — TradingResearchEngine</PageTitle>
 
 <MudText Typo="Typo.h4" Class="mb-2">Data Files</MudText>
-<MudText Typo="Typo.caption" Class="mb-4 text-muted">
-    Directory: @DataService.DataDirectory
-</MudText>
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-4">
+    <MudText Typo="Typo.caption" Class="text-muted">
+        Directory: @DataService.DataDirectory
+    </MudText>
+    <MudSpacer />
+    <MudButton Variant="Variant.Outlined" Size="MudBlazor.Size.Small"
+               StartIcon="@Icons.Material.Filled.CloudDownload"
+               Href="/market-data">Import from Market Source</MudButton>
+</MudStack>
 
 @if (_loading)
 {

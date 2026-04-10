@@ -92,6 +92,9 @@ else if (_step == 1)
             }
         </MudSelect>
     }
+    <MudText Typo="Typo.caption" Class="text-muted mb-3">
+        Can't find your data? <MudLink Href="/market-data">Import market data →</MudLink>
+    </MudText>
     <MudAlert Severity="Severity.Info" Dense="true" Class="mb-3">
         @_timeframe bars use @BarsPerYear bars/year for annualisation.
     </MudAlert>
