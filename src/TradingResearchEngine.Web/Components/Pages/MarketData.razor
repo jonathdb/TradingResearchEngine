@@ -247,8 +247,8 @@ else
             return;
         }
 
-        var start = new DateTimeOffset(_startDate.Value, TimeSpan.Zero);
-        var end = new DateTimeOffset(_endDate.Value, TimeSpan.Zero);
+        var start = new DateTimeOffset(DateTime.SpecifyKind(_startDate.Value.Date, DateTimeKind.Utc), TimeSpan.Zero);
+        var end = new DateTimeOffset(DateTime.SpecifyKind(_endDate.Value.Date, DateTimeKind.Utc), TimeSpan.Zero);
 
         // Check for duplicate
         var existing = await ImportService.FindDuplicateAsync(_source, _symbol, _timeframe, start, end);

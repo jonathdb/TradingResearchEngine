@@ -206,9 +206,14 @@ All imported data is normalized to: `Timestamp,Open,High,Low,Close,Volume` with 
 
 `Program.cs` calls `RecoverOnStartupAsync` on startup inside a try/catch so recovery failures don't prevent the app from starting.
 
-### Planned Components (Not Yet Implemented)
+### Integration Tests (`IntegrationTests/MarketData/MarketDataImportFlowTests.cs`)
 
-- `MarketData.razor` — Web UI screen for configuring and monitoring imports
+End-to-end tests that exercise the full import lifecycle using real `JsonMarketDataImportRepository` and `JsonDataFileRepository` instances against temp directories. Each test creates a fresh `MarketDataImportService` with mock providers and verifies the complete flow from `StartImportAsync` through to persisted records and output files.
+
+- `FullImport_MockProvider_CreatesValidDataFile` — runs a successful import with a `MockMarketDataProvider` that writes a 2-bar canonical CSV. Asserts: import record status is `Completed`, `OutputFilePath` and `OutputFileId` are populated, a single `DataFileRecord` exists with `ValidationStatus.Valid` and correct `DetectedSymbol`, and the CSV file on disk has the expected header and data rows.
+- `FailedImport_PersistsFailureRecord` — runs an import with a `FailingMarketDataProvider` that throws during download. Asserts: import record status is `Failed`, `ErrorDetail` contains the exception message, completion event carries the error, and no `DataFileRecord` is created.
+
+Both tests use `TaskCompletionSource<ImportCompletionUpdate>` subscribed to `OnCompleted` with a 10-second timeout to await the background task.
 
 ### Design Decisions
 

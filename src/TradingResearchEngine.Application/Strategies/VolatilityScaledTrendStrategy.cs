@@ -90,10 +90,9 @@ public sealed class VolatilityScaledTrendStrategy : IStrategy
         if (fastSma > slowSma && _position != Direction.Long)
         {
             _position = Direction.Long;
-            decimal strength = _atr > 0 ? bar.Close / _atr : bar.Close;
             return new EngineEvent[]
             {
-                new SignalEvent(bar.Symbol, Direction.Long, strength, bar.Timestamp)
+                new SignalEvent(bar.Symbol, Direction.Long, bar.Close, bar.Timestamp)
             };
         }
 

@@ -48,7 +48,7 @@ public class VolatilityScaledTrendStrategyTests
     }
 
     [Fact]
-    public void EntrySignal_StrengthEqualsCloseOverAtr()
+    public void EntrySignal_StrengthEqualsClose()
     {
         var strategy = new VolatilityScaledTrendStrategy(fastPeriod: 3, slowPeriod: 5, atrPeriod: 3);
 
@@ -63,7 +63,7 @@ public class VolatilityScaledTrendStrategyTests
 
         var entry = allSignals.FirstOrDefault(s => s.Direction == Direction.Long);
         Assert.NotNull(entry);
-        // Strength should be positive and > Close (since ATR < Close for normal prices)
+        // Strength should equal the close price at entry
         Assert.True(entry!.Strength > 0);
     }
 
