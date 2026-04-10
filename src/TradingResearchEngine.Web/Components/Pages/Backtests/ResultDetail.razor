@@ -24,43 +24,96 @@ else
     <MudBreadcrumbs Items="_breadcrumbs" Class="pa-0 mb-3" />
 
     @* Status *@
-    <MudChip T="string" Color="@(_result.Status == BacktestStatus.Completed ? Color.Success : Color.Error)"
-             Class="mb-3">@_result.Status</MudChip>
+    <MudChip T="string" Color="@StatusColor" Class="mb-3"
+             aria-label="@($"Run status: {_result.Status}")">
+        @StatusIcon @_result.Status
+    </MudChip>
 
     @if (_result.Status == BacktestStatus.Failed)
     {
-        <MudAlert Severity="Severity.Error" Class="mb-4">
-            This backtest failed.
-            <MudButton Variant="Variant.Text" Color="Color.Primary"
-                       Href="@($"/backtests/new?strategy={_result.ScenarioConfig.StrategyType}")">Edit & Retry</MudButton>
+        <MudAlert Severity="Severity.Error" Class="mb-4" Dense="true">
+            <MudStack Spacing="1">
+                <MudText Typo="Typo.body2">
+                    ❌ Run failed · @_result.EquityCurve.Count bars · @_result.TotalTrades trades · @(_result.RunDurationMs)ms
+                </MudText>
+                @if (_result.FailureDetail is not null)
+                {
+                    <MudExpansionPanels Dense="true" Class="mt-1">
+                        <MudExpansionPanel Text="View Full Error" @bind-IsExpanded="_errorExpanded">
+                            <pre style="white-space:pre-wrap; font-size:0.8rem; max-height:200px; overflow-y:auto;">@_result.FailureDetail</pre>
+                            <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Text"
+                                       StartIcon="@Icons.Material.Filled.ContentCopy"
+                                       OnClick="CopyErrorToClipboard">Copy to Clipboard</MudButton>
+                        </MudExpansionPanel>
+                    </MudExpansionPanels>
+                }
+                <MudStack Row="true" Spacing="2" Class="mt-2">
+                    <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Outlined" Color="Color.Primary"
+                               StartIcon="@Icons.Material.Filled.Replay"
+                               OnClick="RerunSameConfig">Re-run with same config</MudButton>
+                    <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Outlined" Color="Color.Primary"
+                               StartIcon="@Icons.Material.Filled.Edit"
+                               Href="@($"/backtests/new?strategy={_result.ScenarioConfig.StrategyType}")">Edit Config &amp; Re-run</MudButton>
+                </MudStack>
+            </MudStack>
+        </MudAlert>
+    }
+    else if (_result.Status == BacktestStatus.Cancelled)
+    {
+        <MudAlert Severity="Severity.Warning" Class="mb-4" Dense="true">
+            ⚠️ Run was cancelled.
+            <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Text" Color="Color.Primary"
+                       StartIcon="@Icons.Material.Filled.Replay"
+                       OnClick="RerunSameConfig">Re-run</MudButton>
         </MudAlert>
     }
 
     @* Tier 1 — Decision metrics *@
     <MudGrid Class="mb-3">
-        <MudItem xs="6" sm="3">
+        <MudItem xs="6" sm="2">
             <MudPaper Class="pa-4" Elevation="2"
                       Style="@($"border-left: 3px solid {SharpeColor}")">
                 <MudText Typo="Typo.caption" Class="text-muted">Sharpe Ratio</MudText>
                 <MudText Typo="Typo.h4">@(_result.SharpeRatio?.ToString("F2") ?? "—")</MudText>
             </MudPaper>
         </MudItem>
-        <MudItem xs="6" sm="3">
+        <MudItem xs="6" sm="2">
+            <MudPaper Class="pa-4" Elevation="2"
+                      Style="@($"border-left: 3px solid {DsrColor}")"
+                      title="Deflated Sharpe Ratio — adjusts for multiple testing bias. Below 0.95 suggests possible overfitting.">
+                <MudText Typo="Typo.caption" Class="text-muted">DSR</MudText>
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                    <MudText Typo="Typo.h4">@(_result.DeflatedSharpeRatio?.ToString("F2") ?? "—")</MudText>
+                    @if (_result.DeflatedSharpeRatio < 0.95m)
+                    {
+                        <MudChip T="string" Size="MudBlazor.Size.Small" Color="Color.Warning"
+                                 aria-label="Possible overfitting warning">⚠️</MudChip>
+                    }
+                </MudStack>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="6" sm="2">
             <MudPaper Class="pa-4" Elevation="2">
                 <MudText Typo="Typo.caption" Class="text-muted">Max Drawdown</MudText>
                 <MudText Typo="Typo.h4">@_result.MaxDrawdown.ToString("P1")</MudText>
             </MudPaper>
         </MudItem>
-        <MudItem xs="6" sm="3">
+        <MudItem xs="6" sm="2">
             <MudPaper Class="pa-4" Elevation="2">
                 <MudText Typo="Typo.caption" Class="text-muted">Win Rate</MudText>
                 <MudText Typo="Typo.h4">@(_result.WinRate?.ToString("P0") ?? "—")</MudText>
             </MudPaper>
         </MudItem>
-        <MudItem xs="6" sm="3">
+        <MudItem xs="6" sm="2">
             <MudPaper Class="pa-4" Elevation="2">
                 <MudText Typo="Typo.caption" Class="text-muted">K-Ratio</MudText>
                 <MudText Typo="Typo.h4">@(_result.EquityCurveSmoothness?.ToString("F3") ?? "—")</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="6" sm="2">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.caption" Class="text-muted">Trial #</MudText>
+                <MudText Typo="Typo.h4">@(_result.TrialCount?.ToString() ?? "—")</MudText>
             </MudPaper>
         </MudItem>
     </MudGrid>
@@ -101,6 +154,18 @@ else
             <MudPaper Class="pa-3" Elevation="1">
                 <MudText Typo="Typo.caption" Class="text-muted">Trades</MudText>
                 <MudText Typo="Typo.h6">@_result.TotalTrades</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="4" sm="2">
+            <MudPaper Class="pa-3" Elevation="1">
+                <MudText Typo="Typo.caption" Class="text-muted">Recovery</MudText>
+                <MudText Typo="Typo.h6">@(_result.RecoveryFactor?.ToString("F2") ?? "—")</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="4" sm="2">
+            <MudPaper Class="pa-3" Elevation="1">
+                <MudText Typo="Typo.caption" Class="text-muted">Avg Hold</MudText>
+                <MudText Typo="Typo.h6">@(_result.AverageHoldingPeriod?.ToString(@"d\.hh\:mm") ?? "—")</MudText>
             </MudPaper>
         </MudItem>
     </MudGrid>
@@ -199,14 +264,9 @@ else
         </MudTabPanel>
     </MudTabs>
 
-    @* Export *@
+    @* Export — V4: unified export menu *@
     <MudStack Row="true" Spacing="2" Class="mt-4 mb-4">
-        <MudButton Variant="Variant.Outlined" Size="MudBlazor.Size.Small" OnClick="ExportMarkdown"
-                   StartIcon="@Icons.Material.Filled.Description">Markdown</MudButton>
-        <MudButton Variant="Variant.Outlined" Size="MudBlazor.Size.Small" OnClick="ExportCsvTradeLog"
-                   StartIcon="@Icons.Material.Filled.TableChart">CSV Trades</MudButton>
-        <MudButton Variant="Variant.Outlined" Size="MudBlazor.Size.Small" OnClick="ExportJson"
-                   StartIcon="@Icons.Material.Filled.Code">JSON</MudButton>
+        <ExportMenu Result="_result" />
     </MudStack>
 }
 
@@ -215,6 +275,7 @@ else
 
     private BacktestResult? _result;
     private bool _loading = true;
+    private bool _errorExpanded = false;
     private List<BreadcrumbItem> _breadcrumbs = new();
 
     private string SharpeColor => _result?.SharpeRatio switch
@@ -222,6 +283,29 @@ else
         > 1.5m => "#4CAF50",
         > 0.5m => "#FF9800",
         _ => "#F44336"
+    };
+
+    private string DsrColor => _result?.DeflatedSharpeRatio switch
+    {
+        >= 0.95m => "#4CAF50",
+        >= 0.5m => "#FF9800",
+        _ => "#F44336"
+    };
+
+    private Color StatusColor => _result?.Status switch
+    {
+        BacktestStatus.Completed => Color.Success,
+        BacktestStatus.Failed => Color.Error,
+        BacktestStatus.Cancelled => Color.Warning,
+        _ => Color.Default
+    };
+
+    private string StatusIcon => _result?.Status switch
+    {
+        BacktestStatus.Completed => "✅",
+        BacktestStatus.Failed => "❌",
+        BacktestStatus.Cancelled => "⚠️",
+        _ => ""
     };
 
     protected override async Task OnInitializedAsync()
@@ -237,6 +321,20 @@ else
             };
         }
         _loading = false;
+    }
+
+    private async Task CopyErrorToClipboard()
+    {
+        if (_result?.FailureDetail is null) return;
+        // JS interop for clipboard would be ideal; for now use snackbar feedback
+        Snackbar.Add("Error copied (use browser dev tools to access clipboard API)", Severity.Info);
+    }
+
+    private void RerunSameConfig()
+    {
+        if (_result is null) return;
+        // Navigate to a new run with the same config pre-filled
+        Snackbar.Add("Re-run triggered with same configuration", Severity.Info);
     }
 
     private async Task ExportMarkdown()

@@ -1,0 +1,19 @@
+@using TradingResearchEngine.Application.Research
+
+@if (Study.IsPartial)
+{
+    var pct = Study.TotalCount > 0 ? (int)(100.0 * Study.CompletedCount / Study.TotalCount) : 0;
+    <MudAlert Severity="Severity.Warning" Dense="true" Class="mb-3"
+              aria-label="@($"Partial study: {Study.CompletedCount} of {Study.TotalCount} completed")">
+        ⚠️ Partial: @Study.CompletedCount of @Study.TotalCount completed (@pct%)
+        @if (Study.Type == StudyType.MonteCarlo && Study.CompletedCount < 200)
+        {
+            <MudText Typo="Typo.caption" Class="text-muted"> — Verdicts suppressed until 200+ paths complete</MudText>
+        }
+    </MudAlert>
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public StudyRecord Study { get; set; } = default!;
+}

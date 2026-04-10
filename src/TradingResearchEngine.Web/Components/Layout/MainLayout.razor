@@ -18,16 +18,19 @@
             <MudText Typo="Typo.subtitle1" Style="font-weight:600">Research Engine</MudText>
         </MudStack>
         <MudSpacer />
-        <MudText Typo="Typo.caption" Class="text-faint mr-4">v3.1</MudText>
+        <MudText Typo="Typo.caption" Class="text-faint mr-4">v4.0</MudText>
     </MudAppBar>
 
     <MudDrawer @bind-Open="_drawerOpen" ClipMode="DrawerClipMode.Always" Elevation="2">
         <NavMenu />
     </MudDrawer>
 
-    <MudMainContent Style="padding-top: 64px; padding-left: 16px; padding-right: 16px; padding-bottom: 16px;">
+    <MudMainContent Style="padding-top: 64px; padding-left: 16px; padding-right: 16px; padding-bottom: 48px;">
         @Body
     </MudMainContent>
+
+    @* V4: Execution status bar — visible during active background studies *@
+    <ExecutionStatusBar />
 </MudLayout>
 
 @code {

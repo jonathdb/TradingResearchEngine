@@ -1,4 +1,5 @@
 @page "/"
+@using TradingResearchEngine.Application.Strategy
 @inject TradingResearchEngine.Core.Persistence.IRepository<BacktestResult> ResultRepo
 @inject IStrategyRepository StrategyRepo
 @inject TradingResearchEngine.Application.Research.IStudyRepository StudyRepo
@@ -26,6 +27,7 @@ else
                     Sharpe: @(lastRun?.SharpeRatio?.ToString("F2") ?? "—")
                 </MudText>
                 <MudText Typo="Typo.caption" Class="text-muted">@(lastRun is not null ? "Active" : "Untested")</MudText>
+                <MudText Typo="Typo.caption" Style="font-size:0.7rem" Class="text-faint">@s.Stage</MudText>
             </MudPaper>
         }
         <MudPaper Class="pa-3 d-flex align-center justify-center" Elevation="0"
@@ -138,6 +140,20 @@ else
         </MudItem>
     </MudGrid>
 
+    @* V4: Research Pipeline *@
+    @if (_stageGroups.Count > 0)
+    {
+        <MudPaper Outlined="true" Class="pa-3 mt-4 mb-2">
+            <MudText Typo="Typo.subtitle2" Class="text-muted mb-2">RESEARCH PIPELINE</MudText>
+            <MudStack Row="true" Spacing="3" Wrap="Wrap.Wrap">
+                @foreach (var g in _stageGroups)
+                {
+                    <MudText Typo="Typo.body2">@g.Count @g.Stage</MudText>
+                }
+            </MudStack>
+        </MudPaper>
+    }
+
     @* Zone 4 — Nav cards (Fix 6) *@
     <MudGrid Class="mt-4">
         <MudItem xs="12" sm="4">
@@ -188,6 +204,7 @@ else
     private Dictionary<string, BacktestResult> _lastRunMap = new();
     private Dictionary<string, string> _strategyIdByType = new(); // Fix 2
     private List<(BacktestResult Run, List<string> Warnings)> _warningRuns = new();
+    private List<(int Count, DevelopmentStage Stage)> _stageGroups = new(); // V4
     private bool _loading = true;
 
     protected override async Task OnInitializedAsync()
@@ -217,6 +234,14 @@ else
             if (run.MaxDrawdown > 0.20m) w.Add($"DD {run.MaxDrawdown:P0}");
             if (w.Count > 0) _warningRuns.Add((run, w));
         }
+
+        // V4: Research pipeline stage groups
+        _stageGroups = _strategies
+            .GroupBy(s => s.Stage)
+            .OrderBy(g => g.Key)
+            .Select(g => (Count: g.Count(), Stage: g.Key))
+            .ToList();
+
         _loading = false;
     }
 

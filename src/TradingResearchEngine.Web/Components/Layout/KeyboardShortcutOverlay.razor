@@ -1,0 +1,43 @@
+@inject NavigationManager Nav
+
+@if (_visible)
+{
+    <div style="position:fixed; inset:0; z-index:2000; background:rgba(0,0,0,0.7); display:flex; align-items:center; justify-content:center;"
+         @onclick="Close" @onkeydown="OnKeyDown" tabindex="0">
+        <MudPaper Class="pa-6" Elevation="4" Style="min-width:320px; max-width:480px;">
+            <MudText Typo="Typo.h6" Class="mb-3">Keyboard Shortcuts</MudText>
+            <MudSimpleTable Dense="true" Hover="true" aria-label="Keyboard shortcuts reference">
+                <thead><tr><th>Shortcut</th><th>Action</th></tr></thead>
+                <tbody>
+                    <tr><td><kbd>N</kbd></td><td>New Strategy</td></tr>
+                    <tr><td><kbd>R</kbd></td><td>Re-run last config</td></tr>
+                    <tr><td><kbd>?</kbd></td><td>Show this overlay</td></tr>
+                    <tr><td><kbd>Esc</kbd></td><td>Close modal / cancel</td></tr>
+                </tbody>
+            </MudSimpleTable>
+            <MudButton Class="mt-3" Variant="Variant.Text" OnClick="Close" FullWidth="true">Close</MudButton>
+        </MudPaper>
+    </div>
+}
+
+@code {
+    private bool _visible;
+
+    public void Show() { _visible = true; StateHasChanged(); }
+    public void Close() { _visible = false; StateHasChanged(); }
+
+    public void HandleGlobalKey(string key)
+    {
+        switch (key)
+        {
+            case "?": Show(); break;
+            case "n" or "N": Nav.NavigateTo("/strategies/builder"); break;
+            case "Escape": Close(); break;
+        }
+    }
+
+    private void OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") Close();
+    }
+}

@@ -1,0 +1,67 @@
+@using TradingResearchEngine.Core.Portfolio
+
+<MudPaper Class="pa-4" Elevation="1">
+    <MudText Typo="Typo.subtitle2" Class="text-muted mb-2">P&amp;L DISTRIBUTION</MudText>
+    @if (Trades.Count == 0)
+    {
+        <MudText Typo="Typo.body2" Class="text-muted">No trades to display.</MudText>
+    }
+    else
+    {
+        @* Simple histogram using MudBlazor bars *@
+        <MudStack Spacing="0">
+            @foreach (var bucket in _buckets)
+            {
+                var pct = _maxCount > 0 ? (int)(100.0 * bucket.Count / _maxCount) : 0;
+                var color = bucket.MidPoint >= 0 ? "var(--mud-palette-success)" : "var(--mud-palette-error)";
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Class="mb-1">
+                    <MudText Typo="Typo.caption" Style="min-width:60px; text-align:right;">@bucket.Label</MudText>
+                    <div style="height:16px; width:@(pct)%; background:@color; border-radius:2px; min-width:2px;"
+                         aria-label="@($"{bucket.Label}: {bucket.Count} trades")"></div>
+                    <MudText Typo="Typo.caption" Class="text-muted">@bucket.Count</MudText>
+                </MudStack>
+            }
+        </MudStack>
+        <MudText Typo="Typo.caption" Class="text-faint mt-2">
+            Wins: @_wins · Losses: @_losses · Avg P&amp;L: $@_avgPnl.ToString("F2")
+        </MudText>
+    }
+</MudPaper>
+
+@code {
+    [Parameter, EditorRequired]
+    public IReadOnlyList<ClosedTrade> Trades { get; set; } = Array.Empty<ClosedTrade>();
+
+    private List<(string Label, int Count, decimal MidPoint)> _buckets = new();
+    private int _maxCount;
+    private int _wins;
+    private int _losses;
+    private decimal _avgPnl;
+
+    protected override void OnParametersSet()
+    {
+        if (Trades.Count == 0) return;
+
+        _wins = Trades.Count(t => t.NetPnl >= 0);
+        _losses = Trades.Count(t => t.NetPnl < 0);
+        _avgPnl = Trades.Average(t => t.NetPnl);
+
+        var pnls = Trades.Select(t => t.NetPnl).OrderBy(p => p).ToList();
+        var min = pnls.First();
+        var max = pnls.Last();
+        var range = max - min;
+        int bucketCount = Math.Min(10, Math.Max(3, Trades.Count / 3));
+        var step = range / bucketCount;
+        if (step <= 0) step = 1;
+
+        _buckets = new();
+        for (int i = 0; i < bucketCount; i++)
+        {
+            var lo = min + step * i;
+            var hi = i == bucketCount - 1 ? max + 1 : min + step * (i + 1);
+            var count = pnls.Count(p => p >= lo && p < hi);
+            _buckets.Add(($"${lo:F0}", count, (lo + hi) / 2));
+        }
+        _maxCount = _buckets.Max(b => b.Count);
+    }
+}

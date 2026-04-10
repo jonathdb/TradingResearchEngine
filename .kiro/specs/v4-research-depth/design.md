@@ -659,6 +659,48 @@ Rendered as a vertical checklist on Strategy Detail with ✅/⬜ icons and a Con
 
 ---
 
+## Strategy Version Execution Window (V4 Amendment)
+
+### Canonical Source
+
+`StrategyVersion.BaseScenarioConfig` is the single source of truth for the execution window:
+- **Timeframe**: `ScenarioConfig.Timeframe` (nullable string, new V4 field). Null for legacy configs; inferred from `BarsPerYear` when missing.
+- **Start date**: `ScenarioConfig.DataProviderOptions["From"]` (DateTimeOffset)
+- **End date**: `ScenarioConfig.DataProviderOptions["To"]` (DateTimeOffset)
+- **BarsPerYear**: updated automatically when Timeframe changes (Daily=252, H4=1512, H1=6048, M15=24192)
+
+No parallel model is created. All run launches, study dispatches, and exports read from `BaseScenarioConfig`.
+
+### Core Change
+
+`ScenarioConfig` gains one nullable trailing field:
+```csharp
+string? Timeframe = null  // "Daily", "H4", "H1", "M15"
+```
+Backwards-compatible: missing field deserializes to null.
+
+### Application Layer
+
+`ExecutionWindowEditor` (static class in Application/Engine):
+- `Validate(version, timeframe, start, end, dataFile?)` — returns `EditResult` with errors or updated version
+- `GetCurrentWindow(version)` — extracts (Timeframe, Start, End) from BaseScenarioConfig
+- `EstimateBarCount(timeframe, start, end)` — rough bar count estimate
+
+Validation rules:
+- Start < End
+- Dates within data file bounds (if attached)
+- End date must not exclude sealed test set
+- FinalTest stage triggers warning (not block)
+
+### Web UI
+
+Strategy Detail gains:
+- "Execution Window" card in the left panel showing Timeframe, Start, End, Est. Bars
+- "Edit Window" button opening a modal dialog
+- Legacy versions show "Not set" / "Inherited" for missing values
+
+---
+
 ## Folder Structure Changes (V4)
 
 ```

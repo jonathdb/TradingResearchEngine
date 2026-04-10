@@ -30,7 +30,9 @@ public sealed record ScenarioConfig(
     ExecutionRealismProfile RealismProfile = ExecutionRealismProfile.StandardBacktest,
     ExecutionOptions? ExecutionOptions = null,
     SessionOptions? SessionOptions = null,
-    TraceOptions? TraceOptions = null) : IHasId
+    TraceOptions? TraceOptions = null,
+    /// <summary>V4: Explicit timeframe label (e.g. "Daily", "H4"). Null for legacy configs.</summary>
+    string? Timeframe = null) : IHasId
 {
     /// <inheritdoc/>
     public string Id => ScenarioId;

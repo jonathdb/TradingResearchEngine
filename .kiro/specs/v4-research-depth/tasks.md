@@ -192,58 +192,118 @@
 
 
 
-- [ ] 5. Anchored walk-forward implementation
+
+
+
+
+
+
+
+
+
+
+- [x] 5. Anchored walk-forward implementation
+
 - [ ] 5.1 Add `WalkForwardMode` parameter to `WalkForwardWorkflow`
   - Anchored: training start fixed, end advances. Rolling: existing behaviour
+
+
   - _Requirements: 20.3, 20.4_
-- [ ] 5.2 Write unit tests for anchored walk-forward
+
+
+
+
+- [x] 5.2 Write unit tests for anchored walk-forward
+
   - Verify training start does not move in anchored mode, rolling unchanged
   - _Requirements: 20.3, 20.4_
 
-- [ ] 6. Sealed test set, final validation, and cancellation persistence
-- [ ] 6.1 Add sealed test set enforcement to study orchestration
+
+- [x] 6. Sealed test set, final validation, and cancellation persistence
+
+
+
+
+
+- [x] 6.1 Add sealed test set enforcement to study orchestration
+
+
   - Check overlap with StrategyVersion.SealedTestSet before dispatching studies
+
   - _Requirements: 20.7_
+
 - [ ] 6.2 Implement `FinalValidationUseCase` end-to-end
   - Load version, validate sealed set, run on sealed range, mark DevelopmentStage.FinalTest
   - _Requirements: 20.9, 20.10_
-- [ ] 6.3 Persist partial results on study cancellation
+- [x] 6.3 Persist partial results on study cancellation
+
+
+
+
+
+
   - MC: store completed paths. WF: store completed windows. Sweep: store completed combos
   - Set IsPartial, CompletedCount, TotalCount, StudyStatus.Cancelled
   - _Requirements: 7.1, 7.2, 7.3, 7.4, 7.5_
+
 - [ ] 6.4 Add sealed test set prompt to Strategy Builder Step 2
   - Slider for last N% as sealed set, store on StrategyVersion.SealedTestSet
+
+
   - _Requirements: 20.6_
-- [ ] 6.5 Add Final Validation action to Strategy Detail
+
+- [x] 6.5 Add Final Validation action to Strategy Detail
+
+
   - One-time action with confirmation dialog, warning on post-validation param changes
+
   - _Requirements: 20.9, 20.10_
-- [ ] 6.6 Write tests for sealed test set and cancellation flows
+- [x] 6.6 Write tests for sealed test set and cancellation flows
+
   - Overlap blocked, final validation bypasses, stage updated, partial persistence
+
   - _Requirements: 20.7, 20.9, 20.10, 7.2_
 
-- [ ] 7. Web UI — Error handling and failure states
-- [ ] 7.1 Update `ResultDetail.razor` with failure state UI
+
+- [x] 7. Web UI — Error handling and failure states
+
+- [x] 7.1 Update `ResultDetail.razor` with failure state UI
+
   - Failed banner, collapsed error, View Full Error, Copy to Clipboard, Re-run actions
+
   - _Requirements: 2.5, 2.6, 2.7_
-- [ ] 7.2 Update Strategy Detail run list with failed run badge
+- [x] 7.2 Update Strategy Detail run list with failed run badge
+
   - _Requirements: 2.5_
 
+
 - [ ] 8. Web UI — Execution progress and background studies
-- [ ] 8.1 Create `ExecutionStatusBar.razor` component
+- [x] 8.1 Create `ExecutionStatusBar.razor` component
+
   - Subscribe to BackgroundStudyService events, show progress/completion
+
   - _Requirements: 9.2, 9.3_
-- [ ] 8.2 Add `ExecutionStatusBar` to `MainLayout.razor`
+- [x] 8.2 Add `ExecutionStatusBar` to `MainLayout.razor`
+
   - 32px bar below MudMainContent, visible during active execution
+
   - _Requirements: 9.2_
-- [ ] 8.3 Add inline progress for single-run backtests
+- [x] 8.3 Add inline progress for single-run backtests
+
   - Spinner with bar count, elapsed time, Cancel button
+
   - _Requirements: 5.1, 5.3_
 
-- [ ] 9. Web UI — Export functionality
+
+
+- [x] 9. Web UI — Export functionality
+
 - [ ] 9.1 Create `ExportMenu.razor` shared component
   - Dropdown: Markdown, JSON, CSV trade log, CSV equity curve
+
   - _Requirements: 6.9_
-- [ ] 9.2 Add `ExportMenu` to `ResultDetail.razor`
+- [x] 9.2 Add `ExportMenu` to `ResultDetail.razor`
+
   - Replace existing Export Markdown button
   - _Requirements: 6.1, 6.9_
 - [ ] 9.3 Add study export actions to study detail pages
@@ -259,8 +319,11 @@
   - _Requirements: 18.5_
 - [ ] 10.3 Add `DevelopmentStage` badge to strategy cards and Dashboard
   - _Requirements: 18.2_
-- [ ] 10.4 Add Research Pipeline section to Dashboard
+- [x] 10.4 Add Research Pipeline section to Dashboard
+
   - Group strategies by DevelopmentStage, show counts
+
+
   - _Requirements: 18.3, 10.1_
 - [ ] 10.5 Add Hypothesis field to Strategy Builder and Strategy Detail
   - Builder step 5 prompt, Strategy Detail display with soft prompt if null
@@ -340,3 +403,21 @@
   - Registered in DI, UI does not expose in study creation flows
   - Direct invocation returns "CPCV is scheduled for V4.1" via NotImplementedException
   - _Requirements: 20.5_
+
+- [x] 19. Strategy Version Execution Window (V4 Amendment)
+- [x] 19.1 Add `Timeframe` nullable field to `ScenarioConfig` in Core
+  - Backwards-compatible trailing parameter, null for legacy configs
+  - _Requirements: 22.8_
+- [x] 19.2 Implement `ExecutionWindowEditor` in Application/Engine
+  - Validate, GetCurrentWindow, EstimateBarCount static methods
+  - Validates against data file bounds and sealed test set
+  - _Requirements: 22.2, 22.3, 22.5, 22.6_
+- [x] 19.3 Add Execution Window card and Edit dialog to StrategyDetail.razor
+  - Summary card with Timeframe/Start/End/Est. Bars
+  - Edit dialog with validation, FinalTest warning
+  - Save updates StrategyVersion.BaseScenarioConfig
+  - _Requirements: 22.1, 22.2, 22.7, 22.9_
+- [x] 19.4 Write unit tests for ExecutionWindowEditor
+  - Valid range, start after end, out of data file range, sealed set conflict
+  - Legacy compat, timeframe inference, bar count estimation
+  - _Requirements: 22.5, 22.6, 22.8_

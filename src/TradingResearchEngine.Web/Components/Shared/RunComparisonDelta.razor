@@ -1,0 +1,85 @@
+@using TradingResearchEngine.Core.Results
+
+<MudPaper Class="pa-4" Elevation="1">
+    <MudText Typo="Typo.subtitle2" Class="text-muted mb-3">VERSION COMPARISON</MudText>
+
+    @if (BaseResult is null || CompareResult is null)
+    {
+        <MudText Typo="Typo.body2" Class="text-muted">Select two runs to compare.</MudText>
+    }
+    else
+    {
+        <MudText Typo="Typo.body2" Class="mb-3">
+            @BaseResult.ScenarioConfig.ScenarioId vs @CompareResult.ScenarioConfig.ScenarioId
+        </MudText>
+
+        <MudSimpleTable Dense="true" Hover="true" aria-label="Run comparison delta">
+            <thead>
+                <tr><th>Metric</th><th>Base</th><th>Compare</th><th>Delta</th></tr>
+            </thead>
+            <tbody>
+                @foreach (var row in _rows)
+                {
+                    <tr>
+                        <td>@row.Metric</td>
+                        <td>@row.BaseValue</td>
+                        <td>@row.CompareValue</td>
+                        <td class="@row.DeltaClass">@row.DeltaDisplay</td>
+                    </tr>
+                }
+            </tbody>
+        </MudSimpleTable>
+
+        @if (_warnings.Count > 0)
+        {
+            <MudStack Spacing="1" Class="mt-3">
+                @foreach (var w in _warnings)
+                {
+                    <MudAlert Severity="Severity.Warning" Dense="true">@w</MudAlert>
+                }
+            </MudStack>
+        }
+    }
+</MudPaper>
+
+@code {
+    [Parameter] public BacktestResult? BaseResult { get; set; }
+    [Parameter] public BacktestResult? CompareResult { get; set; }
+
+    private record DeltaRow(string Metric, string BaseValue, string CompareValue, string DeltaDisplay, string DeltaClass);
+
+    private List<DeltaRow> _rows = new();
+    private List<string> _warnings = new();
+
+    protected override void OnParametersSet()
+    {
+        _rows.Clear();
+        _warnings.Clear();
+        if (BaseResult is null || CompareResult is null) return;
+
+        AddRow("Sharpe", BaseResult.SharpeRatio, CompareResult.SharpeRatio, "F2", higherIsBetter: true);
+        AddRow("DSR", BaseResult.DeflatedSharpeRatio, CompareResult.DeflatedSharpeRatio, "F2", higherIsBetter: true);
+        AddRow("Max DD", BaseResult.MaxDrawdown, CompareResult.MaxDrawdown, "P1", higherIsBetter: false);
+        AddRow("Win Rate", BaseResult.WinRate, CompareResult.WinRate, "P0", higherIsBetter: true);
+        AddRow("Profit Factor", BaseResult.ProfitFactor, CompareResult.ProfitFactor, "F2", higherIsBetter: true);
+        AddRow("Trades", BaseResult.TotalTrades, CompareResult.TotalTrades, "N0", higherIsBetter: true);
+
+        if (CompareResult.TotalTrades < BaseResult.TotalTrades && CompareResult.TotalTrades < 30)
+            _warnings.Add($"Fewer trades in the compared run ({CompareResult.TotalTrades}) reduces statistical confidence.");
+    }
+
+    private void AddRow(string metric, decimal? baseVal, decimal? compVal, string fmt, bool higherIsBetter)
+    {
+        var bStr = baseVal?.ToString(fmt) ?? "—";
+        var cStr = compVal?.ToString(fmt) ?? "—";
+        var delta = (baseVal.HasValue && compVal.HasValue) ? compVal.Value - baseVal.Value : (decimal?)null;
+        var dStr = delta.HasValue ? $"{(delta > 0 ? "+" : "")}{delta.Value.ToString(fmt)}" : "—";
+        var improved = delta.HasValue && ((higherIsBetter && delta > 0) || (!higherIsBetter && delta < 0));
+        var dClass = delta.HasValue ? (improved ? "mud-success-text" : "mud-error-text") : "";
+        if (delta.HasValue) dStr += improved ? " ▲" : " ▼";
+        _rows.Add(new(metric, bStr, cStr, dStr, dClass));
+    }
+
+    private void AddRow(string metric, int baseVal, int compVal, string fmt, bool higherIsBetter)
+        => AddRow(metric, (decimal)baseVal, (decimal)compVal, fmt, higherIsBetter);
+}

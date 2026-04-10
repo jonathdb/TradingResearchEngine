@@ -8,6 +8,7 @@
 @inject PropFirmEvaluator Evaluator
 @inject NavigationManager Nav
 @inject ISnackbar Snackbar
+@inject TradingResearchEngine.Application.Research.ResearchChecklistService ChecklistService
 
 <PageTitle>@(_strategy?.StrategyName ?? "Strategy") — Research Engine</PageTitle>
 
@@ -31,6 +32,8 @@ else
                 <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
                     <MudText Typo="Typo.h5">@_strategy.StrategyName</MudText>
                     <MudChip T="string" Size="MudBlazor.Size.Small" Color="Color.Default">@_strategy.StrategyType</MudChip>
+                    <MudChip T="string" Size="MudBlazor.Size.Small" Color="@StageColor"
+                             aria-label="@($"Development stage: {_strategy.Stage}")">@_strategy.Stage</MudChip>
                 </MudStack>
                 <MudText Typo="Typo.body2" Class="text-muted">
                     Created @_strategy.CreatedAt.ToString("yyyy-MM-dd")
@@ -99,6 +102,25 @@ else
                         </tbody>
                     </MudSimpleTable>
 
+                    @* V4: Execution Window *@
+                    <MudText Typo="Typo.caption" Class="text-faint mb-1">EXECUTION WINDOW</MudText>
+                    <MudPaper Outlined="true" Class="pa-3 mb-3">
+                        <MudSimpleTable Dense="true">
+                            <tbody>
+                                <tr><td class="text-muted">Timeframe</td><td>@(_execWindow.Timeframe ?? "Not set")</td></tr>
+                                <tr><td class="text-muted">Start</td><td>@(_execWindow.Start?.ToString("yyyy-MM-dd") ?? "Inherited")</td></tr>
+                                <tr><td class="text-muted">End</td><td>@(_execWindow.End?.ToString("yyyy-MM-dd") ?? "Inherited")</td></tr>
+                                @if (_execWindow.EstimatedBars.HasValue)
+                                {
+                                    <tr><td class="text-muted">Est. Bars</td><td>@_execWindow.EstimatedBars.Value.ToString("N0")</td></tr>
+                                }
+                            </tbody>
+                        </MudSimpleTable>
+                        <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Text" Color="Color.Primary"
+                                   StartIcon="@Icons.Material.Filled.Edit" Class="mt-1"
+                                   OnClick="OpenEditWindowDialog">Edit Window</MudButton>
+                    </MudPaper>
+
                     <MudButton Variant="Variant.Outlined" Color="Color.Primary" FullWidth="true" Size="MudBlazor.Size.Small"
                                Href="@($"/strategies/builder?fromStrategyId={_strategy.StrategyId}&fromVersionId={_selectedVersion.StrategyVersionId}")">
                         New Version from This
@@ -154,7 +176,26 @@ else
                                 <MudTd Class="@GetSharpeClass(context.SharpeRatio)">@(context.SharpeRatio?.ToString("F2") ?? "—")</MudTd>
                                 <MudTd>@context.MaxDrawdown.ToString("P1")</MudTd>
                                 <MudTd>@context.TotalTrades</MudTd>
-                                <MudTd><MudChip T="string" Size="MudBlazor.Size.Small" Color="@(context.Status == BacktestStatus.Completed ? Color.Success : Color.Error)">@context.Status</MudChip></MudTd>
+                                <MudTd>
+                                    @{
+                                        var statusColor = context.Status switch
+                                        {
+                                            BacktestStatus.Completed => Color.Success,
+                                            BacktestStatus.Failed => Color.Error,
+                                            BacktestStatus.Cancelled => Color.Warning,
+                                            _ => Color.Default
+                                        };
+                                        var statusIcon = context.Status switch
+                                        {
+                                            BacktestStatus.Completed => "✅",
+                                            BacktestStatus.Failed => "❌",
+                                            BacktestStatus.Cancelled => "⚠️",
+                                            _ => ""
+                                        };
+                                    }
+                                    <MudChip T="string" Size="MudBlazor.Size.Small" Color="@statusColor"
+                                             aria-label="@($"Status: {context.Status}")">@statusIcon @context.Status</MudChip>
+                                </MudTd>
                                 <MudTd><MudIconButton Icon="@Icons.Material.Filled.OpenInNew" Size="MudBlazor.Size.Small" Href="@($"/backtests/{context.Id}")" /></MudTd>
                             </RowTemplate>
                         </MudTable>
@@ -261,20 +302,58 @@ else
         </MudItem>
     </MudGrid>
 
+    @* V4: Hypothesis *@
+    @if (_strategy.Hypothesis is not null)
+    {
+        <MudPaper Outlined="true" Class="pa-3 mt-4 mb-2">
+            <MudText Typo="Typo.caption" Class="text-muted">HYPOTHESIS</MudText>
+            <MudText Typo="Typo.body2">@_strategy.Hypothesis</MudText>
+        </MudPaper>
+    }
+    else
+    {
+        <MudAlert Severity="Severity.Info" Dense="true" Class="mt-4 mb-2">
+            Add a hypothesis for this strategy →
+            <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Text" Color="Color.Primary"
+                       OnClick="@(() => _hypothesisDialogOpen = true)">Add Hypothesis</MudButton>
+        </MudAlert>
+    }
+
+    @* V4: Research Checklist *@
+    @if (_checklist is not null)
+    {
+        <div class="mt-4">
+            <ResearchChecklist Checklist="_checklist" />
+        </div>
+    }
+
     @* Run Dialog *@
     <MudDialog @bind-Visible="_runDialogOpen">
         <TitleContent>Run Backtest</TitleContent>
         <DialogContent>
-            <MudText Typo="Typo.body1">
-                Run <strong>@_strategy.StrategyName</strong> v@(_selectedVersion?.VersionNumber)
-                with the parameters shown in the config panel?
-            </MudText>
+            @if (_running)
+            {
+                <MudStack AlignItems="AlignItems.Center" Spacing="2" Class="pa-4">
+                    <MudProgressCircular Indeterminate="true" />
+                    <MudText Typo="Typo.body2">Running… Elapsed: @_elapsed.ToString(@"mm\:ss")</MudText>
+                    <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Outlined" Color="Color.Error"
+                               OnClick="CancelRun">Cancel</MudButton>
+                </MudStack>
+            }
+            else
+            {
+                <MudText Typo="Typo.body1">
+                    Run <strong>@_strategy.StrategyName</strong> v@(_selectedVersion?.VersionNumber)
+                    with the parameters shown in the config panel?
+                </MudText>
+            }
         </DialogContent>
         <DialogActions>
-            <MudButton OnClick="@(() => _runDialogOpen = false)">Cancel</MudButton>
-            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ConfirmRun" Disabled="_running">
-                @(_running ? "Running..." : "Run Now")
-            </MudButton>
+            @if (!_running)
+            {
+                <MudButton OnClick="@(() => _runDialogOpen = false)">Cancel</MudButton>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ConfirmRun">Run Now</MudButton>
+            }
         </DialogActions>
     </MudDialog>
 
@@ -288,6 +367,52 @@ else
             <MudButton OnClick="@(() => _renameDialogOpen = false)">Cancel</MudButton>
             <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ConfirmRename"
                        Disabled="@string.IsNullOrWhiteSpace(_newName)">Save</MudButton>
+        </DialogActions>
+    </MudDialog>
+
+    @* V4: Hypothesis Dialog *@
+    <MudDialog @bind-Visible="_hypothesisDialogOpen">
+        <TitleContent>Add Hypothesis</TitleContent>
+        <DialogContent>
+            <MudTextField @bind-Value="_hypothesisText" Label="Why should this strategy work?"
+                          Variant="Variant.Outlined" Lines="3" AutoFocus="true" />
+        </DialogContent>
+        <DialogActions>
+            <MudButton OnClick="@(() => _hypothesisDialogOpen = false)">Cancel</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveHypothesis"
+                       Disabled="@string.IsNullOrWhiteSpace(_hypothesisText)">Save</MudButton>
+        </DialogActions>
+    </MudDialog>
+
+    @* V4: Edit Execution Window Dialog *@
+    <MudDialog @bind-Visible="_editWindowOpen">
+        <TitleContent>Edit Execution Window</TitleContent>
+        <DialogContent>
+            <MudSelect T="string" @bind-Value="_editTimeframe" Label="Timeframe" Variant="Variant.Outlined" Class="mb-3">
+                <MudSelectItem Value="@("Daily")">Daily</MudSelectItem>
+                <MudSelectItem Value="@("H4")">H4</MudSelectItem>
+                <MudSelectItem Value="@("H1")">H1</MudSelectItem>
+                <MudSelectItem Value="@("M15")">M15</MudSelectItem>
+            </MudSelect>
+            <MudDatePicker @bind-Date="_editStartDate" Label="Start Date" Variant="Variant.Outlined" Class="mb-3" />
+            <MudDatePicker @bind-Date="_editEndDate" Label="End Date" Variant="Variant.Outlined" Class="mb-3" />
+            @if (_editWindowErrors.Count > 0)
+            {
+                @foreach (var err in _editWindowErrors)
+                {
+                    <MudAlert Severity="Severity.Error" Dense="true" Class="mb-1">@err</MudAlert>
+                }
+            }
+            @if (_strategy?.Stage == DevelopmentStage.FinalTest)
+            {
+                <MudAlert Severity="Severity.Warning" Dense="true" Class="mb-1">
+                    This strategy has completed Final Validation. Changing the execution window may invalidate the research lifecycle.
+                </MudAlert>
+            }
+        </DialogContent>
+        <DialogActions>
+            <MudButton OnClick="@(() => _editWindowOpen = false)">Cancel</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveExecutionWindow">Save Changes</MudButton>
         </DialogActions>
     </MudDialog>
 }
@@ -304,9 +429,22 @@ else
     private bool _loading = true;
     private bool _runDialogOpen;
     private bool _running;
+    private TimeSpan _elapsed;
+    private CancellationTokenSource? _runCts;
+    private System.Timers.Timer? _elapsedTimer;
     private List<BreadcrumbItem> _breadcrumbs = new(); // Fix 11
     private bool _renameDialogOpen; // Fix 12
     private string _newName = ""; // Fix 12
+    private bool _hypothesisDialogOpen; // V4
+    private string _hypothesisText = ""; // V4
+    private TradingResearchEngine.Application.Research.ResearchChecklist? _checklist; // V4
+    // V4: Execution Window
+    private (string? Timeframe, DateTimeOffset? Start, DateTimeOffset? End, int? EstimatedBars) _execWindow;
+    private bool _editWindowOpen;
+    private string? _editTimeframe;
+    private DateTime? _editStartDate;
+    private DateTime? _editEndDate;
+    private List<string> _editWindowErrors = new();
 
     // Prop firm eval state
     private List<PropFirmRulePack> _firmPacks = new();
@@ -350,14 +488,32 @@ else
             .OrderByDescending(r => r.RunId).ToList();
         _latestRun = _versionRuns.FirstOrDefault();
         _versionStudies = (await StudyRepo.ListByVersionAsync(_selectedVersion.StrategyVersionId)).ToList();
+        // V4: Load research checklist
+        try { _checklist = await ChecklistService.ComputeAsync(_selectedVersion.StrategyVersionId); }
+        catch { _checklist = null; }
+
+        // V4: Load execution window
+        var (tf, start, end) = TradingResearchEngine.Application.Engine.ExecutionWindowEditor.GetCurrentWindow(_selectedVersion);
+        var estBars = TradingResearchEngine.Application.Engine.ExecutionWindowEditor.EstimateBarCount(tf, start, end);
+        _execWindow = (tf, start, end, estBars);
     }
 
     private async Task ConfirmRun()
     {
         if (_selectedVersion is null) return;
         _running = true;
-        _runDialogOpen = false;
+        _elapsed = TimeSpan.Zero;
+        _runCts = new CancellationTokenSource();
         StateHasChanged();
+
+        // Start elapsed timer
+        _elapsedTimer = new System.Timers.Timer(1000);
+        _elapsedTimer.Elapsed += (_, _) =>
+        {
+            _elapsed = _elapsed.Add(TimeSpan.FromSeconds(1));
+            InvokeAsync(StateHasChanged);
+        };
+        _elapsedTimer.Start();
 
         try
         {
@@ -365,10 +521,9 @@ else
             {
                 ScenarioId = $"run-{DateTime.Now:yyyyMMdd-HHmmss}"
             };
-            var result = await Task.Run(() => RunUseCase.RunAsync(config));
+            var result = await Task.Run(() => RunUseCase.RunAsync(config, _runCts.Token));
             if (result.IsSuccess && result.Result is not null)
             {
-                // Link to strategy version
                 var linked = result.Result with { StrategyVersionId = _selectedVersion.StrategyVersionId };
                 await ResultRepo.SaveAsync(linked);
                 Snackbar.Add($"Backtest completed: Sharpe {linked.SharpeRatio?.ToString("F2") ?? "N/A"}", Severity.Success);
@@ -379,15 +534,30 @@ else
                 Snackbar.Add($"Run failed: {string.Join("; ", result.Errors ?? Array.Empty<string>())}", Severity.Error);
             }
         }
+        catch (OperationCanceledException)
+        {
+            Snackbar.Add("Run cancelled.", Severity.Warning);
+        }
         catch (Exception ex)
         {
             Snackbar.Add($"Error: {ex.Message}", Severity.Error);
         }
         finally
         {
+            _elapsedTimer?.Stop();
+            _elapsedTimer?.Dispose();
+            _elapsedTimer = null;
+            _runCts?.Dispose();
+            _runCts = null;
             _running = false;
+            _runDialogOpen = false;
             StateHasChanged();
         }
+    }
+
+    private void CancelRun()
+    {
+        _runCts?.Cancel();
     }
 
     private void EvaluateForFirm()
@@ -439,6 +609,62 @@ else
         await StrategyRepo.SaveAsync(_strategy);
         _breadcrumbs[^1] = new(_newName, href: null, disabled: true);
         _renameDialogOpen = false;
+        StateHasChanged();
+    }
+
+    // V4: Hypothesis
+    private async Task SaveHypothesis()
+    {
+        if (_strategy is null || string.IsNullOrWhiteSpace(_hypothesisText)) return;
+        _strategy = _strategy with { Hypothesis = _hypothesisText };
+        await StrategyRepo.SaveAsync(_strategy);
+        _hypothesisDialogOpen = false;
+        StateHasChanged();
+    }
+
+    // V4: Stage color
+    private Color StageColor => _strategy?.Stage switch
+    {
+        DevelopmentStage.Hypothesis => Color.Default,
+        DevelopmentStage.Exploring => Color.Info,
+        DevelopmentStage.Optimizing => Color.Warning,
+        DevelopmentStage.Validating => Color.Primary,
+        DevelopmentStage.FinalTest => Color.Success,
+        DevelopmentStage.Retired => Color.Dark,
+        _ => Color.Default
+    };
+
+    // V4: Execution Window
+    private void OpenEditWindowDialog()
+    {
+        _editTimeframe = _execWindow.Timeframe;
+        _editStartDate = _execWindow.Start?.DateTime;
+        _editEndDate = _execWindow.End?.DateTime;
+        _editWindowErrors.Clear();
+        _editWindowOpen = true;
+    }
+
+    private async Task SaveExecutionWindow()
+    {
+        if (_selectedVersion is null) return;
+
+        var start = _editStartDate.HasValue ? new DateTimeOffset(_editStartDate.Value, TimeSpan.Zero) : (DateTimeOffset?)null;
+        var end = _editEndDate.HasValue ? new DateTimeOffset(_editEndDate.Value, TimeSpan.Zero) : (DateTimeOffset?)null;
+
+        var result = TradingResearchEngine.Application.Engine.ExecutionWindowEditor.Validate(
+            _selectedVersion, _editTimeframe, start, end);
+
+        if (!result.Success)
+        {
+            _editWindowErrors = result.Errors.ToList();
+            return;
+        }
+
+        _selectedVersion = result.UpdatedVersion!;
+        await StrategyRepo.SaveVersionAsync(_selectedVersion);
+        await LoadVersionData();
+        _editWindowOpen = false;
+        Snackbar.Add("Execution window updated.", Severity.Success);
         StateHasChanged();
     }
 

@@ -318,6 +318,25 @@ V4 is still single-user, local/single-tenant. No authentication, no multi-user, 
 
 ---
 
+### Requirement 22 — Strategy Version Execution Window
+
+**User Story:** As a user, I want to see and edit the timeframe and date range for each strategy version, so that the version's default execution window matches the market data segment I want to research.
+
+#### Acceptance Criteria
+
+1. ON the Strategy Detail screen, the active version SHALL display: timeframe, start date, end date, and estimated bar count in an "Execution Window" card.
+2. THE user SHALL be able to edit the execution window via a modal dialog with: timeframe selector, start date picker, end date picker, and validation summary.
+3. SAVING SHALL update the selected `StrategyVersion.BaseScenarioConfig` (the canonical source) — specifically `DataProviderOptions["From"]`, `DataProviderOptions["To"]`, `Timeframe`, and `BarsPerYear`.
+4. Subsequent "Run New Backtest" and "Run New Study" actions SHALL default to the updated values.
+5. IF the chosen date range exceeds the attached data file's known range, save SHALL be blocked with inline validation.
+6. IF the version has a sealed test set, edits that would exclude the sealed range SHALL be blocked.
+7. IF `DevelopmentStage == FinalTest`, a warning SHALL be shown before allowing edits.
+8. Existing versions created before this feature SHALL remain loadable; missing `Timeframe` field SHALL deserialize to null and the UI SHALL show "Not set" or infer from `BarsPerYear`.
+9. Editing the execution window SHALL update the selected version only; other versions remain unchanged.
+10. THE updated timeframe/date range SHALL appear in: Strategy Detail, run configuration summary, and exported reports.
+
+---
+
 ## Requirements Index
 
 | ID | Title | Requirement # |
@@ -343,3 +362,4 @@ V4 is still single-user, local/single-tenant. No authentication, no multi-user, 
 | REQ-V4-19 | Overfitting Detection & DSR | 19 |
 | REQ-V4-20 | Advanced Validation Study Types | 20 |
 | REQ-V4-21 | Analytics Metrics Expansion | 21 |
+| REQ-V4-22 | Strategy Version Execution Window | 22 |

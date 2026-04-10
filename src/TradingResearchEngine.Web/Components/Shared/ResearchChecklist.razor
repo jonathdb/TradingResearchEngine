@@ -1,0 +1,47 @@
+@using TradingResearchEngine.Application.Research
+
+<MudPaper Outlined="true" Class="pa-4">
+    <MudText Typo="Typo.subtitle2" Class="text-muted mb-3">RESEARCH PROGRESS</MudText>
+
+    <MudStack Spacing="1">
+        <CheckItem Done="@Checklist.InitialBacktest" Label="Initial backtest completed" />
+        <CheckItem Done="@Checklist.MonteCarloRobustness" Label="Monte Carlo robustness" />
+        <CheckItem Done="@Checklist.WalkForwardValidation" Label="Walk-forward validation" />
+        <CheckItem Done="@Checklist.RegimeSensitivity" Label="Regime sensitivity checked" />
+        <CheckItem Done="@Checklist.RealismImpact" Label="Execution realism impact measured" />
+        <CheckItem Done="@Checklist.ParameterSurface" Label="Parameter surface mapped" />
+        <CheckItem Done="@Checklist.FinalHeldOutTest" Label="Final held-out test" />
+        <CheckItem Done="@Checklist.PropFirmEvaluation" Label="Prop firm evaluation" />
+    </MudStack>
+
+    <MudDivider Class="my-3" />
+
+    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+        <MudText Typo="Typo.body2" Class="text-muted">Confidence Level:</MudText>
+        <MudChip T="string" Size="MudBlazor.Size.Small"
+                 Color="@ConfidenceColor"
+                 aria-label="@($"Confidence level: {Checklist.ConfidenceLevel}")">
+            @Checklist.ConfidenceLevel (@Checklist.PassedCount of @Checklist.TotalChecks)
+        </MudChip>
+    </MudStack>
+</MudPaper>
+
+@code {
+    [Parameter, EditorRequired]
+    public TradingResearchEngine.Application.Research.ResearchChecklist Checklist { get; set; } = default!;
+
+    private Color ConfidenceColor => Checklist.ConfidenceLevel switch
+    {
+        "HIGH" => Color.Success,
+        "MEDIUM" => Color.Warning,
+        _ => Color.Error
+    };
+
+    private RenderFragment CheckItem(bool Done, string Label) => __builder =>
+    {
+        <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
+            <MudText Typo="Typo.body2">@(Done ? "✅" : "⬜")</MudText>
+            <MudText Typo="Typo.body2" Class="@(Done ? "" : "text-muted")">@Label</MudText>
+        </MudStack>;
+    };
+}

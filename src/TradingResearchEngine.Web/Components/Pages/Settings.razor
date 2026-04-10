@@ -70,3 +70,19 @@
     </MudItem>
 </MudGrid>
 
+@* V4: About section *@
+<MudGrid Class="mt-4">
+    <MudItem xs="12">
+        <MudPaper Class="pa-4" Elevation="2">
+            <MudText Typo="Typo.h6" Class="mb-3">About</MudText>
+            <MudSimpleTable Dense="true">
+                <tbody>
+                    <tr><td>Version</td><td>4.0.0</td></tr>
+                    <tr><td>Build</td><td>@DateTime.Now.ToString("yyyy-MM-dd")</td></tr>
+                    <tr><td>Runtime</td><td>.NET @Environment.Version</td></tr>
+                </tbody>
+            </MudSimpleTable>
+        </MudPaper>
+    </MudItem>
+</MudGrid>
+

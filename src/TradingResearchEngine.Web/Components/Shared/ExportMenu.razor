@@ -1,0 +1,65 @@
+@inject TradingResearchEngine.Application.Export.IReportExporter Exporter
+@inject ISnackbar Snackbar
+
+<MudMenu Label="Export" Variant="Variant.Outlined" Size="MudBlazor.Size.Small"
+         StartIcon="@Icons.Material.Filled.FileDownload"
+         AnchorOrigin="Origin.BottomLeft" TransformOrigin="Origin.TopLeft"
+         aria-label="Export run results">
+    <MudMenuItem OnClick="ExportMarkdown" Icon="@Icons.Material.Filled.Description">
+        Markdown Report
+    </MudMenuItem>
+    <MudMenuItem OnClick="ExportJson" Icon="@Icons.Material.Filled.Code">
+        JSON (full result + config)
+    </MudMenuItem>
+    <MudMenuItem OnClick="ExportTradeCsv" Icon="@Icons.Material.Filled.TableChart">
+        CSV (trade log)
+    </MudMenuItem>
+    <MudMenuItem OnClick="ExportEquityCsv" Icon="@Icons.Material.Filled.ShowChart">
+        CSV (equity curve)
+    </MudMenuItem>
+</MudMenu>
+
+@code {
+    [Parameter, EditorRequired]
+    public TradingResearchEngine.Core.Results.BacktestResult Result { get; set; } = default!;
+
+    private async Task ExportMarkdown()
+    {
+        try
+        {
+            var path = await Exporter.ExportMarkdownAsync(Result);
+            Snackbar.Add($"Markdown saved: {Path.GetFileName(path)}", Severity.Success);
+        }
+        catch (Exception ex) { Snackbar.Add($"Export failed: {ex.Message}", Severity.Error); }
+    }
+
+    private async Task ExportJson()
+    {
+        try
+        {
+            var path = await Exporter.ExportJsonAsync(Result);
+            Snackbar.Add($"JSON saved: {Path.GetFileName(path)}", Severity.Success);
+        }
+        catch (Exception ex) { Snackbar.Add($"Export failed: {ex.Message}", Severity.Error); }
+    }
+
+    private async Task ExportTradeCsv()
+    {
+        try
+        {
+            var path = await Exporter.ExportTradeCsvAsync(Result);
+            Snackbar.Add($"Trade CSV saved: {Path.GetFileName(path)}", Severity.Success);
+        }
+        catch (Exception ex) { Snackbar.Add($"Export failed: {ex.Message}", Severity.Error); }
+    }
+
+    private async Task ExportEquityCsv()
+    {
+        try
+        {
+            var path = await Exporter.ExportEquityCsvAsync(Result);
+            Snackbar.Add($"Equity CSV saved: {Path.GetFileName(path)}", Severity.Success);
+        }
+        catch (Exception ex) { Snackbar.Add($"Export failed: {ex.Message}", Severity.Error); }
+    }
+}

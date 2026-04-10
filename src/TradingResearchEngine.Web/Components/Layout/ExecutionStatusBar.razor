@@ -1,0 +1,77 @@
+@inject TradingResearchEngine.Application.Research.BackgroundStudyService StudyService
+@inject NavigationManager Nav
+@implements IDisposable
+
+@if (_activeStudies.Count > 0 || _recentCompletions.Count > 0)
+{
+    <div style="position:fixed; bottom:0; left:0; right:0; z-index:1000; background:var(--mud-palette-surface); border-top:1px solid var(--mud-palette-divider); padding:4px 16px; min-height:32px;">
+        <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap">
+            @foreach (var study in _activeStudies)
+            {
+                var pct = study.Total > 0 ? (int)(100.0 * study.Current / study.Total) : 0;
+                <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
+                    <MudProgressCircular Size="MudBlazor.Size.Small" Indeterminate="@(study.Total == 0)" Value="@pct" />
+                    <MudText Typo="Typo.caption">@study.Type (@GetStrategyLabel(study)): @pct%</MudText>
+                    <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Text"
+                               OnClick="@(() => Nav.NavigateTo($"/research/study/{study.StudyId}"))">View</MudButton>
+                    <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Text" Color="Color.Error"
+                               OnClick="@(() => StudyService.CancelStudy(study.StudyId))">Stop</MudButton>
+                </MudStack>
+            }
+            @foreach (var completion in _recentCompletions)
+            {
+                var icon = completion.Status == TradingResearchEngine.Application.Research.StudyStatus.Completed ? "✅" : "❌";
+                <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
+                    <MudText Typo="Typo.caption">@icon @completion.StudyId</MudText>
+                    <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Text"
+                               OnClick="@(() => Nav.NavigateTo($"/research/study/{completion.StudyId}"))">View Results</MudButton>
+                    <MudIconButton Icon="@Icons.Material.Filled.Close" Size="MudBlazor.Size.Small"
+                                   OnClick="@(() => DismissCompletion(completion.StudyId))"
+                                   aria-label="Dismiss notification" />
+                </MudStack>
+            }
+        </MudStack>
+    </div>
+}
+
+@code {
+    private List<TradingResearchEngine.Application.Research.ActiveStudy> _activeStudies = new();
+    private List<TradingResearchEngine.Application.Research.StudyCompletionUpdate> _recentCompletions = new();
+
+    protected override void OnInitialized()
+    {
+        StudyService.OnProgress += OnProgress;
+        StudyService.OnCompleted += OnCompleted;
+        _activeStudies = StudyService.GetActiveStudies().ToList();
+    }
+
+    private void OnProgress(TradingResearchEngine.Application.Research.StudyProgressUpdate update)
+    {
+        _activeStudies = StudyService.GetActiveStudies().ToList();
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void OnCompleted(TradingResearchEngine.Application.Research.StudyCompletionUpdate update)
+    {
+        _activeStudies = StudyService.GetActiveStudies().ToList();
+        _recentCompletions.Add(update);
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void DismissCompletion(string studyId)
+    {
+        _recentCompletions.RemoveAll(c => c.StudyId == studyId);
+        StateHasChanged();
+    }
+
+    private static string GetStrategyLabel(TradingResearchEngine.Application.Research.ActiveStudy study) =>
+        study.StrategyVersionId.Length > 12
+            ? study.StrategyVersionId[..12] + "…"
+            : study.StrategyVersionId;
+
+    public void Dispose()
+    {
+        StudyService.OnProgress -= OnProgress;
+        StudyService.OnCompleted -= OnCompleted;
+    }
+}

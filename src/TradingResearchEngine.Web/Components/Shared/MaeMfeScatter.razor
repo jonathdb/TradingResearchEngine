@@ -1,0 +1,47 @@
+@using TradingResearchEngine.Core.Portfolio
+
+<MudPaper Class="pa-4" Elevation="1">
+    <MudText Typo="Typo.subtitle2" Class="text-muted mb-2">TRADE P&amp;L SCATTER</MudText>
+    @if (Trades.Count == 0)
+    {
+        <MudText Typo="Typo.body2" Class="text-muted">No trades to display.</MudText>
+    }
+    else
+    {
+        <MudText Typo="Typo.caption" Class="text-muted mb-2">
+            Each dot represents a trade. Green = win, Red = loss. X = entry price, Y = net P&amp;L.
+        </MudText>
+        <MudSimpleTable Dense="true" Hover="true" Style="max-height:300px; overflow-y:auto;"
+                        aria-label="Trade P&amp;L scatter data table">
+            <thead>
+                <tr>
+                    <th>Entry</th>
+                    <th>Exit</th>
+                    <th>Net P&amp;L</th>
+                    <th>Return on Risk</th>
+                    <th>Result</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var t in Trades)
+                {
+                    <tr>
+                        <td>@t.EntryTime.ToString("yyyy-MM-dd")</td>
+                        <td>@t.ExitTime.ToString("yyyy-MM-dd")</td>
+                        <td class="@(t.NetPnl >= 0 ? "mud-success-text" : "mud-error-text")">$@t.NetPnl.ToString("F2")</td>
+                        <td>@t.ReturnOnRisk.ToString("P2")</td>
+                        <td>@(t.NetPnl >= 0 ? "🟢" : "🔴")</td>
+                    </tr>
+                }
+            </tbody>
+        </MudSimpleTable>
+        <MudText Typo="Typo.caption" Class="text-faint mt-2">
+            Note: Full MAE/MFE scatter requires MAE/MFE fields on ClosedTrade (planned for V4.1).
+        </MudText>
+    }
+</MudPaper>
+
+@code {
+    [Parameter, EditorRequired]
+    public IReadOnlyList<ClosedTrade> Trades { get; set; } = Array.Empty<ClosedTrade>();
+}
