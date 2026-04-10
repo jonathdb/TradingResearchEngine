@@ -1,4 +1,3 @@
-using System.Globalization;
 using Microsoft.Extensions.Logging;
 using TradingResearchEngine.Application.MarketData;
 using TradingResearchEngine.Application.Research;
@@ -9,13 +8,14 @@ namespace TradingResearchEngine.Infrastructure.MarketData;
 
 /// <summary>
 /// Downloads historical candle data from Dukascopy's free datafeed and writes
-/// canonical CSV files. Implements <see cref="IMarketDataProvider"/> for the
-/// market data import workflow. Reuses shared helpers from <see cref="DukascopyHelpers"/>.
+/// canonical CSV files. Caches raw minute bars per (symbol, date) so that
+/// re-imports and different timeframes reuse previously downloaded data.
 /// </summary>
 public sealed class DukascopyImportProvider : IMarketDataProvider
 {
     private readonly HttpClient _httpClient;
     private readonly ILogger<DukascopyImportProvider> _logger;
+    private readonly string _cacheDir;
 
     private const int MaxRetries = 3;
     private const int MaxConcurrentDownloads = 8;
@@ -42,11 +42,18 @@ public sealed class DukascopyImportProvider : IMarketDataProvider
         new MarketSymbolInfo("USATECHIDXUSD", "Nasdaq 100 Index", AllTimeframes),
     };
 
-    /// <inheritdoc cref="DukascopyImportProvider"/>
-    public DukascopyImportProvider(HttpClient httpClient, ILogger<DukascopyImportProvider> logger)
+    /// <summary>Creates the provider with optional cache directory override.</summary>
+    public DukascopyImportProvider(
+        HttpClient httpClient,
+        ILogger<DukascopyImportProvider> logger,
+        string? cacheDir = null)
     {
         _httpClient = httpClient;
         _logger = logger;
+        _cacheDir = cacheDir ?? Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "TradingResearchEngine", "DukascopyDayCache");
+        Directory.CreateDirectory(_cacheDir);
     }
 
     /// <inheritdoc/>
@@ -55,9 +62,7 @@ public sealed class DukascopyImportProvider : IMarketDataProvider
     /// <inheritdoc/>
     public Task<IReadOnlyList<MarketSymbolInfo>> GetSupportedSymbolsAsync(
         CancellationToken ct = default)
-    {
-        return Task.FromResult<IReadOnlyList<MarketSymbolInfo>>(SupportedSymbols);
-    }
+        => Task.FromResult<IReadOnlyList<MarketSymbolInfo>>(SupportedSymbols);
 
     /// <inheritdoc/>
     public async Task<CsvWriteResult> DownloadToFileAsync(
@@ -81,12 +86,12 @@ public sealed class DukascopyImportProvider : IMarketDataProvider
         var allMinuteBars = new List<BarRecord>();
         int completed = 0;
 
-        // Parallel download in batches for speed
+        // Parallel download in batches, with per-day cache
         var batches = dates.Chunk(MaxConcurrentDownloads);
         foreach (var batch in batches)
         {
             ct.ThrowIfCancellationRequested();
-            var tasks = batch.Select(d => FetchDayWithRetryAsync(symbol, d, pointSize, ct));
+            var tasks = batch.Select(d => FetchDayCachedAsync(symbol, d, pointSize, ct));
             var results = await Task.WhenAll(tasks);
             foreach (var dayBars in results)
                 allMinuteBars.AddRange(dayBars);
@@ -96,7 +101,8 @@ public sealed class DukascopyImportProvider : IMarketDataProvider
 
         allMinuteBars.Sort((a, b) => a.Timestamp.CompareTo(b.Timestamp));
 
-        _logger.LogInformation("DukascopyImport: downloaded {Count} minute bars, aggregating to {Timeframe}",
+        _logger.LogInformation("DukascopyImport: {Cached}/{Total} days from cache, aggregating {Count} minute bars to {Timeframe}",
+            dates.Count(d => File.Exists(GetDayCachePath(symbol, d))), totalChunks,
             allMinuteBars.Count, timeframe);
 
         var aggregated = DukascopyHelpers.Aggregate(allMinuteBars, timeframe, symbol);
@@ -106,19 +112,56 @@ public sealed class DukascopyImportProvider : IMarketDataProvider
             .Where(b => b.Timestamp >= requestedStart && b.Timestamp < requestedEnd)
             .ToList();
 
-        // Write canonical CSV
         DukascopyHelpers.SaveToCsv(outputPath, filtered);
 
         if (filtered.Count == 0)
-        {
-            return new CsvWriteResult(outputPath, symbol, timeframe,
-                requestedStart, requestedEnd, 0);
-        }
+            return new CsvWriteResult(outputPath, symbol, timeframe, requestedStart, requestedEnd, 0);
 
         return new CsvWriteResult(
             outputPath, symbol, timeframe,
             filtered[0].Timestamp, filtered[^1].Timestamp, filtered.Count);
     }
+
+    /// <summary>
+    /// Loads minute bars for a single day from cache if available,
+    /// otherwise downloads from Dukascopy and caches the result.
+    /// </summary>
+    private async Task<List<BarRecord>> FetchDayCachedAsync(
+        string symbol, DateTime date, decimal pointSize, CancellationToken ct)
+    {
+        var cachePath = GetDayCachePath(symbol, date);
+
+        // Try cache first
+        if (File.Exists(cachePath))
+        {
+            try
+            {
+                var cached = DukascopyHelpers.LoadFromCsv(cachePath, symbol, "1m");
+                if (cached.Count > 0)
+                {
+                    _logger.LogDebug("Cache hit: {Symbol} {Date:yyyy-MM-dd} ({Count} bars)", symbol, date, cached.Count);
+                    return cached;
+                }
+            }
+            catch
+            {
+                // Corrupted cache file — re-download
+                _logger.LogDebug("Corrupted cache for {Symbol} {Date:yyyy-MM-dd}, re-downloading", symbol, date);
+            }
+        }
+
+        // Download with retry
+        var bars = await FetchDayWithRetryAsync(symbol, date, pointSize, ct);
+
+        // Cache the result (even if empty — avoids re-downloading holidays)
+        try { DukascopyHelpers.SaveToCsv(cachePath, bars); }
+        catch (Exception ex) { _logger.LogDebug(ex, "Failed to cache {Symbol} {Date:yyyy-MM-dd}", symbol, date); }
+
+        return bars;
+    }
+
+    private string GetDayCachePath(string symbol, DateTime date)
+        => Path.Combine(_cacheDir, $"{symbol}_{date:yyyyMMdd}_1m.csv");
 
     private async Task<List<BarRecord>> FetchDayWithRetryAsync(
         string symbol, DateTime date, decimal pointSize, CancellationToken ct)

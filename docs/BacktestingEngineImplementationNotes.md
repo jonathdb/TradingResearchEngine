@@ -75,7 +75,7 @@ When `DataProviderType` is `csv`, the `DataProviderFactory` resolves relative fi
 |---|---|
 | `Decompress(byte[])` | Decompresses LZMA-compressed `.bi5` data using the standard 13-byte header (5-byte properties + 8-byte uncompressed size + compressed stream) |
 | `ParseCandles(byte[], DateTime, string, decimal)` | Parses decompressed 24-byte binary candle records into `BarRecord` instances; skips zero-price entries |
-| `Aggregate(List<BarRecord>, string, string)` | Aggregates minute bars to a target interval (5m, 15m, 30m, 1H, 4H, Daily) using time-based boundaries; each output bar's timestamp is truncated to the nearest interval boundary and all minute bars within that window are merged |
+| `Aggregate(List<BarRecord>, string, string)` | Aggregates minute bars to a target interval (5m, 15m, 30m, 1H, 4H, Daily) using time-based boundaries; each output bar's timestamp is truncated to the nearest UTC interval boundary (using `UtcDateTime` to avoid local timezone offset issues) and all minute bars within that window are merged |
 | `IntervalToMinutes(string)` | Converts an interval string to minutes; defaults to 1440 (daily) for unknown intervals |
 | `BuildTradingDays(DateTime, DateTime)` | Builds a list of weekday dates in a range (skips Saturday/Sunday) |
 | `BuildDayUrl(string, DateTime)` | Constructs the Dukascopy datafeed URL for a day's BID minute candles (0-indexed months) |
