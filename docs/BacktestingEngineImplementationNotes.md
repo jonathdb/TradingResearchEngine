@@ -67,17 +67,32 @@ When `DefaultRiskLayer.ConvertSignal` receives a `SignalEvent` with `Direction.F
 
 When `DataProviderType` is `csv`, the `DataProviderFactory` resolves relative file paths using a walk-up strategy. If the path is not rooted and does not exist relative to the current working directory, the factory walks up the directory tree (up to 6 levels) looking for a match. This handles the common case where the Blazor Web project runs from `src/TradingResearchEngine.Web/` but CSV paths in `ScenarioConfig` are relative to the solution root (e.g. `samples/data/spy-daily.csv`). If no match is found, the original relative path is passed through unchanged and the provider will report a file-not-found error at read time.
 
+### DukascopyHelpers
+
+`DukascopyHelpers` (`Infrastructure/DataProviders/DukascopyHelpers.cs`) is a shared static helper class that centralises all Dukascopy-specific logic: LZMA decompression, binary candle parsing, bar aggregation, point-size lookups, URL construction, weekend filtering, and canonical CSV read/write. Both `DukascopyDataProvider` (inline backtest) and `DukascopyImportProvider` (market data import) delegate to these helpers.
+
+| Method | Description |
+|---|---|
+| `Decompress(byte[])` | Decompresses LZMA-compressed `.bi5` data using the standard 13-byte header (5-byte properties + 8-byte uncompressed size + compressed stream) |
+| `ParseCandles(byte[], DateTime, string, decimal)` | Parses decompressed 24-byte binary candle records into `BarRecord` instances; skips zero-price entries |
+| `Aggregate(List<BarRecord>, string, string)` | Aggregates minute bars to a target interval (5m, 15m, 30m, 1H, 4H, Daily) |
+| `IntervalToMinutes(string)` | Converts an interval string to minutes; defaults to 1440 (daily) for unknown intervals |
+| `BuildTradingDays(DateTime, DateTime)` | Builds a list of weekday dates in a range (skips Saturday/Sunday) |
+| `BuildDayUrl(string, DateTime)` | Constructs the Dukascopy datafeed URL for a day's BID minute candles (0-indexed months) |
+| `SaveToCsv(string, List<BarRecord>)` | Writes bars to canonical CSV format (`Timestamp,Open,High,Low,Close,Volume`) |
+| `LoadFromCsv(string, string, string)` | Loads bars from a canonical CSV file |
+
+`PointSizes` is a static dictionary mapping 15 supported symbols (major forex pairs, gold, silver, equity index CFDs) to their pipette divisors. Unknown symbols should default to 100,000 at the call site.
+
 ### DukascopyDataProvider
 
-`DukascopyDataProvider` downloads historical minute-bar data from Dukascopy's free datafeed. It requires no API key. Data is served as LZMA-compressed binary files (`.bi5` format) and decoded into `BarRecord` instances.
+`DukascopyDataProvider` downloads historical minute-bar data from Dukascopy's free datafeed. It requires no API key. Data is served as LZMA-compressed binary files (`.bi5` format) and decoded into `BarRecord` instances. All decompression, parsing, aggregation, URL construction, and CSV I/O is delegated to `DukascopyHelpers`.
 
 > **Note:** `DukascopyDataProvider` is no longer resolvable via `DataProviderType` in `ScenarioConfig`. It was removed from the `DataProviderFactory` switch. The class still exists in Infrastructure but must be constructed manually if needed.
 
-The provider implements a local CSV cache keyed by symbol, interval, and date range. On each `GetBars` call it checks for a cached file first. If a cache hit is found, bars are loaded from CSV and filtered to the requested range — no HTTP requests are made. On a cache miss, the provider downloads, aggregates, and then saves the result to CSV before yielding bars.
+The provider implements a local CSV cache keyed by symbol, interval, and date range. On each `GetBars` call it checks for a cached file first. If a cache hit is found, bars are loaded from CSV via `DukascopyHelpers.LoadFromCsv` and filtered to the requested range — no HTTP requests are made. On a cache miss, the provider downloads, aggregates, and then saves the result to CSV via `DukascopyHelpers.SaveToCsv` before yielding bars.
 
-When downloading, the provider builds a list of trading days (skipping weekends) for the requested date range, then downloads them in parallel batches of up to 4 concurrent HTTP requests. Each `.bi5` payload is decompressed using SharpCompress (`LzmaStream`) with the standard 13-byte header (5-byte properties + 8-byte uncompressed size + compressed stream), and raw pipette values are converted to decimal prices using a per-symbol point size. Supported instruments include major forex pairs, gold, silver, and equity index CFDs. Unknown symbols default to a point size of 100,000.
-
-After all batches complete, minute bars are sorted by timestamp (parallel downloads may arrive out of order) and then aggregated to the requested interval. The aggregated bars are saved to the local CSV cache before being yielded. `CancellationToken` is checked between batches.
+When downloading, the provider uses `DukascopyHelpers.BuildTradingDays` to enumerate weekdays, then downloads them in parallel batches of up to 4 concurrent HTTP requests. Each `.bi5` payload is decompressed via `DukascopyHelpers.Decompress` and parsed via `DukascopyHelpers.ParseCandles`. After all batches complete, minute bars are sorted by timestamp and aggregated via `DukascopyHelpers.Aggregate`. `CancellationToken` is checked between batches.
 
 ### YahooFinanceDataProvider
 
@@ -116,6 +131,93 @@ The provider delegates HTTP fetching to an internal `FetchCsvAsync` method that 
 | Headers | string[] | Column headers from the first row |
 
 `DataFileService` is not yet registered in DI — it will be wired when the Data Files page (UI Phase 7, task 34.1) is implemented.
+
+## Market Data Acquisition (In Progress)
+
+A standalone workflow for downloading historical candles from external providers, normalizing them into the engine's canonical CSV format, and registering them as validated Data Files. The model is: **download → normalize → approved CSV → DataFileRecord → validation → analytics consumption**. Market Data is adjacent to Data Files: it is the factory for generating approved CSVs, while Data Files remains the library for previewing, validating, and selecting those files.
+
+### Application Layer — Domain Types (`Application/MarketData/`)
+
+- `MarketDataImportStatus` — enum: `Running`, `Completed`, `Failed`, `Cancelled`
+- `MarketDataImportRecord` — persistent record of an import job. Implements `IHasId` via `ImportId`. Fields: `ImportId`, `Source`, `Symbol`, `Timeframe`, `RequestedStart`, `RequestedEnd`, `Status`, optional `OutputFilePath`, `OutputFileId`, `DownloadedChunkCount`, `TotalChunkCount`, `ErrorDetail`, `CandleBasis` (default `"Bid"`), `CreatedAt`, `CompletedAt`
+- `MarketSymbolInfo` — describes a symbol supported by a provider. Fields: `Symbol`, `DisplayName`, `SupportedTimeframes`
+- `CsvWriteResult` — result of writing a canonical CSV. Fields: `FilePath`, `Symbol`, `Timeframe`, `FirstBar`, `LastBar`, `BarCount`
+
+### Canonical CSV Schema
+
+All imported data is normalized to: `Timestamp,Open,High,Low,Close,Volume` with ISO 8601 UTC timestamps (`Z` suffix), strictly ascending rows, positive OHLC values, and `0` for unavailable volume. This matches the existing engine format used by `CsvFormatConverter.SourceFormat.Engine`.
+
+### Application Layer — Interfaces (`Application/MarketData/`)
+
+- `IMarketDataProvider` — provider-agnostic download interface. Defines `SourceName` (string property), `GetSupportedSymbolsAsync` (returns `IReadOnlyList<MarketSymbolInfo>`), and `DownloadToFileAsync` (downloads and normalizes data to canonical CSV at a given output path, accepts `IProgressReporter?` and `CancellationToken`, returns `CsvWriteResult`). `requestedStart` is inclusive, `requestedEnd` is exclusive. Implementations live in Infrastructure.
+
+### Application Layer — Persistence Interface (`Application/MarketData/`)
+
+- `IMarketDataImportRepository` — CRUD for import records. Methods: `GetAsync`, `ListAsync`, `SaveAsync`, `DeleteAsync`.
+
+### Infrastructure — DukascopyImportProvider (`Infrastructure/MarketData/`)
+
+`DukascopyImportProvider` implements `IMarketDataProvider` with `SourceName = "Dukascopy"`. It downloads minute BID candles day-by-day (sequential, not batched), aggregates to the requested timeframe via `DukascopyHelpers.Aggregate`, filters to the requested range (start inclusive, end exclusive), and writes canonical CSV via `DukascopyHelpers.SaveToCsv`.
+
+- Supports all 15 symbols from `DukascopyHelpers.PointSizes` across 7 timeframes (`1m`, `5m`, `15m`, `30m`, `1H`, `4H`, `Daily`)
+- Reports progress per day chunk via `IProgressReporter`
+- Retries transient HTTP failures up to 3 times with exponential backoff
+- Skips weekends via `DukascopyHelpers.BuildTradingDays`
+- Rejects unsupported symbols with `ArgumentException`
+
+### Infrastructure — JsonMarketDataImportRepository (`Infrastructure/MarketData/`)
+
+`JsonMarketDataImportRepository` persists `MarketDataImportRecord` as individual JSON files at `{baseDir}/{importId}.json`. Implements `IMarketDataImportRepository`. Constructor accepts a base directory path.
+
+### Application Layer — MarketDataImportService (`Application/MarketData/`)
+
+`MarketDataImportService` is a singleton orchestrator that manages the full import lifecycle: validate → download → normalize → register `DataFileRecord` → update import record. Only one import may run at a time (concurrency guard via `lock`). Implements `IDisposable`.
+
+#### Supporting Records
+
+- `ImportProgressUpdate(ImportId, Current, Total, Label)` — raised on each progress step
+- `ImportCompletionUpdate(ImportId, Status, ErrorMessage?)` — raised when an import finishes (success, failure, or cancellation)
+- `ActiveImport(ImportId, Source, Symbol, Timeframe, Current, Total, StartedAt)` — snapshot of the running import
+
+#### Public API
+
+| Method | Description |
+|---|---|
+| `StartImportAsync(source, symbol, timeframe, start, end, ct)` | Validates parameters, creates a `Running` import record, launches a background download task, returns the import ID immediately. Throws `InvalidOperationException` if an import is already running, `ArgumentException` for invalid parameters. |
+| `CancelImport(importId)` | Cancels the running import if it matches the given ID. |
+| `GetActiveImport()` | Returns the `ActiveImport` snapshot, or `null` if idle. |
+| `FindDuplicateAsync(source, symbol, timeframe, start, end, ct)` | Checks for an existing `Completed` import with matching parameters. Returns the record if found, `null` otherwise. Used for duplicate detection and `DataFileRecord` reuse. |
+| `RecoverOnStartupAsync(ct)` | Called on Web startup. Resets orphaned `Running` records to `Failed` and deletes `.tmp` files in the data directory. |
+
+#### Events
+
+- `OnProgress` (`Action<ImportProgressUpdate>?`) — per-step progress updates
+- `OnCompleted` (`Action<ImportCompletionUpdate>?`) — completion notification
+
+#### Background Task Flow
+
+1. Provider's `DownloadToFileAsync` writes to a `.tmp` file, reporting progress via an internal `ServiceProgressReporter` that bridges `IProgressReporter` to the service's events.
+2. On success: atomic rename (delete existing → move temp to final), create or update `DataFileRecord` (reuses `FileId` from a previous duplicate import if found), update import record to `Completed`.
+3. On cancellation: delete temp file, set import to `Cancelled`.
+4. On failure: delete temp file, set import to `Failed` with error detail.
+5. Finally: clear `_activeImport` and dispose the `CancellationTokenSource`.
+
+#### Startup Recovery (Web Host)
+
+`Program.cs` calls `RecoverOnStartupAsync` on startup inside a try/catch so recovery failures don't prevent the app from starting.
+
+### Planned Components (Not Yet Implemented)
+
+- `MarketData.razor` — Web UI screen for configuring and monitoring imports
+
+### Design Decisions
+
+- Core is untouched. All new types live in Application, Infrastructure, and Web.
+- Only one import job may run at a time (concurrency guard).
+- Output file naming: `{source}_{symbol}_{timeframe}_{startYYYYMMDD}_{endYYYYMMDD}.csv`
+- Temp-file-then-rename write pattern prevents corrupting existing files.
+- On startup, orphaned `Running` records are reset to `Failed`.
+- Duplicate imports reuse the existing `DataFileRecord.FileId` so the Data Files library doesn't accumulate stale entries.
 
 ## Metrics Pipeline
 

@@ -27,6 +27,17 @@ using (var scope = app.Services.CreateScope())
     await migration.MigrateIfNeededAsync();
 }
 
+// Market Data: recover orphaned imports on startup
+try
+{
+    var importService = app.Services.GetRequiredService<TradingResearchEngine.Application.MarketData.MarketDataImportService>();
+    await importService.RecoverOnStartupAsync();
+}
+catch (Exception ex)
+{
+    app.Logger.LogWarning(ex, "Market data import recovery failed on startup");
+}
+
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Error");

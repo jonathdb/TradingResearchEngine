@@ -93,6 +93,35 @@ public static class ServiceCollectionExtensions
         // V4: Migration service
         services.AddSingleton<MigrationService>();
 
+        // Market Data: import repository
+        services.AddSingleton<TradingResearchEngine.Application.MarketData.IMarketDataImportRepository>(sp =>
+        {
+            var baseDir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "TradingResearchEngine", "Imports");
+            return new MarketData.JsonMarketDataImportRepository(baseDir);
+        });
+
+        // Market Data: Dukascopy provider
+        services.AddSingleton<TradingResearchEngine.Application.MarketData.IMarketDataProvider>(sp =>
+        {
+            var httpFactory = sp.GetRequiredService<IHttpClientFactory>();
+            var logger = sp.GetRequiredService<ILogger<MarketData.DukascopyImportProvider>>();
+            return new MarketData.DukascopyImportProvider(httpFactory.CreateClient(), logger);
+        });
+
+        // Market Data: import service
+        services.AddSingleton(sp =>
+        {
+            var importRepo = sp.GetRequiredService<TradingResearchEngine.Application.MarketData.IMarketDataImportRepository>();
+            var dataFileRepo = sp.GetRequiredService<TradingResearchEngine.Application.DataFiles.IDataFileRepository>();
+            var providers = sp.GetServices<TradingResearchEngine.Application.MarketData.IMarketDataProvider>();
+            var logger = sp.GetRequiredService<ILogger<TradingResearchEngine.Application.MarketData.MarketDataImportService>>();
+            var dataDir = sp.GetRequiredService<DataFileService>().DataDirectory;
+            return new TradingResearchEngine.Application.MarketData.MarketDataImportService(
+                importRepo, dataFileRepo, providers, logger, dataDir);
+        });
+
         // V3: Strategy templates
         services.AddSingleton<IReadOnlyList<TradingResearchEngine.Application.Strategy.StrategyTemplate>>(
             TradingResearchEngine.Application.Strategy.DefaultStrategyTemplates.All);
