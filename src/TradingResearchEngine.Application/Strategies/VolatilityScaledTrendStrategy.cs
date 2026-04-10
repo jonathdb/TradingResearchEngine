@@ -8,11 +8,10 @@ namespace TradingResearchEngine.Application.Strategies;
 /// Volatility-scaled trend-following strategy.
 ///
 /// Uses a fast/slow SMA crossover for trend direction and a trailing ATR
-/// for volatility normalization. Signal strength is Close / ATR, allowing
-/// the RiskLayer to size positions inversely to volatility.
+/// for volatility warmup gating. Signal strength is the bar's Close price.
 ///
 /// Hypothesis: Persistent directional moves continue long enough for
-/// trend-following entries to overcome transaction costs when sized by volatility.
+/// trend-following entries to overcome transaction costs.
 /// </summary>
 [StrategyName("volatility-scaled-trend")]
 public sealed class VolatilityScaledTrendStrategy : IStrategy

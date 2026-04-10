@@ -78,34 +78,50 @@ public static class DukascopyHelpers
         return bars;
     }
 
-    /// <summary>Aggregates minute bars to the target interval.</summary>
+    /// <summary>Aggregates minute bars to the target interval using time-based boundaries.</summary>
     public static List<BarRecord> Aggregate(List<BarRecord> bars, string interval, string symbol)
     {
         int mins = IntervalToMinutes(interval);
         if (mins == 1) return bars;
 
         var result = new List<BarRecord>();
-        for (int i = 0; i < bars.Count; i += mins)
+        if (bars.Count == 0) return result;
+
+        int i = 0;
+        while (i < bars.Count)
         {
-            int end = Math.Min(i + mins, bars.Count);
-            if (i >= end) break;
+            // Compute the time boundary for this aggregation window
+            var windowStart = TruncateToInterval(bars[i].Timestamp, mins);
+            var windowEnd = windowStart.AddMinutes(mins);
 
             decimal open = bars[i].Open;
             decimal high = bars[i].High;
             decimal low = bars[i].Low;
-            decimal close = bars[end - 1].Close;
-            decimal volume = 0m;
+            decimal close = bars[i].Close;
+            decimal volume = bars[i].Volume;
+            var timestamp = windowStart;
 
-            for (int j = i; j < end; j++)
+            i++;
+            while (i < bars.Count && bars[i].Timestamp < windowEnd)
             {
-                if (bars[j].High > high) high = bars[j].High;
-                if (bars[j].Low < low) low = bars[j].Low;
-                volume += bars[j].Volume;
+                if (bars[i].High > high) high = bars[i].High;
+                if (bars[i].Low < low) low = bars[i].Low;
+                close = bars[i].Close;
+                volume += bars[i].Volume;
+                i++;
             }
 
-            result.Add(new BarRecord(symbol, interval, open, high, low, close, volume, bars[i].Timestamp));
+            result.Add(new BarRecord(symbol, interval, open, high, low, close, volume, timestamp));
         }
         return result;
+    }
+
+    /// <summary>Truncates a timestamp to the nearest interval boundary.</summary>
+    private static DateTimeOffset TruncateToInterval(DateTimeOffset ts, int intervalMinutes)
+    {
+        long totalMinutes = (long)(ts - ts.Date).TotalMinutes;
+        long truncated = totalMinutes / intervalMinutes * intervalMinutes;
+        return new DateTimeOffset(ts.Date, ts.Offset).AddMinutes(truncated);
     }
 
     /// <summary>Converts an interval string to minutes.</summary>
