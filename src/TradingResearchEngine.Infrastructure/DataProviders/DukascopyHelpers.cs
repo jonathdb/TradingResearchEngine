@@ -116,12 +116,14 @@ public static class DukascopyHelpers
         return result;
     }
 
-    /// <summary>Truncates a timestamp to the nearest interval boundary.</summary>
+    /// <summary>Truncates a timestamp to the nearest interval boundary (UTC-safe).</summary>
     private static DateTimeOffset TruncateToInterval(DateTimeOffset ts, int intervalMinutes)
     {
-        long totalMinutes = (long)(ts - ts.Date).TotalMinutes;
+        // Use UtcDateTime to avoid local timezone offset issues
+        var utc = ts.UtcDateTime;
+        long totalMinutes = (long)(utc - utc.Date).TotalMinutes;
         long truncated = totalMinutes / intervalMinutes * intervalMinutes;
-        return new DateTimeOffset(ts.Date, ts.Offset).AddMinutes(truncated);
+        return new DateTimeOffset(utc.Date, TimeSpan.Zero).AddMinutes(truncated);
     }
 
     /// <summary>Converts an interval string to minutes.</summary>

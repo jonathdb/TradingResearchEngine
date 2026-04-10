@@ -18,6 +18,7 @@ public sealed class DukascopyImportProvider : IMarketDataProvider
     private readonly ILogger<DukascopyImportProvider> _logger;
 
     private const int MaxRetries = 3;
+    private const int MaxConcurrentDownloads = 8;
 
     private static readonly string[] AllTimeframes =
         { "1m", "5m", "15m", "30m", "1H", "4H", "Daily" };
@@ -78,12 +79,19 @@ public sealed class DukascopyImportProvider : IMarketDataProvider
             symbol, timeframe, totalChunks, requestedStart, requestedEnd);
 
         var allMinuteBars = new List<BarRecord>();
-        for (int i = 0; i < dates.Count; i++)
+        int completed = 0;
+
+        // Parallel download in batches for speed
+        var batches = dates.Chunk(MaxConcurrentDownloads);
+        foreach (var batch in batches)
         {
             ct.ThrowIfCancellationRequested();
-            var dayBars = await FetchDayWithRetryAsync(symbol, dates[i], pointSize, ct);
-            allMinuteBars.AddRange(dayBars);
-            progress?.Report(i + 1, totalChunks, $"Downloading day {i + 1} of {totalChunks}");
+            var tasks = batch.Select(d => FetchDayWithRetryAsync(symbol, d, pointSize, ct));
+            var results = await Task.WhenAll(tasks);
+            foreach (var dayBars in results)
+                allMinuteBars.AddRange(dayBars);
+            completed += batch.Length;
+            progress?.Report(completed, totalChunks, $"Downloading day {completed} of {totalChunks}");
         }
 
         allMinuteBars.Sort((a, b) => a.Timestamp.CompareTo(b.Timestamp));
