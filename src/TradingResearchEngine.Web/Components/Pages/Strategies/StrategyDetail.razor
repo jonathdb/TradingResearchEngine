@@ -32,6 +32,11 @@ else
                 <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
                     <MudText Typo="Typo.h5">@_strategy.StrategyName</MudText>
                     <MudChip T="string" Size="MudBlazor.Size.Small" Color="Color.Default">@_strategy.StrategyType</MudChip>
+                    @if (_descriptor is not null)
+                    {
+                        <MudChip T="string" Size="MudBlazor.Size.Small" Color="@FamilyColor"
+                                 aria-label="@($"Strategy family: {_descriptor.Family}")">@_descriptor.Family</MudChip>
+                    }
                     <MudChip T="string" Size="MudBlazor.Size.Small" Color="@StageColor"
                              aria-label="@($"Development stage: {_strategy.Stage}")">@_strategy.Stage</MudChip>
                 </MudStack>
@@ -210,10 +215,26 @@ else
                             <MudText Typo="Typo.caption" Class="text-muted mr-2">LAUNCH STUDY</MudText>
                             @if (_latestRun is not null)
                             {
-                                <MudButton Variant="Variant.Outlined" Size="MudBlazor.Size.Small" Href="@($"/research/montecarlo?result={_latestRun.Id}")">Monte Carlo</MudButton>
-                                <MudButton Variant="Variant.Outlined" Size="MudBlazor.Size.Small" Href="@($"/research/walkforward?strategy={_strategy.StrategyType}")">Walk-Forward</MudButton>
-                                <MudButton Variant="Variant.Outlined" Size="MudBlazor.Size.Small" Href="@($"/research/sweep?strategy={_strategy.StrategyType}")">Sweep</MudButton>
-                                <MudButton Variant="Variant.Outlined" Size="MudBlazor.Size.Small" Href="@($"/research/perturbation?result={_latestRun.Id}")">Perturbation</MudButton>
+                                <MudButton Variant="Variant.Outlined" Size="MudBlazor.Size.Small" Href="@($"/research/montecarlo?result={_latestRun.Id}")">
+                                    Monte Carlo
+                                    @if (_descriptor?.SuggestedStudies?.Contains("MonteCarlo") == true)
+                                    { <MudIcon Icon="@Icons.Material.Filled.Star" Size="MudBlazor.Size.Small" Class="ml-1" Style="color: var(--mud-palette-warning)" /> }
+                                </MudButton>
+                                <MudButton Variant="Variant.Outlined" Size="MudBlazor.Size.Small" Href="@($"/research/walkforward?strategy={_strategy.StrategyType}")">
+                                    Walk-Forward
+                                    @if (_descriptor?.SuggestedStudies?.Contains("WalkForward") == true)
+                                    { <MudIcon Icon="@Icons.Material.Filled.Star" Size="MudBlazor.Size.Small" Class="ml-1" Style="color: var(--mud-palette-warning)" /> }
+                                </MudButton>
+                                <MudButton Variant="Variant.Outlined" Size="MudBlazor.Size.Small" Href="@($"/research/sweep?strategy={_strategy.StrategyType}")">
+                                    Sweep
+                                    @if (_descriptor?.SuggestedStudies?.Contains("Sensitivity") == true)
+                                    { <MudIcon Icon="@Icons.Material.Filled.Star" Size="MudBlazor.Size.Small" Class="ml-1" Style="color: var(--mud-palette-warning)" /> }
+                                </MudButton>
+                                <MudButton Variant="Variant.Outlined" Size="MudBlazor.Size.Small" Href="@($"/research/perturbation?result={_latestRun.Id}")">
+                                    Perturbation
+                                    @if (_descriptor?.SuggestedStudies?.Contains("Realism") == true)
+                                    { <MudIcon Icon="@Icons.Material.Filled.Star" Size="MudBlazor.Size.Small" Class="ml-1" Style="color: var(--mud-palette-warning)" /> }
+                                </MudButton>
                             }
                             else
                             {
@@ -438,6 +459,7 @@ else
     private bool _hypothesisDialogOpen; // V4
     private string _hypothesisText = ""; // V4
     private TradingResearchEngine.Application.Research.ResearchChecklist? _checklist; // V4
+    private StrategyDescriptor? _descriptor; // Strategy library curation
     // V4: Execution Window
     private (string? Timeframe, DateTimeOffset? Start, DateTimeOffset? End, int? EstimatedBars) _execWindow;
     private bool _editWindowOpen;
@@ -466,6 +488,8 @@ else
             };
             _versions = (await StrategyRepo.GetVersionsAsync(StrategyId)).ToList();
             _selectedVersion = _versions.LastOrDefault();
+            _descriptor = DefaultStrategyTemplates.All
+                .FirstOrDefault(t => t.StrategyType == _strategy.StrategyType)?.Descriptor;
             await LoadVersionData();
         }
         _firmPacks = LoadBuiltInPacks();
@@ -631,6 +655,17 @@ else
         DevelopmentStage.Validating => Color.Primary,
         DevelopmentStage.FinalTest => Color.Success,
         DevelopmentStage.Retired => Color.Dark,
+        _ => Color.Default
+    };
+
+    // Strategy library curation: family color
+    private Color FamilyColor => _descriptor?.Family switch
+    {
+        StrategyFamily.Trend => Color.Info,
+        StrategyFamily.MeanReversion => Color.Secondary,
+        StrategyFamily.Breakout => Color.Warning,
+        StrategyFamily.RegimeAware => Color.Tertiary,
+        StrategyFamily.Benchmark => Color.Default,
         _ => Color.Default
     };
 

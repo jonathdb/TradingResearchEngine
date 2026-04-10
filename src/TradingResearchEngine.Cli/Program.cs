@@ -17,7 +17,7 @@ var configuration = new ConfigurationBuilder()
 var services = new ServiceCollection();
 services.AddTradingResearchEngine(configuration);
 services.AddTradingResearchEngineInfrastructure(configuration);
-services.AddStrategyAssembly(typeof(TradingResearchEngine.Application.Strategies.SmaCrossoverStrategy).Assembly);
+services.AddStrategyAssembly(typeof(TradingResearchEngine.Application.Strategies.DonchianBreakoutStrategy).Assembly);
 services.AddLogging();
 
 var sp = services.BuildServiceProvider();

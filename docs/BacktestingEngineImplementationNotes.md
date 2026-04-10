@@ -135,6 +135,7 @@ The provider delegates HTTP fetching to an internal `FetchCsvAsync` method that 
 | AverageHoldingPeriod | closed trades | Mean duration between entry and exit |
 | EquityCurveSmoothness | equity curve | R² of linear regression; 1.0 = perfectly linear |
 | MaxConsecutiveWins / Losses | closed trades | Longest streak |
+| DeflatedSharpeRatio | Sharpe + trial count | V4: Bailey & López de Prado 2014 adjustment for multiple testing bias; null when Sharpe or trial count unavailable |
 
 All methods return `null` when inputs are insufficient (e.g. zero trades, fewer than 2–3 equity points).
 
@@ -288,12 +289,13 @@ Both values are defined in `Core/Configuration/` (`FillMode.cs` enum and the `Sc
 
 The computed property `ScenarioConfig.EffectiveFillMode` resolves the active fill mode: `ExecutionOptions.FillModeOverride` takes precedence over the top-level `FillMode` field.
 
-### SessionOptions and TraceOptions
+### SessionOptions, TraceOptions, and Timeframe
 
-Two additional optional records on `ScenarioConfig`:
+Two additional optional records and one optional string on `ScenarioConfig`:
 
 - `SessionOptions` — configures session calendar filtering (`SessionCalendarType`, `SessionFilterOptions`). When set, the engine filters bars outside the active trading session.
 - `TraceOptions` — enables event trace recording (`EnableEventTrace`). The computed property `ScenarioConfig.EnableEventTrace` resolves this.
+- `Timeframe` (V4, default `null`) — an explicit timeframe label (e.g. `"Daily"`, `"H4"`, `"M15"`). When set, it provides a human-readable timeframe tag for the scenario. `null` for legacy configs that predate V4.
 
 ## Session Calendar Support
 
@@ -353,19 +355,22 @@ V3 adds a product domain model to the Application layer. Core remains untouched.
 
 ### Strategy Identity and Versioning
 
-- `StrategyIdentity` (`Application/Strategy/`) — a user-owned, named research concept (e.g. "my EURUSD mean reversion idea"). Implements `IHasId` via `StrategyId`. Fields: `StrategyId`, `StrategyName`, `StrategyType`, `CreatedAt`, optional `Description`.
-- `StrategyVersion` (`Application/Strategy/`) — a specific parameter configuration of a strategy. Implements `IHasId` via `StrategyVersionId`. Fields: `StrategyVersionId`, `StrategyId` (parent), `VersionNumber`, `Parameters` dictionary, `BaseScenarioConfig` (full config snapshot), `CreatedAt`, optional `ChangeNote`.
+- `StrategyIdentity` (`Application/Strategy/`) — a user-owned, named research concept (e.g. "my EURUSD mean reversion idea"). Implements `IHasId` via `StrategyId`. Fields: `StrategyId`, `StrategyName`, `StrategyType`, `CreatedAt`, optional `Description`, `Stage` (`DevelopmentStage`, default `Exploring`), optional `Hypothesis`.
+- `DevelopmentStage` (`Application/Strategy/`) — V4 enum tracking the research lifecycle of a strategy. Values: `Hypothesis`, `Exploring`, `Optimizing`, `Validating`, `FinalTest`, `Retired`. Existing JSON missing this field deserializes to `Exploring` for backwards compatibility.
+- `StrategyVersion` (`Application/Strategy/`) — a specific parameter configuration of a strategy. Implements `IHasId` via `StrategyVersionId`. Fields: `StrategyVersionId`, `StrategyId` (parent), `VersionNumber`, `Parameters` dictionary, `BaseScenarioConfig` (full config snapshot), `CreatedAt`, optional `ChangeNote`, `TotalTrialsRun` (int, default 0, incremented per run or sweep), `SealedTestSet` (`DateRangeConstraint?`, default null, locked held-out date range).
 - `IStrategyRepository` (`Application/Strategy/`) — persistence interface for strategies and versions. Methods: `GetAsync`, `ListAsync`, `SaveAsync`, `DeleteAsync`, `GetVersionsAsync`, `SaveVersionAsync`, `GetLatestVersionAsync`.
 
 ### Strategy Templates
 
-- `StrategyTemplate` (`Application/Strategy/`) — a pre-built starting point for strategy creation. Implements `IHasId` via `TemplateId`. Fields: `TemplateId`, `Name`, `Description`, `StrategyType`, `TypicalUseCase`, `DefaultParameters`, `RecommendedTimeframe`, `RecommendedProfile`.
-- `DefaultStrategyTemplates.All` provides 6 built-in templates: SMA Crossover, Mean Reversion, RSI Momentum, Bollinger Bands, Donchian Breakout, Stationary Mean Reversion.
+- `StrategyDescriptor` (`Application/Strategy/`) — lightweight metadata for a built-in strategy, surfaced in the Builder and Strategy Detail UX. Fields: `StrategyType`, `DisplayName`, `Family`, `Description`, `Hypothesis`, optional `BestFor`, optional `SuggestedStudies` (string array). Lookup is by `StrategyType` match against `StrategyTemplate.StrategyType`; missing descriptor is non-fatal (UI falls back to raw type name).
+- `StrategyFamily` (`Application/Strategy/`) — static class with string constants for strategy family classification: `Trend`, `MeanReversion`, `Breakout`, `RegimeAware`, `Benchmark`.
+- `StrategyTemplate` (`Application/Strategy/`) — a pre-built starting point for strategy creation. Implements `IHasId` via `TemplateId`. Fields: `TemplateId`, `Name`, `Description`, `StrategyType`, `TypicalUseCase`, `DefaultParameters`, `RecommendedTimeframe`, `RecommendedProfile`, optional `Descriptor` (`StrategyDescriptor?`, default `null`).
+- `DefaultStrategyTemplates.All` provides 6 built-in templates with full `StrategyDescriptor` metadata: Volatility-Scaled Trend, Z-Score Mean Reversion, Donchian Breakout, Stationary Mean Reversion, Macro Regime Rotation, Buy & Hold Baseline.
 
 ### Study Records
 
-- `StudyRecord` (`Application/Research/`) — a research workflow execution linked to a strategy version. A Monte Carlo study with 1000 paths is ONE study, not 1000 runs. Implements `IHasId` via `StudyId`. Fields: `StudyId`, `StrategyVersionId`, `Type` (`StudyType` enum), `Status` (`StudyStatus` enum), `CreatedAt`, optional `SourceRunId`, optional `ErrorSummary`.
-- `StudyType` enum: `MonteCarlo`, `WalkForward`, `Sensitivity`, `ParameterSweep`, `Realism`, `ParameterStability`.
+- `StudyRecord` (`Application/Research/`) — a research workflow execution linked to a strategy version. A Monte Carlo study with 1000 paths is ONE study, not 1000 runs. Implements `IHasId` via `StudyId`. Fields: `StudyId`, `StrategyVersionId`, `Type` (`StudyType` enum), `Status` (`StudyStatus` enum), `CreatedAt`, optional `SourceRunId`, optional `ErrorSummary`, `IsPartial` (bool, default false — true when cancelled before completion), `CompletedCount` (int, default 0 — completed units when partial), `TotalCount` (int, default 0 — total planned units).
+- `StudyType` enum: `MonteCarlo`, `WalkForward`, `AnchoredWalkForward` (V4), `CombinatorialPurgedCV` (V4, deferred to V4.1), `Sensitivity`, `ParameterSweep`, `Realism`, `ParameterStability`, `RegimeSegmentation` (V4).
 - `StudyStatus` enum: `Running`, `Completed`, `Failed`, `Incomplete`, `Cancelled`.
 - `IStudyRepository` (`Application/Research/`) — persistence interface for study records. Methods: `GetAsync`, `ListByVersionAsync`, `ListAsync`, `SaveAsync`, `DeleteAsync`.
 
@@ -379,7 +384,133 @@ V3 adds a product domain model to the Application layer. Core remains untouched.
 
 ### BacktestResult Amendment
 
-`BacktestResult` gains an optional trailing parameter `StrategyVersionId` (default `null`). When a run is launched from a strategy version context, this field links the result back to the version. Legacy runs without a version link continue to work unchanged.
+`BacktestResult` gains optional trailing parameters after the V2 fields. All default to `null`/`null`/`null` and are backwards-compatible with existing JSON.
+
+| Field | Type | Version | Description |
+|---|---|---|---|
+| `StrategyVersionId` | string? | V3 | Links the result to a `StrategyVersion` when launched from a strategy context |
+| `FailureDetail` | string? | V4 | Exception message and context when `Status` is `Failed` |
+| `DeflatedSharpeRatio` | decimal? | V4 | Deflated Sharpe Ratio adjusted for multiple testing bias (Bailey & López de Prado 2014) |
+| `TrialCount` | int? | V4 | Snapshot of `StrategyVersion.TotalTrialsRun` at the time this run completed |
+
+Legacy runs without these fields continue to deserialise unchanged.
+
+### Data File Registration (V4)
+
+- `DataFileRecord` (`Application/DataFiles/`) — metadata for a registered CSV data file. Implements `IHasId` via `FileId`. Fields: `FileId`, `FileName`, `FilePath`, `DetectedSymbol`, `DetectedTimeframe`, `FirstBar`, `LastBar`, `BarCount`, `ValidationStatus`, `ValidationError`, `AddedAt`.
+- `ValidationStatus` enum: `Pending`, `Valid`, `Invalid`.
+- `IDataFileRepository` (`Application/DataFiles/`) — persistence interface for data file records. Methods: `GetAsync`, `ListAsync`, `SaveAsync`, `DeleteAsync`.
+- `JsonDataFileRepository` (`Infrastructure/Persistence/`) — JSON file-based implementation storing records at `datafiles/{fileId}.json`.
+
+### Walk-Forward Mode (V4)
+
+- `WalkForwardMode` (`Application/Research/`) — controls how the training window moves in a walk-forward study.
+  - `Rolling`: training window slides forward (both start and end advance each step).
+  - `Anchored`: training start stays fixed; training end advances each step, expanding the window.
+
+`WalkForwardOptions` (`Application/Configuration/`) integrates with `WalkForwardMode` via two new properties:
+
+| Property | Type | Description |
+|---|---|---|
+| `Mode` | `WalkForwardMode?` | V4: explicit walk-forward mode. When set, overrides `AnchoredWindow`. |
+| `EffectiveMode` | `WalkForwardMode` | Resolved mode: prefers `Mode` if set, falls back to `AnchoredWindow` (true → Anchored, false → Rolling). |
+
+The existing `AnchoredWindow` boolean is deprecated but retained for backwards compatibility. `InSampleLength` serves as the initial IS length in Anchored mode (the window expands from this starting size as the training end advances).
+
+## V4 Application Services
+
+### DsrCalculator
+
+`DsrCalculator` (`Application/Metrics/`) computes the Deflated Sharpe Ratio following Bailey & López de Prado (2014). It adjusts the observed Sharpe for multiple testing bias: the more trials run, the more likely a high Sharpe is found by chance. Pure static function. Values below 0.95 suggest possible overfitting.
+
+### MinBtlCalculator
+
+`MinBtlCalculator` (`Application/Metrics/`) computes the Minimum Backtest Length — the minimum number of bars required for a Sharpe ratio observation to be statistically significant at the 95% confidence level, accounting for non-normality and multiple testing. Pure static function.
+
+### ResearchChecklistService
+
+`ResearchChecklistService` (`Application/Research/`) computes an 8-item research checklist for a strategy version by querying runs, studies, and evaluations. Registered as scoped in DI.
+
+The 8 checklist items:
+1. Initial Backtest — at least one completed run exists
+2. Monte Carlo Robustness — a completed Monte Carlo study exists
+3. Walk-Forward Validation — a completed WalkForward or AnchoredWalkForward study exists
+4. Regime Sensitivity — a completed RegimeSegmentation study exists
+5. Realism Impact — a completed Realism study exists
+6. Parameter Surface — a completed Sensitivity or ParameterSweep study exists
+7. Final Held-Out Test — strategy stage is `FinalTest`
+8. Prop Firm Evaluation — (placeholder, not yet wired)
+
+Confidence level: HIGH (≥7 passed), MEDIUM (≥4), LOW (<4).
+
+### FinalValidationUseCase
+
+`FinalValidationUseCase` (`Application/Engine/`) runs a single backtest against the sealed held-out test set. This is a one-time action that marks the strategy as `DevelopmentStage.FinalTest`. Registered as scoped in DI.
+
+Process:
+1. Loads the `StrategyVersion` and validates that `SealedTestSet` is configured and sealed.
+2. Builds a `ScenarioConfig` scoped to the sealed date range.
+3. Runs the backtest via `RunScenarioUseCase` (bypasses sealed-set guard).
+4. On success, updates the parent `StrategyIdentity.Stage` to `FinalTest`.
+
+### BackgroundStudyService
+
+`BackgroundStudyService` (`Application/Research/`) manages background execution of long-running studies. Registered as singleton in DI — manages study lifecycle across navigations.
+
+- `RegisterStudy` — registers a study as active and returns a `CancellationToken`.
+- `ReportProgress` — reports progress for an active study, raises `OnProgress` event.
+- `Complete` — marks a study as complete, removes from active tracking, raises `OnCompleted` event.
+- `CancelStudy` — cancels a running study via its `CancellationTokenSource`.
+- `GetActiveStudies` — returns a snapshot of all currently active studies.
+
+Supporting types: `StudyProgressUpdate`, `StudyCompletionUpdate`, `ActiveStudy`.
+
+The concrete Web host is responsible for actually running studies on background tasks and creating DI scopes per study execution.
+
+### Trial Count Lifecycle in RunScenarioUseCase
+
+`RunScenarioUseCase` enriches `BacktestResult` with trial count and DSR when the result is linked to a `StrategyVersion` (via `StrategyVersionId`):
+
+1. Finds the parent `StrategyVersion` via `IStrategyRepository`.
+2. Increments `TotalTrialsRun` for completed, failed, or cancelled-with-bars runs.
+3. Snapshots the trial count into `BacktestResult.TrialCount`.
+4. Computes DSR for completed runs with a non-null Sharpe, using skewness and excess kurtosis derived from equity curve period returns.
+
+### CpcvStudyHandler (V4 Placeholder)
+
+`CpcvStudyHandler` (`Application/Research/`) — placeholder for Combinatorial Purged Cross-Validation (CPCV). CPCV generates all combinations of training/test splits across N folds and computes the Probability of Backtest Overfitting (PBO). The `StudyType.CombinatorialPurgedCV` enum entry and PBO metric tile are scaffolded, but the full implementation is deferred to V4.1. Calling `RunAsync` throws `NotImplementedException`. The handler is registered in DI but not exposed in study creation flows in the UI.
+
+### IProgressReporter (V4)
+
+`IProgressReporter` (`Application/Research/`) — reports progress for long-running operations. Method: `Report(int current, int total, string label)`. Blazor implementation uses `InvokeAsync(StateHasChanged)` to push UI updates.
+
+### IReportExporter (V4)
+
+`IReportExporter` (`Application/Export/`) — exports a `BacktestResult` to various formats. Methods: `ExportMarkdownAsync`, `ExportTradeCsvAsync`, `ExportEquityCsvAsync`, `ExportJsonAsync`. Each returns the file path of the exported file.
+
+## V4 Migration Service
+
+`MigrationService` (`Infrastructure/Persistence/`) runs once on startup to migrate orphaned V2/V2.1 `BacktestResult` records into the V4 strategy model. Non-destructive: original files are untouched.
+
+### Process
+
+1. Checks for a `migration_v4.lock` file in `%LOCALAPPDATA%/TradingResearchEngine/`. If present, migration is skipped.
+2. Queries all `BacktestResult` records and filters for orphaned results (those with a null or empty `StrategyVersionId`).
+3. If no orphaned results exist, writes the lock file and returns.
+4. Creates a synthetic `StrategyIdentity` (`imported-pre-v4`) and `StrategyVersion` (`imported-pre-v4-v0`) if they do not already exist.
+5. Links each orphaned result by setting `StrategyVersionId = "imported-pre-v4-v0"` and re-saving.
+6. Writes the lock file on success.
+
+### Design Decisions
+
+- Idempotent: re-running after a partial failure picks up where it left off. The lock file is only written after all results are linked.
+- Failure is logged but does not throw — migration failure must not crash the app. The migration will retry on the next startup.
+- The lock directory defaults to `%LOCALAPPDATA%/TradingResearchEngine/` but accepts an override via constructor for testing.
+- The synthetic strategy uses `StrategyType = "imported"` and a dummy `ScenarioConfig` with zero slippage/commission.
+
+### Startup Integration
+
+`MigrationService.MigrateIfNeededAsync` is called during application startup (after DI is built, before the host starts accepting requests). Both the CLI and Web hosts invoke it.
 
 ## Deterministic Replay
 

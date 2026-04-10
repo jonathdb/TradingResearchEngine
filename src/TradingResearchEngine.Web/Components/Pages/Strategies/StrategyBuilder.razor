@@ -39,8 +39,20 @@
                          Style="@(_selectedTemplate?.TemplateId == tpl.TemplateId ? "border: 2px solid var(--mud-palette-primary); cursor:pointer" : "cursor:pointer")"
                          @onclick="() => SelectTemplate(tpl)">
                     <MudCardContent>
-                        <MudText Typo="Typo.subtitle1">@tpl.Name</MudText>
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Class="mb-1">
+                            @if (tpl.Descriptor is not null)
+                            {
+                                <MudChip T="string" Size="MudBlazor.Size.Small" Color="@GetFamilyColor(tpl.Descriptor.Family)">@tpl.Descriptor.Family</MudChip>
+                            }
+                            <MudText Typo="Typo.subtitle1">@(tpl.Descriptor?.DisplayName ?? tpl.Name)</MudText>
+                        </MudStack>
                         <MudText Typo="Typo.body2" Class="text-muted">@tpl.Description</MudText>
+                        @if (tpl.Descriptor?.Hypothesis is not null)
+                        {
+                            <MudText Typo="Typo.caption" Class="text-muted mt-1" Style="font-style: italic">
+                                💡 @tpl.Descriptor.Hypothesis
+                            </MudText>
+                        }
                         <MudChip T="string" Size="MudBlazor.Size.Small" Class="mt-2">@tpl.TypicalUseCase</MudChip>
                     </MudCardContent>
                 </MudCard>
@@ -158,6 +170,7 @@ else if (_step == 4)
     <MudText Typo="Typo.h6" Class="mb-3">Review & Save</MudText>
     <MudTextField @bind-Value="_strategyName" Label="Strategy Name" Placeholder="e.g. EURUSD Mean Reversion" Class="mb-3" />
     <MudTextField @bind-Value="_description" Label="Description (optional)" Lines="2" Class="mb-3" />
+    <MudTextField @bind-Value="_hypothesis" Label="Hypothesis (why should this strategy work?)" Lines="2" Class="mb-3" />
 
     <MudSimpleTable Dense="true" Striped="true" Class="mb-4">
         <tbody>
@@ -207,6 +220,7 @@ else if (_step == 4)
     private string _commissionModel = "Zero";
     private string _strategyName = "";
     private string _description = "";
+    private string _hypothesis = "";
     private bool _showAdvancedExecution;
     private bool _saving;
     private List<TradingResearchEngine.Infrastructure.DataProviders.DataFileInfo> _dataFiles = new();
@@ -227,22 +241,38 @@ else if (_step == 4)
         _timeframe = tpl.RecommendedTimeframe;
         _parameters = tpl.DefaultParameters.ToDictionary(
             kv => kv.Key, kv => kv.Value?.ToString() ?? "");
+        _hypothesis = tpl.Descriptor?.Hypothesis ?? "";
     }
 
     private string GetParameterHelp(string paramName) => paramName.ToLowerInvariant() switch
     {
         "fastperiod" => "Fast SMA lookback period (bars)",
         "slowperiod" => "Slow SMA lookback period (bars)",
+        "atrperiod" => "ATR lookback period for Wilder smoothing (bars)",
         "lookback" => "Lookback window (bars)",
-        "entrystddevs" => "Entry threshold in standard deviations",
-        "period" => "Indicator period (bars)",
-        "oversold" => "RSI oversold threshold (0-100)",
-        "overbought" => "RSI overbought threshold (0-100)",
-        "stddevmultiplier" => "Bollinger Band width multiplier",
-        "exitatmiddle" => "Exit at middle band (true/false)",
         "entrythreshold" => "Z-score entry threshold",
         "exitthreshold" => "Z-score exit threshold",
+        "period" => "Indicator period (bars)",
+        "stddevmultiplier" => "Bollinger Band width multiplier",
+        "exitatmiddle" => "Exit at middle band (true/false)",
+        "vollookback" => "Realized volatility lookback (bars)",
+        "trendlookback" => "Trend SMA lookback (bars)",
+        "momentumlookback" => "Rate of change lookback (bars)",
+        "rebalancedays" => "Bars between rebalances",
+        "warmupbars" => "Number of bars before entering",
+        "adfpvaluethreshold" => "ADF p-value threshold for stationarity",
+        "skipstationaritytest" => "Skip ADF test and use z-score only (true/false)",
         _ => ""
+    };
+
+    private static Color GetFamilyColor(string family) => family switch
+    {
+        StrategyFamily.Trend => Color.Info,
+        StrategyFamily.MeanReversion => Color.Secondary,
+        StrategyFamily.Breakout => Color.Warning,
+        StrategyFamily.RegimeAware => Color.Tertiary,
+        StrategyFamily.Benchmark => Color.Default,
+        _ => Color.Default
     };
 
     private async Task SaveOnly()
@@ -290,7 +320,8 @@ else if (_step == 4)
     {
         var strategyId = _strategyName.ToLowerInvariant().Replace(" ", "-");
         var identity = new StrategyIdentity(strategyId, _strategyName,
-            _selectedTemplate?.StrategyType ?? "", DateTimeOffset.Now, _description);
+            _selectedTemplate?.StrategyType ?? "", DateTimeOffset.Now, _description,
+            Hypothesis: string.IsNullOrWhiteSpace(_hypothesis) ? null : _hypothesis);
         await StrategyRepo.SaveAsync(identity);
 
         var config = BuildScenarioConfig(identity, null);

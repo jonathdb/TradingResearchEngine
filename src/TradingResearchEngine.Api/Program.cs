@@ -7,7 +7,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddTradingResearchEngine(builder.Configuration);
 builder.Services.AddTradingResearchEngineInfrastructure(builder.Configuration);
-builder.Services.AddStrategyAssembly(typeof(TradingResearchEngine.Application.Strategies.SmaCrossoverStrategy).Assembly);
+builder.Services.AddStrategyAssembly(typeof(TradingResearchEngine.Application.Strategies.DonchianBreakoutStrategy).Assembly);
 builder.Services.AddEndpointsApiExplorer();
 
 builder.Services.AddCors(options =>

@@ -1,6 +1,6 @@
 {
-  "ScenarioId": "sma-crossover-spy-daily",
-  "Description": "SMA 10/30 crossover on SPY daily bars",
+  "ScenarioId": "baseline-buy-and-hold-spy",
+  "Description": "Buy-and-hold benchmark on SPY daily. Passive exposure baseline for comparing active strategy performance.",
   "ReplayMode": "Bar",
   "DataProviderType": "csv",
   "DataProviderOptions": {
@@ -8,19 +8,16 @@
     "Interval": "1D",
     "FilePath": "samples/data/spy-daily.csv"
   },
-  "StrategyType": "sma-crossover",
+  "StrategyType": "baseline-buy-and-hold",
   "StrategyParameters": {
-    "FastPeriod": 10,
-    "SlowPeriod": 30
+    "WarmupBars": 1
   },
-  "RiskParameters": {
-    "MaxExposurePercent": 20
-  },
+  "RiskParameters": {},
   "SlippageModelType": "ZeroSlippageModel",
   "CommissionModelType": "ZeroCommissionModel",
   "InitialCash": 100000,
   "AnnualRiskFreeRate": 0.05,
-  "RandomSeed": 42,
+  "RandomSeed": null,
   "ResearchWorkflowType": null,
   "ResearchWorkflowOptions": null,
   "PropFirmOptions": null

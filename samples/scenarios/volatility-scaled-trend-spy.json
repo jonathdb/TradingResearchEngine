@@ -1,27 +1,25 @@
 {
-  "ScenarioId": "sma-crossover-spy-yahoo",
-  "Description": "SMA 10/30 crossover on SPY daily bars from Yahoo Finance",
+  "ScenarioId": "volatility-scaled-trend-spy",
+  "Description": "Volatility-scaled trend following on SPY daily. ATR-normalized signal strength for volatility-aware sizing.",
   "ReplayMode": "Bar",
-  "DataProviderType": "yahoo",
+  "DataProviderType": "csv",
   "DataProviderOptions": {
     "Symbol": "SPY",
     "Interval": "1D",
-    "From": "2023-01-01T00:00:00+00:00",
-    "To": "2024-12-31T00:00:00+00:00"
+    "FilePath": "samples/data/spy-daily.csv"
   },
-  "StrategyType": "sma-crossover",
+  "StrategyType": "volatility-scaled-trend",
   "StrategyParameters": {
     "FastPeriod": 10,
-    "SlowPeriod": 30
+    "SlowPeriod": 50,
+    "AtrPeriod": 14
   },
-  "RiskParameters": {
-    "MaxExposurePercent": 20
-  },
+  "RiskParameters": {},
   "SlippageModelType": "ZeroSlippageModel",
   "CommissionModelType": "ZeroCommissionModel",
   "InitialCash": 100000,
   "AnnualRiskFreeRate": 0.05,
-  "RandomSeed": 42,
+  "RandomSeed": null,
   "ResearchWorkflowType": null,
   "ResearchWorkflowOptions": null,
   "PropFirmOptions": null

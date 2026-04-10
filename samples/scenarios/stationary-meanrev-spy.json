@@ -1,6 +1,6 @@
 {
   "ScenarioId": "stationary-meanrev-spy",
-  "Description": "Stationary Mean Reversion with ADF test on SPY daily. Buy z<-1, sell z>1.",
+  "Description": "Stationary Mean Reversion on SPY daily. Mean reversion signals filtered by ADF stationarity test on returns.",
   "ReplayMode": "Bar",
   "DataProviderType": "csv",
   "DataProviderOptions": {

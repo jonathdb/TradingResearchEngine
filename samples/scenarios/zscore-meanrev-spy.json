@@ -1,18 +1,18 @@
 {
-  "ScenarioId": "sma-crossover-eurusd-dukascopy",
-  "Description": "SMA 10/30 crossover on EURUSD daily bars from Dukascopy",
+  "ScenarioId": "zscore-meanrev-spy",
+  "Description": "Z-score mean reversion on SPY daily. Buy when z-score drops below -2, exit on reversion to mean.",
   "ReplayMode": "Bar",
-  "DataProviderType": "dukascopy",
+  "DataProviderType": "csv",
   "DataProviderOptions": {
-    "Symbol": "EURUSD",
+    "Symbol": "SPY",
     "Interval": "1D",
-    "From": "2024-01-01T00:00:00+00:00",
-    "To": "2024-06-30T00:00:00+00:00"
+    "FilePath": "samples/data/spy-daily.csv"
   },
-  "StrategyType": "sma-crossover",
+  "StrategyType": "zscore-mean-reversion",
   "StrategyParameters": {
-    "FastPeriod": 10,
-    "SlowPeriod": 30
+    "Lookback": 30,
+    "EntryThreshold": 2.0,
+    "ExitThreshold": 0.0
   },
   "RiskParameters": {},
   "SlippageModelType": "ZeroSlippageModel",

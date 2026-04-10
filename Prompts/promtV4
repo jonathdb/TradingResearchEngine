@@ -1,0 +1,1103 @@
+You are working on the V4 specification for **TradingResearchEngine**, a Blazor Server backtesting
+and research platform. The existing `requirements.md` defines a solid domain model, UX architecture,
+wireframes, and implementation roadmap covering five phases.
+
+A two-pass review and a research-depth analysis identified **21 gaps** across three categories:
+- **Major gaps (10):** Missing specifications that would force Kiro to make unguided architectural decisions.
+- **Minor gaps (5):** Missing details that affect implementation quality but are lower risk.
+- **Research & Analytics gaps (6):** Missing analytical depth that separates a backtest runner from a genuine strategy research tool.
+
+Your task is to produce additions and amendments to `requirements.md` that fill every gap listed
+below. **Do not rewrite sections that are already correct — append or amend only what is missing.**
+
+---
+
+# PART A — Major Gaps (Architectural / Missing Specs)
+
+---
+
+## Gap A1 — Authentication & Multi-User Scope
+
+**Problem:** The spec never states whether this is a single-user local tool or a multi-user
+application. This changes persistence, routing, identity namespacing (`StrategyId` uniqueness),
+and whether a `UserId` is needed throughout the model.
+
+**Task:** Add a new section **§0. Product Scope & Deployment Model** before §1, specifying:
+
+1. Explicitly declare the deployment target: single-user local desktop app (no login required)
+   OR multi-user hosted app (login required).
+2. If **single-user**: state that `StrategyId` is unique within the local data directory, no
+   authentication layer is needed, and all repositories read/write from a configured local path.
+3. Regardless of choice: document the minimum supported runtime and browser
+   (e.g. .NET 9, Blazor Server on localhost, Chrome/Edge latest).
+
+---
+
+## Gap A2 — Error Handling & Failed Run UX
+
+**Problem:** The spec describes successful backtest flows in detail but has no specification for
+failure states — what happens when a backtest crashes mid-execution, a data file is malformed,
+or a study times out.
+
+**Task:** Add a new subsection **§8.x — Error & Failure States** inside §8:
+
+1. Define the three failure categories:
+   - **Configuration error** — invalid `ScenarioConfig` caught before execution starts
+     (e.g. missing data file, invalid date range). Show an inline validation error on the
+     Run Detail screen. Do not create a `BacktestResult` record.
+   - **Runtime error** — unhandled exception thrown during execution (e.g. data parsing
+     failure, strategy exception). Create a `BacktestResult` with `Status = Failed` and
+     store the exception message and stack trace in a `FailureDetail` field.
+   - **Timeout** — execution exceeds a configurable time limit (default: 5 minutes for
+     studies, 60 seconds for single runs). Treat as runtime error.
+
+2. Specify the Run Detail failure state wireframe:
+   ```
+   ┌─────────────────────────────────────────────────────┐
+   │ Run: EURUSD Mean Reversion V4 — 2024-01-15 14:32   │
+   │ Status: ❌ Failed · 0 bars · 0 trades · 1.4s        │
+   ├─────────────────────────────────────────────────────┤
+   │ ⚠️ Run failed: NullReferenceException in            │
+   │    MeanReversionStrategy.OnBar() at bar 142         │
+   │    [View Full Error] [Copy to Clipboard]            │
+   ├─────────────────────────────────────────────────────┤
+   │ [Re-run with same config]  [Edit Config & Re-run]  │
+   └─────────────────────────────────────────────────────┘
+   ```
+
+3. Specify a `RunStatus` enum in the domain model:
+   `Pending`, `Running`, `Completed`, `Failed`, `Cancelled`.
+
+4. Add **REQ-V4-07: Run Failure Visibility** with acceptance criteria:
+   (a) failed runs appear in the Strategy run list with a ❌ badge,
+   (b) full error message is accessible but collapsed by default,
+   (c) users can re-launch from the failure screen.
+
+---
+
+## Gap A3 — Data Files Screen
+
+**Problem:** "Data Files" appears in the primary navigation wireframe but has no wireframe,
+no acceptance criteria, and no functional spec. It is a critical dependency for the Strategy
+Builder Step 2, which references it.
+
+**Task:** Add a new subsection **§5.x — Data Files Screen** (insert after the Strategy Detail
+screen description in §5):
+
+1. **Wireframe:**
+   ```
+   ┌─────────────────────────────────────────────────────┐
+   │ Data Files                          [+ Add File]    │
+   ├─────────────────────────────────────────────────────┤
+   │ Search: [____________]  Format: [All ▼]             │
+   ├─────────────────────────────────────────────────────┤
+   │ ┌─────────────────────────────────────────────────┐ │
+   │ │ 📄 EURUSD_Daily_2015_2024.csv                   │ │
+   │ │    1 MB · Daily · 2,515 bars · EURUSD           │ │
+   │ │    Validated ✅ · Last used: 2h ago             │ │
+   │ │    [Preview] [Validate] [Delete]                │ │
+   │ └─────────────────────────────────────────────────┘ │
+   │ ┌─────────────────────────────────────────────────┐ │
+   │ │ 📄 BTCUSD_H4_2020_2024.csv                     │ │
+   │ │    400 KB · H4 · 8,760 bars · BTCUSD           │ │
+   │ │    ⚠️ Not yet validated                         │ │
+   │ │    [Preview] [Validate] [Delete]                │ │
+   │ └─────────────────────────────────────────────────┘ │
+   └─────────────────────────────────────────────────────┘
+   ```
+
+2. **Add File flow:** User provides a file path (local) or uploads via drag-and-drop. On add,
+   the system reads the first and last row to auto-detect: symbol hint, timeframe hint, date
+   range, total bar count, and column format (OHLCV order). Show a preview of the first 10 rows.
+
+3. **Validation rules:** (a) File must have at least 4 columns (Date, O, H, L, C),
+   (b) dates must be monotonically increasing, (c) no more than 5% missing bars for the
+   detected timeframe, (d) O/H/L/C values must be positive decimals. Validation failures
+   show per-rule details.
+
+4. **Domain model:** Add `DataFileRecord` to Application:
+   ```csharp
+   public sealed record DataFileRecord(
+       string FileId,
+       string FileName,
+       string FilePath,
+       string? DetectedSymbol,
+       string? DetectedTimeframe,
+       DateTimeOffset? FirstBar,
+       DateTimeOffset? LastBar,
+       int BarCount,
+       ValidationStatus ValidationStatus,
+       string? ValidationError,
+       DateTimeOffset AddedAt);
+
+   public enum ValidationStatus { Pending, Valid, Invalid }
+   ```
+
+5. Add **REQ-V4-08: Data File Management** with acceptance criteria:
+   (a) users can add a CSV file by path or drag-and-drop,
+   (b) the system auto-detects metadata on add,
+   (c) the Strategy Builder Step 2 data source picker shows only validated files,
+   (d) deleting a file used by an existing run shows a warning but does not delete the run record.
+
+---
+
+## Gap A4 — Persistence Migration for Existing V2/V2.1 Data
+
+**Problem:** Phase 1 adds new repositories and JSON files but there is no migration plan for
+existing `BacktestResult` records persisted under V2/V2.1.
+
+**Task:** Add a new subsection **§11.x — Migration Strategy** inside §11:
+
+1. Migration scope: all existing `BacktestResult` JSON files in the configured results directory.
+
+2. **Non-destructive migration:** On first startup after V4 upgrade, the system creates a
+   synthetic `StrategyIdentity` called `"Imported (Pre-V4)"` with a single `StrategyVersion`
+   called `"v0 (imported)"`. All existing `BacktestResult` records are linked to this version
+   by writing their `StrategyVersionId` field. Original JSON files are not deleted.
+
+3. Migrated runs appear in the Strategy Library under an `"Imported"` group, visually distinct
+   (greyed out, no version history available).
+
+4. A `MigrationService` in Infrastructure runs once on startup, checks for a
+   `migration_v3.lock` file, and skips if already run.
+
+5. Add **REQ-V4-09: V2 Data Migration** with acceptance criteria:
+   (a) existing results are visible after upgrade with no data loss,
+   (b) migrated results are labelled as pre-V4,
+   (c) migration runs at most once,
+   (d) migration failure is logged and does not crash the app.
+
+---
+
+## Gap A5 — Real-Time Backtest Progress
+
+**Problem:** The spec describes launching a backtest but never addresses what the UI shows
+during execution. For Monte Carlo studies with 1000 paths, this is a significant UX gap.
+
+**Task:** Add a new subsection **§8.x — Real-Time Execution Progress** inside §8:
+
+1. **Single-run progress:** Show an indeterminate spinner with "Running… (142 bars processed)"
+   updated via Blazor SignalR or polling. Elapsed time displayed. A **[Cancel]** button is
+   available during execution.
+
+2. **Study progress:** Show a determinate progress bar:
+   - Monte Carlo: "Simulating path 347 of 1000 (34%)"
+   - Walk-Forward: "Window 3 of 8 (37%)"
+   - Parameter Sweep: "Combination 28 of 120 (23%)"
+
+3. **Progress wireframe:**
+   ```
+   ┌─────────────────────────────────────────────────────┐
+   │ Monte Carlo Study — EURUSD Mean Reversion V4        │
+   │ Status: 🔄 Running                                  │
+   ├─────────────────────────────────────────────────────┤
+   │ ████████████░░░░░░░░░░░░░░░  34%                   │
+   │ Simulating path 347 of 1000 · Elapsed: 00:42       │
+   │                                                     │
+   │ [Cancel Study]                                      │
+   └─────────────────────────────────────────────────────┘
+   ```
+
+4. Specify `IProgressReporter` interface in Application:
+   ```csharp
+   public interface IProgressReporter
+   {
+       void Report(int current, int total, string label);
+   }
+   ```
+   `RunScenarioUseCase` and all study workflows accept an optional `IProgressReporter`.
+   Blazor implementation uses `InvokeAsync(StateHasChanged)` to push updates on each call.
+
+5. On cancellation: set `RunStatus = Cancelled` and persist partial results where meaningful
+   (e.g. completed walk-forward windows).
+
+6. Add **REQ-V4-10: Execution Progress & Cancellation** with acceptance criteria:
+   (a) single runs show bar-count progress,
+   (b) studies show percent-complete,
+   (c) any running execution can be cancelled,
+   (d) cancelled runs are stored with `Status = Cancelled`.
+
+---
+
+## Gap A6 — Export & Reporting Spec
+
+**Problem:** The Run Detail wireframe shows `[Export Markdown]` but the spec never defines
+what is exported, to what formats, or what the Markdown report structure contains.
+
+**Task:** Add a new section **§8.x — Export & Report Formats**:
+
+1. **Markdown Run Report** — exported as a single `.md` file. Structure:
+   ```markdown
+   # Run Report: {StrategyName} v{VersionNumber}
+   **Date:** {RunDate}  **Status:** Completed  **Duration:** 1.2s
+
+   ## Configuration
+   | Field       | Value              |
+   |-------------|-------------------|
+   | Symbol      | EURUSD            |
+   | Timeframe   | Daily             |
+   | Date Range  | 2020-01-01–2024-12-31 |
+   | Initial Cash| $100,000          |
+
+   ## Key Metrics
+   | Metric      | Value  |
+   |-------------|--------|
+   | Sharpe Ratio| 1.42   |
+   | Max Drawdown| 8.3%   |
+   | Win Rate    | 61%    |
+   | Total Trades| 23     |
+
+   ## Robustness Notes
+   (Auto-populated from warning badges and robustness verdict if studies exist)
+
+   ## Trade Log
+   (Full trade table: entry date, exit date, direction, size, P&L, MFE, MAE)
+   ```
+
+2. **CSV Trade Log** — `{StrategyName}_v{N}_{RunDate}_trades.csv`. Columns:
+   `EntryDate, ExitDate, Direction, Symbol, Quantity, EntryPrice, ExitPrice,
+   GrossPnL, NetPnL, MAE, MFE, HoldingPeriodBars`.
+
+3. **JSON Raw Result** — the full `BacktestResult` serialized as `{RunId}.json`.
+
+4. **Study Export** — Monte Carlo exports a CSV of path summary statistics
+   (P10/P50/P90 end equity, ruin flag per path). Walk-forward exports per-window
+   OOS metrics as CSV.
+
+5. **Equity Curve CSV** — `{StrategyName}_v{N}_{RunDate}_equity.csv` for external use
+   in Excel, Python, or Jupyter.
+
+6. Specify `IReportExporter` in Application:
+   ```csharp
+   public interface IReportExporter
+   {
+       Task<string> ExportMarkdownAsync(BacktestResult result);
+       Task<string> ExportTradeCsvAsync(BacktestResult result);
+       Task<string> ExportEquityCsvAsync(BacktestResult result);
+       Task<string> ExportJsonAsync(BacktestResult result);
+   }
+   ```
+
+7. Export menu on Run Detail screen:
+   ```
+   [Export ▼]
+     → Markdown Report
+     → JSON (full result + config)
+     → CSV (trade log only)
+     → CSV (equity curve)
+   ```
+
+8. Add **REQ-V4-11: Export & Reports** with acceptance criteria:
+   (a) any completed run can be exported to Markdown, CSV, and JSON from the Run Detail screen,
+   (b) exported Markdown renders correctly in GitHub and Obsidian,
+   (c) trade CSV and equity CSV open cleanly in Excel,
+   (d) JSON export round-trips through `IResultRepository` without data loss.
+
+---
+
+## Gap A7 — Study Cancellation & Partial Results
+
+**Problem:** Walk-forward and Monte Carlo studies are long-running. The spec does not address
+whether they can be cancelled mid-run or whether partial results are stored.
+
+**Task:** Amend §8 (Backtest and Analytics UX) as follows:
+
+1. Cancellation is supported for all study types via the `[Cancel Study]` button (see Gap A5).
+
+2. Partial result persistence rules:
+   - **Monte Carlo:** Store all completed paths. On cancellation, show results for completed
+     paths with a "⚠️ Partial: 347 of 1000 paths completed" banner. Verdicts
+     (Robust/Marginal/Fragile) are suppressed until at least 200 paths complete.
+   - **Walk-Forward:** Store completed windows. Composite OOS equity curve is drawn from
+     completed windows only.
+   - **Parameter Sweep:** Store completed combinations. Show heatmap with completed cells
+     filled and incomplete cells greyed out.
+
+3. Add `IsPartial`, `CompletedCount`, and `TotalCount` fields to `StudyRecord`.
+
+4. Partial studies are visually distinct in the Research Explorer list
+   (amber badge: "Partial — 34%").
+
+---
+
+## Gap A8 — Custom Firm Rule Pack UI
+
+**Problem:** §9 states users can create custom rule packs but there is no wireframe or
+acceptance criteria for the editor.
+
+**Task:** Add a new subsection **§9.x — Custom Rule Pack Editor** inside §9:
+
+1. **Wireframe:**
+   ```
+   ┌─────────────────────────────────────────────────────┐
+   │ New Rule Pack                                        │
+   ├─────────────────────────────────────────────────────┤
+   │ Firm Name:      [________________]                  │
+   │ Challenge Name: [________________]                  │
+   │ Account Size:   [$_____________]                    │
+   │ Payout Split:   [___] %                             │
+   ├─────────────────────────────────────────────────────┤
+   │ Phases                              [+ Add Phase]   │
+   │ ┌─────────────────────────────────────────────────┐ │
+   │ │ Phase 1                             [✕ Remove]  │ │
+   │ │ Phase Name:          [Phase 1      ]            │ │
+   │ │ Profit Target:       [____] %                   │ │
+   │ │ Max Daily DD:        [____] %                   │ │
+   │ │ Max Total DD:        [____] %                   │ │
+   │ │ Min Trading Days:    [____]                     │ │
+   │ │ Max Trading Days:    [____] (blank = no limit)  │ │
+   │ │ Consistency Rule:    [____] % (blank = no rule) │ │
+   │ │ Trailing Drawdown:   [ ] Yes  [●] No            │ │
+   │ └─────────────────────────────────────────────────┘ │
+   ├─────────────────────────────────────────────────────┤
+   │ Notes: [_________________________________________]  │
+   │                       [Cancel]  [Save Rule Pack]   │
+   └─────────────────────────────────────────────────────┘
+   ```
+
+2. Validation: (a) Firm Name and Challenge Name are required, (b) at least one phase required,
+   (c) Profit Target and Max DD are required per phase, (d) Consistency Rule % must be 1–100
+   if entered, (e) duplicate phase names within a pack are not allowed.
+
+3. Custom packs are stored as JSON with `"IsBuiltIn": false`. They appear in the firm selector
+   with a "(Custom)" suffix.
+
+4. Built-in packs are read-only — the editor opens in view-only mode with a "Duplicate & Edit" button.
+
+5. Add **REQ-V4-12: Custom Rule Pack Editor** with acceptance criteria matching the validation
+   rules above.
+
+---
+
+## Gap A9 — Notifications & Background Execution
+
+**Problem:** Studies may take several minutes. There is no spec for how users are notified
+when background work completes, and no guidance on whether studies block the UI or run
+in the background.
+
+**Task:** Add a new subsection **§5.x — Background Execution & Notifications**:
+
+1. All study executions are **non-blocking**: the user can navigate away and the study
+   continues running.
+
+2. A persistent **Execution Status Bar** sits at the bottom of the app shell (32px, always
+   visible during execution):
+   ```
+   ┌─────────────────────────────────────────────────────┐
+   │ 🔄 Monte Carlo (EURUSD MR V4): 34% · [View] [Stop] │
+   └─────────────────────────────────────────────────────┘
+   ```
+
+3. On completion, the status bar transitions to a notification:
+   ```
+   ✅ Monte Carlo (EURUSD MR V4): Complete — 1000 paths · [View Results] [Dismiss]
+   ❌ Walk-Forward (BTC H4 v1): Failed — timeout · [View Error] [Dismiss]
+   ```
+
+4. Single-run backtests (< 60s expected) are **inline**. Studies are always background.
+
+5. Add **REQ-V4-13: Background Execution & Notification** with acceptance criteria:
+   (a) users can navigate while a study runs,
+   (b) the status bar is visible on all screens during execution,
+   (c) a completion notification is shown on finish,
+   (d) dismissed notifications are still accessible via the Strategy's study list.
+
+---
+
+## Gap A10 — Missing Dashboard Wireframe, Settings Screen & REQ Index
+
+**Problem:** (a) The Dashboard is the primary screen but has no layout wireframe.
+(b) The Settings screen is in the nav but completely unspecified.
+(c) REQ numbering stops at REQ-V4-05 while the task groups imply more.
+
+### Task A — Dashboard Wireframe (add to §6):
+
+```
+┌─────────────────────────────────────────────────────┐
+│ Dashboard                        Thu 9 Apr 2026     │
+├─────────────────────────────────────────────────────┤
+│ Quick Launch                                        │
+│ [+ New Strategy]  [▶ Run Last Config]  [📊 Compare] │
+├──────────────────────────┬──────────────────────────┤
+│ Recent Runs              │ Active Studies           │
+│ ─────────────────────    │ ─────────────────────    │
+│ ✅ EURUSD MR V4   2h ago │ 🔄 MC (BTC H4): 34%     │
+│    Sharpe 1.42 DD 8.3%  │    [View] [Stop]         │
+│ ✅ BTC H4 v1     1d ago  │                          │
+│    Sharpe 0.87 DD 15.1% │ No other studies running │
+│ ❌ GBPUSD SC v2  3d ago  │                          │
+│    Failed: data error   │                          │
+│ [View All Runs →]        │                          │
+├──────────────────────────┴──────────────────────────┤
+│ Strategy Health Overview                            │
+│ ┌──────────────┬─────────┬──────────┬────────────┐ │
+│ │ Strategy     │ Version │ Sharpe   │ Robustness │ │
+│ ├──────────────┼─────────┼──────────┼────────────┤ │
+│ │ EURUSD MR    │ V4      │ 1.42     │ 🟢 Robust  │ │
+│ │ BTC Breakout │ v1      │ 0.87     │ 🟡 Marginal│ │
+│ │ GBPUSD SC    │ v2      │ —        │ ⬜ No runs │ │
+│ └──────────────┴─────────┴──────────┴────────────┘ │
+│                                                     │
+│ Research Pipeline                                   │
+│   2 strategies Validating · 1 awaiting Final Test  │
+│   3 in Exploring · 1 in Hypothesis stage           │
+└─────────────────────────────────────────────────────┘
+```
+
+### Task B — Settings Screen (add new §5.x):
+
+```
+┌─────────────────────────────────────────────────────┐
+│ Settings                                            │
+├─────────────────────────────────────────────────────┤
+│ Data                                                │
+│   Results Directory:  [/data/results      ] [📁]    │
+│   Data Files Dir:     [/data/csv          ] [📁]    │
+│   Rule Packs Dir:     [/data/rulepacks    ] [📁]    │
+├─────────────────────────────────────────────────────┤
+│ Execution Defaults                                  │
+│   Default Realism Profile: [Standard      ▼]        │
+│   Study Timeout (minutes): [5             ]         │
+│   Single-Run Timeout (s):  [60            ]         │
+├─────────────────────────────────────────────────────┤
+│ Registered Strategies                               │
+│   (Read-only list of discovered IStrategy impls)   │
+│   mean-reversion · sma-crossover · donchian · ...  │
+├─────────────────────────────────────────────────────┤
+│ About                                               │
+│   Version: 3.0.0  Build: 2026-04-09                │
+│   [View Changelog]  [Run Migration Check]           │
+└─────────────────────────────────────────────────────┘
+```
+
+All Settings values are stored in `appsettings.json` and exposed via a strongly-typed
+`AppSettings` record injected via `IOptions<AppSettings>`. Changes write back at runtime
+using `IWritableOptions<AppSettings>`.
+
+### Task C — Requirements Index (add to §10):
+
+| ID | Title | Section |
+|----|-------|---------|
+| REQ-V4-01 | Strategy Identity Model | §10 |
+| REQ-V4-02 | Study as First-Class Concept | §10 |
+| REQ-V4-03 | Guided Strategy Builder | §10 |
+| REQ-V4-04 | Prop Firm Rule Packs with Challenge Phases | §10 |
+| REQ-V4-05 | Robustness Verdict | §10 |
+| REQ-V4-06 | Authentication & User Isolation (or: Single-User Scope Declaration) | §0 |
+| REQ-V4-07 | Run Failure Visibility | §8 |
+| REQ-V4-08 | Data File Management | §5 |
+| REQ-V4-09 | V2 Data Migration | §11 |
+| REQ-V4-10 | Execution Progress & Cancellation | §8 |
+| REQ-V4-11 | Export & Reports | §8 |
+| REQ-V4-12 | Custom Rule Pack Editor | §9 |
+| REQ-V4-13 | Background Execution & Notification | §5 |
+| REQ-V4-14 | Mobile & Responsive Behaviour | §5 (new) |
+| REQ-V4-15 | Keyboard Shortcuts & Accessibility | §8 (new) |
+| REQ-V4-16 | Research Explorer Screen | §10 |
+| REQ-V4-17 | Study Detail Screens | §10 |
+| REQ-V4-18 | Persistence Layer | §10 |
+| REQ-V4-19 | Research Lifecycle & Development Stage | §4 (new) |
+| REQ-V4-20 | Overfitting Detection & DSR | §8 (new) |
+| REQ-V4-21 | Advanced Validation Study Types | §8 (new) |
+
+---
+
+# PART B — Minor Gaps (Implementation Quality)
+
+---
+
+## Gap B1 — Mobile / Responsive Behaviour
+
+**Task:** Add a new subsection **§5.x — Responsive Behaviour & Minimum Viewport**:
+
+1. **Primary supported viewport:** desktop (1024px+), with degraded but functional support
+   down to 768px (tablet landscape).
+2. Mobile (< 768px) is **out of scope for V4** — state this explicitly.
+3. At 768–1023px (tablet): the sidebar collapses to a top navigation bar. Charts remain
+   full-width. KPI cards reflow to 2×2 grid. Tables gain horizontal scroll.
+4. Add **REQ-V4-14** with acceptance criteria:
+   (a) all screens are fully functional at 1024px+,
+   (b) all screens are usable at 768px,
+   (c) no mobile-specific work is required for V4 sign-off.
+
+---
+
+## Gap B2 — Keyboard Shortcuts & Accessibility
+
+**Task:** Add a new subsection **§8.x — Keyboard Shortcuts & Accessibility**:
+
+1. **Global shortcuts** (documented in a `?` help overlay):
+
+   | Shortcut | Action |
+   |----------|--------|
+   | `N` | New Strategy |
+   | `R` | Re-run last config (from Dashboard) |
+   | `?` | Show keyboard shortcut reference |
+   | `Esc` | Close modal / cancel overlay |
+   | `Ctrl+K` | Focus global search (V4+ future) |
+
+2. **Accessibility baseline (WCAG 2.1 AA):**
+   - All interactive elements are keyboard-reachable via Tab/Shift+Tab.
+   - Focus ring is always visible.
+   - All charts include a data table alternative accessible to screen readers
+     (hidden by default, revealed via a "Show data table" toggle beneath each chart).
+   - All icon-only buttons carry an `aria-label`.
+   - All status badges carry an `aria-label` in addition to the visual icon.
+   - Colour is never the sole indicator of status.
+   - All form fields have associated `<label>` elements.
+
+3. Add **REQ-V4-15** with acceptance criteria.
+
+---
+
+## Gap B3 — Incomplete REQ Coverage for Task Groups
+
+**Task:** Add the following formal requirements to §10:
+
+### REQ-V4-16: Research Explorer Screen
+**Acceptance Criteria:**
+1. Lists all studies across all strategies, grouped by strategy and version.
+2. A "New Study" action is available from both the Research Explorer and the Run Detail screen.
+3. Study list rows show: type badge, parent strategy/version, status, created date, partial/complete indicator.
+4. Clicking a study row navigates to the Study Detail screen.
+
+### REQ-V4-17: Study Detail Screens
+**Acceptance Criteria:**
+1. **Monte Carlo** — P10/P50/P90 equity curves, ruin probability, Robustness Verdict, path count, path distribution histogram.
+2. **Walk-Forward** — composite OOS equity curve, per-window OOS Sharpe, IS/OOS Sharpe comparison, worst-window drawdown, parameter drift score.
+3. **Sensitivity** — heatmap of Sharpe vs two parameters, stability score, parameter island flag.
+4. **Parameter Sweep** — sortable table of all parameter combinations with key metrics, export-to-CSV action.
+
+### REQ-V4-18: Persistence Layer
+**Acceptance Criteria:**
+1. `IStrategyRepository`, `IStrategyVersionRepository`, `IStudyRepository`, `IDataFileRepository` all defined with standard CRUD signatures.
+2. All implementations use JSON file store consistent with existing `IResultRepository` pattern.
+3. All repository interfaces have corresponding unit tests.
+
+---
+
+## Gap B4 — Strategy Detail Screen Missing Wireframe
+
+**Task:** Add wireframe to §6 for the Strategy Detail screen:
+
+```
+┌─────────────────────────────────────────────────────┐
+│ ← Strategy Library / EURUSD Mean Reversion          │
+│                              [Rename] [⋮ More ▼]    │
+├─────────────────────────────────────────────────────┤
+│ Versions                                            │
+│  ● V4 (current) — Fast: 12, Slow: 26 · 2024-01-10  │
+│  ○ v2           — Fast: 10, Slow: 24 · 2023-11-05  │
+│  ○ v1           — Fast: 8,  Slow: 20 · 2023-08-12  │
+│                                   [+ New Version]   │
+├─────────────────────────────────────────────────────┤
+│ V4 — Runs (12)                                      │
+│ ┌──────────────────────────────────────────────────┐│
+│ │ ✅ 2024-01-15  Sharpe 1.42  DD 8.3%   [View]    ││
+│ │ ✅ 2024-01-10  Sharpe 1.38  DD 9.1%   [View]    ││
+│ │ ❌ 2024-01-08  Failed: timeout         [View]    ││
+│ └──────────────────────────────────────────────────┘│
+│ [Run New Backtest]                                  │
+├─────────────────────────────────────────────────────┤
+│ V4 — Studies (3)                                    │
+│ ┌──────────────────────────────────────────────────┐│
+│ │ 🟢 Monte Carlo  2024-01-16  1000 paths  [View]  ││
+│ │ 🟡 Walk-Forward 2024-01-14  8 windows   [View]  ││
+│ │ 🟠 MC Partial   2024-01-13  347/1000    [View]  ││
+│ └──────────────────────────────────────────────────┘│
+│ [Run New Study ▼]                                   │
+├─────────────────────────────────────────────────────┤
+│ V4 — Prop Evaluations (2)                           │
+│ ┌──────────────────────────────────────────────────┐│
+│ │ ⚠️ FTMO 100k Phase 1  62% pass rate   [View]    ││
+│ │ ✅ MFF 200k Eval       71% pass rate   [View]    ││
+│ └──────────────────────────────────────────────────┘│
+│ [Evaluate Against Firm ▼]                           │
+│                                                     │
+│ Research Progress                                   │
+│ ✅ Initial backtest · ✅ Monte Carlo · ⬜ Walk-Fwd  │
+│ ⬜ Regime check · ⬜ Realism impact · ⬜ Final test │
+│ Confidence Level: LOW (2 of 7 checks passed)        │
+└─────────────────────────────────────────────────────┘
+```
+
+---
+
+## Gap B5 — Study Detail Wireframes Missing
+
+**Task:** Add wireframes to §6 for each study type.
+
+### Monte Carlo Study Detail
+```
+┌─────────────────────────────────────────────────────┐
+│ ← EURUSD MR V4 / Monte Carlo Study — 2024-01-16    │
+│ 1000 paths · Completed ✅                           │
+├─────────────────────────────────────────────────────┤
+│ ┌──────────┐  ┌──────────┐  ┌──────────────────┐  │
+│ │Verdict   │  │Pass Rate │  │Ruin Probability  │  │
+│ │🟢 Robust │  │  91%     │  │     2.1%         │  │
+│ └──────────┘  └──────────┘  └──────────────────┘  │
+├─────────────────────────────────────────────────────┤
+│ ┌──────────┐  ┌────────────────────────────────┐  │
+│ │PBO       │  │Deflated Sharpe Ratio           │  │
+│ │  3.2%    │  │  DSR: 0.97 (No overfitting)   │  │
+│ └──────────┘  └────────────────────────────────┘  │
+├─────────────────────────────────────────────────────┤
+│ 📈 P10 / P50 / P90 equity fan chart (full width)   │
+├─────────────────────────────────────────────────────┤
+│ P10 end equity: $108,200  P50: $121,400            │
+│ P90 end equity: $137,600  Worst path DD: 18.3%     │
+├─────────────────────────────────────────────────────┤
+│ [Export CSV]  [Re-run with more paths]              │
+└─────────────────────────────────────────────────────┘
+```
+
+### Walk-Forward Study Detail
+```
+┌─────────────────────────────────────────────────────┐
+│ ← EURUSD MR V4 / Walk-Forward Study — 2024-01-14   │
+│ 8 windows · Completed ✅                            │
+├─────────────────────────────────────────────────────┤
+│ ┌──────────┐  ┌──────────┐  ┌──────────────────┐  │
+│ │Avg OOS   │  │IS/OOS    │  │Parameter Drift   │  │
+│ │Sharpe    │  │Ratio     │  │     Low          │  │
+│ │  0.89    │  │  63%     │  │  (stable)        │  │
+│ └──────────┘  └──────────┘  └──────────────────┘  │
+├─────────────────────────────────────────────────────┤
+│ Mode: [Rolling ▼] / [Anchored]                      │
+│ 📈 Composite OOS equity curve (full width)          │
+├─────────────────────────────────────────────────────┤
+│ Per-Window Results                                  │
+│ ┌────────┬──────────┬──────────┬──────────────┐   │
+│ │ Window │ OOS Start│ OOS Sharpe│ OOS Max DD  │   │
+│ ├────────┼──────────┼──────────┼──────────────┤   │
+│ │ W1     │ 2021-01  │ 1.12     │ 6.2%        │   │
+│ │ W2     │ 2021-07  │ 0.74     │ 11.1%       │   │
+│ └────────┴──────────┴──────────┴──────────────┘   │
+│ [Export CSV]                                        │
+└─────────────────────────────────────────────────────┘
+```
+
+### Sensitivity / Parameter Sweep Study Detail
+```
+┌─────────────────────────────────────────────────────┐
+│ ← EURUSD MR V4 / Sensitivity Study — 2024-01-12    │
+│ Fast period × Slow period · Completed ✅            │
+├─────────────────────────────────────────────────────┤
+│ Stability Score: 0.76 (High) ✅                     │
+│ Fragility Index: 0.21 (Wide plateau — Low Fragility)│
+│ ✅ Strategy does not sit on a parameter island      │
+├─────────────────────────────────────────────────────┤
+│ 📊 Sharpe heatmap: Fast Period (x) × Slow (y)      │
+│    (colour-coded: green = high Sharpe, red = low)  │
+│    Area within 20% of peak Sharpe highlighted      │
+├─────────────────────────────────────────────────────┤
+│ [Export Results CSV]                                │
+└─────────────────────────────────────────────────────┘
+```
+
+---
+
+# PART C — Research & Analytics Depth
+
+These additions transform the engine from a backtest runner into a genuine strategy research tool.
+They address the **absence of a structured research lifecycle** and add quantitative anti-overfitting
+tools that are standard practice in systematic trading.
+
+---
+
+## Gap C1 — Validation Methodology: New Study Types
+
+**Problem:** Walk-forward uses a single train/test split path. There is no CPCV study, no
+anchored walk-forward mode, and no mechanism to enforce a sealed held-out test set.
+
+**Task:** Amend the `StudyType` enum and add two new study types:
+
+```csharp
+public enum StudyType {
+    MonteCarlo,
+    WalkForward,
+    AnchoredWalkForward,       // NEW — keeps training start fixed, expands window
+    CombinatorialPurgedCV,     // NEW — CPCV with PBO metric
+    Sensitivity,
+    ParameterSweep,
+    Realism,
+    ParameterStability,
+    RegimeSegmentation
+}
+
+public enum WalkForwardMode { Rolling, Anchored }
+```
+
+### Combinatorial Purged Cross-Validation (CPCV)
+
+CPCV generates all possible combinations of training/test splits across N non-overlapping
+folds and measures the **Probability of Backtest Overfitting (PBO)** — the fraction of paths
+where OOS performance is worse than the in-sample median. A robust strategy has a PBO below 5%.
+A PBO above 25% is a strong signal of curve-fitting regardless of headline backtest performance.
+
+Surface PBO as a headline metric on the Study Detail screen alongside the existing Robustness Verdict.
+
+### Anchored Walk-Forward
+
+Anchored walk-forward keeps the training start fixed and expands the window — testing whether
+the strategy degrades as more data is added, which more closely mirrors the live-trading scenario.
+Add the `WalkForwardMode` field to the walk-forward study configuration; the existing rolling
+mode is the default.
+
+### Held-Out Final Test Set
+
+Add a workflow-enforced sealed test set:
+
+1. When a strategy is created, the builder prompts the user to designate the last N% of the
+   date range as a sealed test set (recommended: 20–30%, minimum 1 year).
+2. The sealed set is **locked** — it cannot be used in walk-forward, sensitivity, or parameter sweeps.
+3. It is available only via a one-time **"Final Validation"** run, clearly labelled.
+4. After a Final Validation run, the strategy is marked as `"Validated"`. Further parameter changes
+   trigger: "You have already run a Final Validation. Changing parameters invalidates it."
+
+Add **REQ-V4-21: Advanced Validation Study Types** with acceptance criteria:
+(a) CPCV study type is available and surfaces PBO,
+(b) Walk-Forward supports rolling and anchored modes,
+(c) sealed test set can be designated in the Strategy Builder,
+(d) Final Validation is a distinct one-time action with appropriate warnings.
+
+---
+
+## Gap C2 — Overfitting Detection
+
+**Problem:** The existing fragility score uses 1D perturbations. There is no Deflated Sharpe Ratio,
+no overfitting budget tracker, and no minimum backtest length check.
+
+**Task:**
+
+### Deflated Sharpe Ratio (DSR)
+
+Compute DSR automatically on every run result. Display it as a secondary metric next to the raw
+Sharpe on the Run Detail screen, with a tooltip explaining the calculation. A DSR below 0.95
+triggers a "Possible overfitting" warning badge.
+
+New fields on `BacktestResult`:
+```csharp
+public decimal? DeflatedSharpeRatio { get; init; }
+public int? TrialCount { get; init; }  // Number of prior runs on this strategy version
+```
+
+### 2D Parameter Performance Surface
+
+Expand the fragility score from 1D perturbations to a full 2D performance surface:
+
+```csharp
+public record ParameterSurfaceStudy : StudyRecord
+{
+    public string PrimaryParameter { get; init; }
+    public string SecondaryParameter { get; init; }
+    public decimal[,] SharpeMatrix { get; init; }
+    public decimal FragilityIndex { get; init; }  // area of robust parameter space
+}
+```
+
+Report the "width" of the performance peak as the fragility score: the area where Sharpe remains
+within 20% of the optimal value. Show this as a heatmap chart on the Sensitivity Study Detail page.
+
+### Overfitting Budget Tracker
+
+Track total trials run per strategy version:
+
+```csharp
+// On StrategyVersion:
+public int TotalTrialsRun { get; set; }  // incremented on every run and sweep
+```
+
+Show on the Strategy Hub: "You have run 47 trials on this version. A Sharpe of 1.4 is expected from
+random chance alone after 45 trials. Consider running a Final Validation."
+
+### Minimum Backtest Length (MinBTL) Check
+
+```csharp
+public static int MinimumBarsRequired(decimal observedSharpe, int trialCount,
+    decimal skewness, decimal kurtosis)
+{
+    // Returns minimum bar count required for 95% confidence
+}
+```
+
+If actual bar count is below MinBTL, surface: "This backtest is too short to be statistically
+significant given the number of strategies tested. Need at least N more bars."
+
+Add **REQ-V4-20: Overfitting Detection & DSR** with acceptance criteria:
+(a) DSR is computed and displayed on every completed run,
+(b) DSR below 0.95 triggers a warning badge,
+(c) TotalTrialsRun is tracked per version and shown on the Strategy Hub,
+(d) MinBTL warning is surfaced when bar count is insufficient,
+(e) 2D parameter surface heatmap is available as a Sensitivity study output.
+
+---
+
+## Gap C3 — Regime Awareness Expansion
+
+**Problem:** Regime segmentation exists as post-hoc analysis but is not integrated into walk-forward
+or the strategy builder as a live concern.
+
+**Task:** Expand §8 (Research Studies) with:
+
+### Regime-Conditional Walk-Forward
+
+1. Label each walk-forward window with its dominant regime (using the existing regime detector).
+2. Group OOS window results by regime: "Trending OOS Sharpe: 1.6 (4 windows). Mean-reverting OOS Sharpe: -0.2 (3 windows)."
+3. Flag when OOS performance depends heavily on a single regime — this is a regime overfitting risk.
+
+### Regime Filter in Strategy Builder
+
+Add an optional regime filter step to the Strategy Builder:
+- "Apply this strategy only in trending regimes (ADX > 25)"
+- "Pause this strategy in high-volatility regimes (ATR percentile > 80)"
+
+### Market Stress Periods
+
+Ship a `data/stress-periods.json` file:
+```json
+[
+    { "name": "COVID Crash", "start": "2020-02-20", "end": "2020-04-01" },
+    { "name": "2022 Rate Hike Regime", "start": "2022-01-01", "end": "2022-12-31" },
+    { "name": "GFC", "start": "2008-09-01", "end": "2009-03-31" },
+    { "name": "DotCom Unwind", "start": "2000-03-01", "end": "2002-10-31" }
+]
+```
+
+Every run result automatically checks overlap with stress periods and flags whether performance
+during those periods is materially worse than the baseline. Show a stress-period overlay on the
+equity curve chart.
+
+---
+
+## Gap C4 — Execution Realism Expansion
+
+**Problem:** The realism model is uniform. There is no session-aware spread modelling, no partial
+fill simulation, and no comparative Realism Impact study.
+
+**Task:** Expand `ExecutionRealismProfile`:
+
+### Session-Aware Spread Model
+
+Support a `SessionSpreadModel` that increases effective slippage during:
+- 00:00–01:00 UTC (low liquidity)
+- Configurable economic announcement windows
+- Rollover times (for futures and some forex pairs)
+
+### Partial Fill Modelling
+
+```csharp
+public sealed record PositionSizingPolicy
+{
+    // existing fields ...
+    public decimal PartialFillProbabilityPercent { get; init; } = 0;
+    public decimal MaxFillFractionPerBar { get; init; } = 1.0m;
+}
+```
+
+### Realism Impact Study (3-Profile Comparison)
+
+Add a dedicated study type that runs the same strategy with three realism profiles (Fast/Standard/Conservative)
+and produces a comparison table:
+
+| Metric       | Fast Research | Standard | Conservative |
+|--------------|--------------|----------|--------------|
+| Sharpe       | 1.82         | 1.41     | 0.93         |
+| Max DD       | 7.2%         | 8.3%     | 11.1%        |
+| Net Profit   | 38.4%        | 29.7%    | 18.2%        |
+| Cost Drag    | —            | -8.7pp   | -20.2pp      |
+
+A strategy that degrades severely under realistic costs should be flagged:
+"This strategy's edge is highly sensitive to execution costs."
+
+---
+
+## Gap C5 — Research Lifecycle & Development Stage
+
+**Problem:** The spec has no structured research lifecycle. Users cannot distinguish exploration
+results from validated results, and there is no checklist to prevent premature live trading.
+
+**Task:** Add a new section **§4.x — Research Lifecycle Model**:
+
+### DevelopmentStage
+
+Add a `DevelopmentStage` field to `StrategyIdentity`:
+
+```csharp
+public enum DevelopmentStage
+{
+    Hypothesis,   // idea only, no runs yet
+    Exploring,    // early runs, frequently changing parameters
+    Optimizing,   // parameter sweep phase
+    Validating,   // walk-forward and robustness phase
+    FinalTest,    // sealed test set has been run exactly once
+    Retired       // no longer under development
+}
+```
+
+Show prominently on the Strategy Hub and Library card. Dashboard groups strategies by stage:
+"2 in Validating, 1 awaiting Final Test, 3 in Exploring."
+
+### Hypothesis Field
+
+Before running any backtest, the builder prompts: "What is your hypothesis for why this strategy
+should work?" Store the answer as a `Hypothesis` string on `StrategyIdentity`. Display it at the
+top of the Strategy Hub and Run Detail screens.
+
+### Automated Research Checklist
+
+After a backtest run, compute and display a structured checklist:
+
+```
+Research Progress for EURUSD Mean Reversion V4
+─────────────────────────────────────────────
+✅ Initial backtest completed (Sharpe 1.42)
+✅ Monte Carlo robustness: Robust (P10 positive, ruin < 5%)
+⬜ Walk-forward validation not yet run
+⬜ Regime sensitivity not yet checked
+⬜ Execution realism impact not yet measured
+⬜ Parameter surface not yet mapped
+⬜ Final held-out test not yet run
+⬜ Prop firm evaluation not yet completed
+─────────────────────────────────────────────
+Confidence Level: LOW (2 of 7 checks passed)
+```
+
+The Confidence Level advances with each completed check. This prevents premature live trading
+based on a single backtest.
+
+Add **REQ-V4-19: Research Lifecycle & Development Stage** with acceptance criteria:
+(a) `DevelopmentStage` is visible on all strategy cards and the Dashboard,
+(b) Dashboard groups strategies by stage,
+(c) Hypothesis field is prompted at strategy creation and displayed on detail screens,
+(d) Research checklist is visible on Strategy Detail and Run Detail screens,
+(e) Confidence Level score is computed and updated on every new study completion.
+
+---
+
+## Gap C6 — Analytics Metrics Expansion
+
+**Problem:** The metric set covers essentials but lacks several high-value metrics for strategy
+development decisions, and MAE/MFE analysis is underutilised.
+
+**Task:** Add the following to the Run Detail screen:
+
+### New Metrics
+
+| Metric | Purpose | Where to show |
+|---|---|---|
+| **Deflated Sharpe Ratio** | Sharpe adjusted for trial count | KPI tile, primary |
+| **Probability of Backtest Overfitting (PBO)** | From CPCV study | Robustness section |
+| **Profit Factor** | Gross profit / gross loss | Secondary tab |
+| **Expectancy ($ per trade)** | Average expected value per trade | Secondary tab |
+| **MAE Distribution** | Maximum Adverse Excursion histogram | Trades tab |
+| **MFE Distribution** | Maximum Favourable Excursion histogram | Trades tab |
+| **Consecutive Loss Max** | Longest losing streak | Risk section |
+| **Recovery Factor** | Net profit / max drawdown | Secondary tab |
+| **Calmar Ratio** | Annual return / max drawdown | Secondary tab |
+| **Average Holding Period** | Mean bars in trade | Trades tab |
+
+### MAE/MFE Scatter Chart
+
+The Trades tab should show a scatter plot of MAE vs MFE for all trades, colour-coded by win/loss.
+This chart answers:
+- "Am I exiting too early?" (MFE much larger than actual profit)
+- "Are my stops too tight?" (MAE frequently exceeds initial stop)
+
+### Run Comparison Delta View
+
+When comparing two versions of the same strategy, highlight meaningful differences:
+
+```
+Version 2 vs Version 3 — EURUSD Mean Reversion
+
+Parameter changes:
+  fastPeriod: 10 → 12  (+20%)
+  lookback:   20 → 20  (unchanged)
+
+Performance changes:
+  Sharpe:  1.18 → 1.42  (+0.24)  ▲ improved
+  Max DD:  11.2% → 8.3%  (-2.9pp) ▲ improved
+  Trades:  31 → 23         (-8)   ▼ fewer samples
+
+⚠ Fewer trades in V4 reduces statistical confidence.
+```
+
+---
+
+# Prioritised Implementation Roadmap Addition
+
+Amend the Phase roadmap in §11 to include the following additions to **V4.3** and **V4.4**:
+
+| Priority | Feature | Complexity | Impact |
+|---|---|---|---|
+| 🔴 Critical | Sealed held-out test set + DevelopmentStage lifecycle | Medium | Prevents premature live trading |
+| 🔴 Critical | Deflated Sharpe Ratio on every run result | Low | Immediate overfitting signal |
+| 🔴 Critical | Automated research checklist / Confidence Level score | Low | Guides users through validation loop |
+| 🟠 High | CPCV + PBO metric as new study type | High | Gold-standard OOS validation |
+| 🟠 High | 2D parameter surface heatmap | Medium | Visual fragility detection |
+| 🟠 High | Anchored walk-forward mode | Low | More realistic OOS scenario |
+| 🟠 High | MAE/MFE scatter chart on Trades tab | Medium | Improves trade management decisions |
+| 🟡 Medium | Realism Impact study (3-profile comparison) | Medium | Live trading readiness |
+| 🟡 Medium | Regime-conditional walk-forward | High | Prevents regime overfitting |
+| 🟡 Medium | Run comparison delta view | Low | Version iteration clarity |
+| 🟡 Medium | Stress period overlay on equity curve | Low | Risk awareness |
+| 🟢 Lower | MinBTL check and warning | Low | Statistical hygiene |
+| 🟢 Lower | Hypothesis field on strategy creation | Low | Research discipline |
+| 🟢 Lower | Overfitting trial budget counter | Low | Transparency |
+| 🟢 Lower | Session-aware spread model | Medium | Execution realism accuracy |
+| 🟢 Lower | Partial fill modelling | Medium | Execution realism accuracy |
+
+---
+
+# Acceptance Checklist for Kiro
+
+After completing all tasks above, verify every item:
+
+**Part A — Major Gaps**
+- [ ] §0 exists and explicitly declares single-user or multi-user deployment model
+- [ ] `RunStatus` enum defined: `Pending`, `Running`, `Completed`, `Failed`, `Cancelled`
+- [ ] `FailureDetail` field (nullable string) exists on `BacktestResult`
+- [ ] `DataFileRecord` and `ValidationStatus` enum defined in Application
+- [ ] `IProgressReporter` interface defined in Application
+- [ ] `IsPartial`, `CompletedCount`, `TotalCount` fields exist on `StudyRecord`
+- [ ] `IReportExporter` interface defined with `ExportMarkdownAsync`, `ExportTradeCsvAsync`, `ExportEquityCsvAsync`, `ExportJsonAsync`
+- [ ] `MigrationService` listed in Phase 1 of the roadmap (§11)
+- [ ] Custom rule pack JSON includes `"IsBuiltIn": false` flag
+- [ ] `AppSettings` record defined with all configurable paths and timeouts
+- [ ] Requirements Index table REQ-V4-01 through REQ-V4-21 exists in §10
+- [ ] Dashboard wireframe (with Research Pipeline section) exists in §6
+- [ ] Settings screen wireframe and spec exists in §5
+- [ ] Data Files screen wireframe and `DataFileRecord` spec exists in §5
+- [ ] Execution Status Bar spec exists in §5
+- [ ] All 10 major gaps have a corresponding numbered REQ entry
+
+**Part B — Minor Gaps**
+- [ ] Minimum supported viewport (1024px+) declared in §5
+- [ ] Mobile explicitly declared out of scope for V4
+- [ ] Global keyboard shortcuts table exists in §8
+- [ ] WCAG 2.1 AA baseline requirements listed in §8
+- [ ] All charts have a screen-reader accessible data table requirement
+- [ ] REQ-V4-16, REQ-V4-17, REQ-V4-18 exist in §10 with acceptance criteria
+- [ ] Strategy Detail screen wireframe (with Research Progress section) exists in §6
+- [ ] Monte Carlo, Walk-Forward, and Sensitivity Study Detail wireframes exist in §6
+
+**Part C — Research & Analytics Depth**
+- [ ] `StudyType` enum includes `AnchoredWalkForward` and `CombinatorialPurgedCV`
+- [ ] `WalkForwardMode` enum defined with `Rolling` and `Anchored`
+- [ ] Sealed test set designation step exists in the Strategy Builder
+- [ ] Final Validation one-time run action is specified
+- [ ] `DeflatedSharpeRatio` and `TrialCount` fields exist on `BacktestResult`
+- [ ] `ParameterSurfaceStudy` record defined with `SharpeMatrix` and `FragilityIndex`
+- [ ] `TotalTrialsRun` field exists on `StrategyVersion`
+- [ ] MinBTL check is specified in `BacktestResultAnalyzer`
+- [ ] `DevelopmentStage` enum defined and visible on strategy cards and dashboard
+- [ ] `Hypothesis` string field exists on `StrategyIdentity`
+- [ ] Automated research checklist and Confidence Level score specified
+- [ ] Stress periods JSON file and overlay specified
+- [ ] MAE/MFE scatter chart specified on Trades tab
+- [ ] Run comparison delta view specified
+- [ ] `PartialFillProbabilityPercent` and `MaxFillFractionPerBar` added to `PositionSizingPolicy`
+- [ ] Realism Impact study (3-profile comparison) specified
+- [ ] REQ-V4-19, REQ-V4-20, REQ-V4-21 exist in §10 with acceptance criteria

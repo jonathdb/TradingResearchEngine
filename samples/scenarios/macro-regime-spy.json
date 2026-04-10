@@ -1,6 +1,6 @@
 {
   "ScenarioId": "macro-regime-spy",
-  "Description": "Macro Regime Rotation on SPY daily. Uses vol/trend/momentum regime detection with monthly rebalancing.",
+  "Description": "Macro Regime Rotation on SPY daily. Switches allocation by vol/trend/momentum regime; no single signal family dominates across all regimes.",
   "ReplayMode": "Bar",
   "DataProviderType": "csv",
   "DataProviderOptions": {

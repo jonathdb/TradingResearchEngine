@@ -1,6 +1,6 @@
 {
   "ScenarioId": "donchian-breakout-spy",
-  "Description": "20-day Donchian Channel Breakout on SPY daily bars. Long-only trend follower.",
+  "Description": "20-day Donchian Channel Breakout on SPY daily. Range expansion after compression signals the start of a sustained move.",
   "ReplayMode": "Bar",
   "DataProviderType": "csv",
   "DataProviderOptions": {

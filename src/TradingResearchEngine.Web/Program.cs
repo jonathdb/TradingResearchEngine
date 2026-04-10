@@ -9,7 +9,7 @@ var builder = WebApplication.CreateBuilder(args);
 // Engine services
 builder.Services.AddTradingResearchEngine(builder.Configuration);
 builder.Services.AddTradingResearchEngineInfrastructure(builder.Configuration);
-builder.Services.AddStrategyAssembly(typeof(SmaCrossoverStrategy).Assembly);
+builder.Services.AddStrategyAssembly(typeof(DonchianBreakoutStrategy).Assembly);
 
 // MudBlazor
 builder.Services.AddMudServices();
