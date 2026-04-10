@@ -2,244 +2,244 @@
 
 ## Overview
 
-This document describes the targeted code changes to `DukascopyHelpers.cs` and the accompanying unit tests in `DukascopyHelpersTests`. No other files require modification.
+This design addresses nine requirements that fix data-quality bugs and add missing capabilities in the Dukascopy data pipeline. The changes span two existing files (`DukascopyHelpers.cs`, `DukascopyDataProvider.cs`) and one new test file (`DukascopyHelpersTests.cs`). No Core types, Application layer, Web layer, or other providers are modified.
+
+The fixes fall into three categories:
+
+1. **Correctness** (Req 1–2): strict interval parsing and OHLC integrity guards.
+2. **Infrastructure hardening** (Req 3, 6–8): per-day cache, portable endianness, partial-bar logging, HTTP retry.
+3. **New capabilities** (Req 4–5): tick data implementation and ASK/mid-price candle support.
 
 ---
 
-## 1. `IntervalToMinutes` — Throw on Unrecognized Input
+## Architecture
 
-### Current Code
+### Affected Components
 
-```csharp
-public static int IntervalToMinutes(string interval) => interval.ToLowerInvariant() switch
-{
-    "1m" => 1, "5m" => 5, "15m" => 15, "30m" => 30,
-    "1h" or "60m" => 60, "4h" => 240, "1d" or "daily" => 1440,
-    _ => 1440   // ← BUG: silently returns daily for any unrecognized string
-};
+```
+DukascopyHelpers.cs          (static utility — parsing, aggregation, cache paths, decompression)
+DukascopyDataProvider.cs     (IDataProvider implementation — GetBars, GetTicks, HTTP, caching)
+DukascopyHelpersTests.cs     (new — unit tests in UnitTests project)
 ```
 
-### Problem
+### Data Flow (Candles)
 
-The wildcard arm `_ => 1440` means that `"1H"`, `"H1"`, `"hourly"`, or any typo produces daily bars with no diagnostic. The sample data file (`dukascopy_EURUSD_1H_20260201_20260410.csv`) confirmed that a caller passes `"1H"` (uppercase H), which was already handled by `.ToLowerInvariant()` — however, the real risk is that *any* unrecognized string silently degrades to daily resolution.
-
-### Fix
-
-Replace `_ => 1440` with a throw:
-
-```csharp
-public static int IntervalToMinutes(string interval)
-{
-    return interval.ToLowerInvariant() switch
-    {
-        "1m"              => 1,
-        "5m"              => 5,
-        "15m"             => 15,
-        "30m"             => 30,
-        "1h" or "60m"     => 60,
-        "4h"              => 240,
-        "1d" or "daily"   => 1440,
-        var unknown       => throw new ArgumentException(
-            $"Unrecognized interval '{unknown}'. Supported values: 1m, 5m, 15m, 30m, 1h, 60m, 4h, 1d, daily.",
-            nameof(interval))
-    };
-}
+```mermaid
+graph LR
+    A[Caller: GetBars] --> B{Per-day cache hit?}
+    B -- yes --> C[LoadFromCsv]
+    B -- no --> D[HTTP download .bi5]
+    D --> E[Decompress LZMA]
+    E --> F[ParseCandles → List of BarRecord]
+    F --> G[SaveToCsv per-day cache]
+    C --> H[Aggregate to target interval]
+    G --> H
+    H --> I[Yield BarRecords to caller]
 ```
 
-Note: the switch now uses a `var` discard arm to capture the unrecognized value for the error message. The `.ToLowerInvariant()` call means `"1H"`, `"4H"`, `"1D"`, `"Daily"` etc. all match correctly.
+### Data Flow (Ticks — new)
 
-### Caller Review
+```mermaid
+graph LR
+    A[Caller: GetTicks] --> B{Per-hour cache hit?}
+    B -- yes --> C[Load cached ticks]
+    B -- no --> D[HTTP download h_ticks.bi5]
+    D --> E[Decompress LZMA]
+    E --> F[ParseTicks → 20-byte records]
+    F --> G[Filter: ask > 0 AND bid > 0]
+    G --> H[Filter to requested date range]
+    H --> I[Yield TickRecords to caller]
+```
 
-All callers of `IntervalToMinutes()` must pass a supported string. The known call sites are:
-- `DukascopyHelpers.Aggregate()` — passes the `interval` argument forwarded from `DukascopyDataProvider.GetBars()`, which originates from the `IDataProvider` contract. The `market-data-acquisition` spec requires the Web UI to restrict the timeframe selector to supported values (`1m, 5m, 15m, 30m, 1H, 4H, Daily`). These all normalise correctly after `.ToLowerInvariant()`.
-- Any test helpers — must be updated to pass a valid string.
+### Design Decisions
+
+| # | Decision | Rationale |
+|---|---|---|
+| 1 | `IntervalToMinutes()` throws `ArgumentException` on unrecognized input | Silent fallback to daily was the root cause of the 1H bug; fail-fast is safer |
+| 2 | OHLC integrity enforced at aggregation, not post-processing | Single enforcement point; prevents invalid bars from ever being emitted |
+| 3 | Per-day cache replaces monolithic date-range file | Enables incremental fetches; overlapping ranges reuse cached days |
+| 4 | No migration of old cache files | Old files are simply not found and regenerated on next request |
+| 5 | ASK candle download is opt-in via `PriceType` parameter | Backwards-compatible; default remains BID-only |
+| 6 | `BinaryPrimitives.ReadInt64LittleEndian` replaces `BitConverter.ToInt64` | Explicit endianness; correct on all platforms |
+| 7 | Partial session bars logged as warnings, still emitted | Informational only; no new fields on `BarRecord` |
+| 8 | HTTP retry via Polly with exponential back-off (3 attempts) | Handles transient failures; 404 is not retried |
+| 9 | Tick parsing uses big-endian reads for the 20-byte record format | Matches Dukascopy's documented binary layout |
 
 ---
 
-## 2. `Aggregate` — OHLC Integrity Guards
+## Components and Interfaces
 
-### Current Code
+### `DukascopyHelpers` (static class — modified)
+
+| Member | Change | Requirement |
+|---|---|---|
+| `IntervalToMinutes(string)` | Replace `_ => 1440` with `var unknown => throw new ArgumentException(...)` | Req 1 |
+| `Aggregate(List<BarRecord>, string, string)` | Add OHLC guards on window init and close-clamping before emit | Req 2 |
+| `ParseCandles(byte[], DateTime, string, decimal)` | Add `h >= l` to the existing positivity guard | Req 2.4 |
+| `Decompress(byte[])` | Replace `BitConverter.ToInt64(data, 5)` with `BinaryPrimitives.ReadInt64LittleEndian(data.AsSpan(5, 8))` | Req 6 |
+| `ParseTicks(byte[], DateTime, string, decimal)` | **New** — parses 20-byte big-endian tick records | Req 4 |
+| `BuildDayUrl(string, DateTime, string)` | Add `priceType` parameter to select `BID_candles_min_1.bi5` or `ASK_candles_min_1.bi5` | Req 5 |
+| `GetDayCachePath(string, string, DateTime)` | **New** — returns `{CacheDir}/{symbol}/{priceType}/{yyyy}/{MM}/{dd}.csv` | Req 3, 5 |
+
+### `DukascopyDataProvider` (class — modified)
+
+| Member | Change | Requirement |
+|---|---|---|
+| Constructor | Accept `PriceType` parameter (default `Bid`) | Req 5 |
+| `GetBars(...)` | Use per-day cache; fetch ASK/BID/Mid based on `PriceType`; log partial session bars | Req 3, 5, 7 |
+| `GetTicks(...)` | Implement real tick download using `ParseTicks`; remove warning log | Req 4 |
+| `FetchDayAsync(...)` | Add Polly retry policy; handle 404 as empty result | Req 8 |
+| `GetCachePath(...)` | Remove old monolithic path; delegate to `DukascopyHelpers.GetDayCachePath` | Req 3 |
+
+### `PriceType` (new enum)
 
 ```csharp
-decimal open   = bars[i].Open;
-decimal high   = bars[i].High;   // ← Does NOT consider Open
-decimal low    = bars[i].Low;
-decimal close  = bars[i].Close;
-// ...
-result.Add(new BarRecord(symbol, interval, open, high, low, close, volume, timestamp));
-// ← Does NOT clamp close against high/low before emitting
+public enum DukascopyPriceType { Bid, Ask, Mid }
 ```
 
-### Problem
-
-If a source minute bar has `Open > High` (which occurs due to bid/ask spread rounding in the Dukascopy binary format), the aggregation window inherits an `Open` that exceeds the tracked `High`. Similarly, if the final minute bar's `Close` exceeds the running `High`, the emitted bar has `Close > High`.
-
-Two confirmed bad bars in the sample file:
-- `2026-02-23`: `Open=1.18333, High=1.18328` → `High < Open` by 0.5 pips
-- `2026-03-31`: `Close=1.15743, High=1.15739` → `Close > High` by 0.4 pips
-
-### Fix
-
-Apply OHLC guards at two points in the loop:
-
-**1. Window initialisation (first bar):**
-```csharp
-decimal open   = bars[i].Open;
-decimal high   = Math.Max(bars[i].High, bars[i].Open);  // Open may exceed source High
-decimal low    = Math.Min(bars[i].Low,  bars[i].Open);  // Open may fall below source Low
-decimal close  = bars[i].Close;
-decimal volume = bars[i].Volume;
-var    timestamp = windowStart;
-```
-
-**2. Before emitting each window bar:**
-```csharp
-// Clamp close into [low, high] range
-high  = Math.Max(high, close);
-low   = Math.Min(low,  close);
-
-result.Add(new BarRecord(symbol, interval, open, high, low, close, volume, timestamp));
-```
-
-This guarantees the output invariant `Low ≤ Open ≤ High` AND `Low ≤ Close ≤ High` for every emitted bar.
+Defined in `DukascopyDataProvider.cs` (Infrastructure layer). Not a Core type.
 
 ---
 
-## 3. `ParseCandles` — Source Bar Sanity Filter
+## Data Models
 
-### Current Code
+No new Core data models are introduced. The existing `BarRecord` and `TickRecord` types are unchanged.
 
-```csharp
-if (o > 0 && h > 0 && l > 0 && c > 0)
-    bars.Add(new BarRecord(symbol, "1m", o, h, l, c, (decimal)vol, ts));
+### Tick Binary Layout (Dukascopy format — for `ParseTicks`)
+
+| Offset | Size | Type | Field |
+|---|---|---|---|
+| 0 | 4 | uint32 BE | Millisecond offset from hour start |
+| 4 | 4 | uint32 BE | Ask price × point size |
+| 8 | 4 | uint32 BE | Bid price × point size |
+| 12 | 4 | float32 BE | Ask volume |
+| 16 | 4 | float32 BE | Bid volume |
+
+Total: 20 bytes per tick record.
+
+### Per-Day Cache Path
+
+```
+{CacheDir}/{SYMBOL}/{PriceType}/{yyyy}/{MM}/{dd}.csv
 ```
 
-### Enhancement
+Example: `DukascopyDayCache/EURUSD/Bid/2026/03/05.csv`
 
-Extend the guard to also reject bars where `high < low` (malformed binary record):
+### Mid-Price Computation
 
-```csharp
-if (o > 0 && h > 0 && l > 0 && c > 0 && h >= l)
-    bars.Add(new BarRecord(symbol, "1m", o, h, l, c, (decimal)vol, ts));
+When `PriceType == Mid`, both BID and ASK files are fetched for each day. The output bar is:
+
 ```
-
-This prevents obviously corrupt records from entering the aggregation pipeline.
-
----
-
-## 4. Test Class Structure — `DukascopyHelpersTests`
-
-File location: `src/TradingResearchEngine.UnitTests/DukascopyHelpersTests.cs`
-
-### Interval Parsing Tests
-
-```csharp
-[Theory]
-[InlineData("1m",    1)]
-[InlineData("5m",    5)]
-[InlineData("15m",   15)]
-[InlineData("30m",   30)]
-[InlineData("1h",    60)]
-[InlineData("1H",    60)]   // uppercase — previously fell through to 1440
-[InlineData("60m",   60)]
-[InlineData("4h",    240)]
-[InlineData("4H",    240)]
-[InlineData("1d",    1440)]
-[InlineData("1D",    1440)]
-[InlineData("daily", 1440)]
-[InlineData("Daily", 1440)]
-public void IntervalToMinutes_SupportedInterval_ReturnsCorrectMinutes(string interval, int expected)
-    => Assert.Equal(expected, DukascopyHelpers.IntervalToMinutes(interval));
-
-[Theory]
-[InlineData("H1")]
-[InlineData("hourly")]
-[InlineData("1 hour")]
-[InlineData("")]
-[InlineData("bad")]
-public void IntervalToMinutes_UnrecognizedInterval_ThrowsArgumentException(string interval)
-    => Assert.Throws<ArgumentException>(() => DukascopyHelpers.IntervalToMinutes(interval));
-
-[Fact]
-public void IntervalToMinutes_NullInterval_ThrowsException()
-    => Assert.ThrowsAny<Exception>(() => DukascopyHelpers.IntervalToMinutes(null!));
-```
-
-### OHLC Aggregation Tests
-
-```csharp
-// Helper: build a synthetic 1-minute bar
-private static BarRecord Bar(decimal o, decimal h, decimal l, decimal c, DateTimeOffset ts)
-    => new("EURUSD", "1m", o, h, l, c, 1000m, ts);
-
-private static readonly DateTimeOffset T0 = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
-
-[Fact]
-public void Aggregate_FirstBarOpenExceedsHigh_OutputHighCoversOpen()
-{
-    // Source bar where Open > High (Dukascopy binary anomaly)
-    var bars = new List<BarRecord> { Bar(1.1835m, 1.1832m, 1.1780m, 1.1800m, T0) };
-    var result = DukascopyHelpers.Aggregate(bars, "1h", "EURUSD");
-    Assert.Single(result);
-    Assert.True(result[0].High >= result[0].Open,
-        $"High ({result[0].High}) should be >= Open ({result[0].Open})");
-}
-
-[Fact]
-public void Aggregate_LastBarCloseExceedsHigh_OutputHighCoversClose()
-{
-    var bars = new List<BarRecord>
-    {
-        Bar(1.1800m, 1.1850m, 1.1780m, 1.1820m, T0),
-        Bar(1.1820m, 1.1830m, 1.1810m, 1.1840m, T0.AddMinutes(1)), // Close > first High
-    };
-    var result = DukascopyHelpers.Aggregate(bars, "1h", "EURUSD");
-    Assert.Single(result);
-    Assert.True(result[0].High >= result[0].Close,
-        $"High ({result[0].High}) should be >= Close ({result[0].Close})");
-}
-
-[Fact]
-public void Aggregate_FirstBarOpenBelowLow_OutputLowCoversOpen()
-{
-    var bars = new List<BarRecord> { Bar(1.1770m, 1.1850m, 1.1780m, 1.1800m, T0) };
-    var result = DukascopyHelpers.Aggregate(bars, "1h", "EURUSD");
-    Assert.Single(result);
-    Assert.True(result[0].Low <= result[0].Open,
-        $"Low ({result[0].Low}) should be <= Open ({result[0].Open})");
-}
-
-[Fact]
-public void Aggregate_CleanInput_OhlcUnchanged()
-{
-    var bars = new List<BarRecord>
-    {
-        Bar(1.1800m, 1.1850m, 1.1780m, 1.1830m, T0),
-        Bar(1.1830m, 1.1860m, 1.1820m, 1.1845m, T0.AddMinutes(1)),
-    };
-    var result = DukascopyHelpers.Aggregate(bars, "1h", "EURUSD");
-    Assert.Single(result);
-    Assert.Equal(1.1800m, result[0].Open);
-    Assert.Equal(1.1860m, result[0].High);
-    Assert.Equal(1.1780m, result[0].Low);
-    Assert.Equal(1.1845m, result[0].Close);
-}
-
-[Fact]
-public void Aggregate_EmptyInput_ReturnsEmpty()
-{
-    var result = DukascopyHelpers.Aggregate(new List<BarRecord>(), "1h", "EURUSD");
-    Assert.Empty(result);
-}
+Open  = (BidOpen  + AskOpen)  / 2
+High  = (BidHigh  + AskHigh)  / 2
+Low   = (BidLow   + AskLow)   / 2
+Close = (BidClose + AskClose) / 2
+Volume = BidVolume  (ASK volume is discarded)
 ```
 
 ---
 
-## 5. Files Changed
+## Error Handling
+
+### Interval Parsing (Req 1)
+
+`IntervalToMinutes()` throws `ArgumentException` with the unrecognized value and the list of supported values:
+
+```csharp
+var unknown => throw new ArgumentException(
+    $"Unrecognized interval '{unknown}'. Supported values: 1m, 5m, 15m, 30m, 1h, 60m, 4h, 1d, daily.",
+    nameof(interval))
+```
+
+### OHLC Integrity (Req 2)
+
+Invalid source bars (`high < low`, any OHLC value ≤ 0) are silently discarded in `ParseCandles`. The aggregation loop enforces `Low ≤ Open ≤ High` and `Low ≤ Close ≤ High` via clamping — no exceptions thrown.
+
+### HTTP Retry (Req 8)
+
+Polly retry policy on `HttpClient`:
+
+- Triggers on `HttpRequestException` or HTTP 5xx status codes
+- 3 retries with exponential back-off: 1s → 2s → 4s
+- HTTP 404 returns empty result (not retried — missing data for off-market hours is expected)
+- After exhausting retries: log at `LogLevel.Error` with URL, attempt count, and exception message, then re-throw
+
+### Mid-Price Failure Handling (Req 5)
+
+When `PriceType == Mid`, both BID and ASK files must be present for a given day. If the ASK file download fails (404 or exhausted retries) but the BID file succeeds, the day is treated as a download failure — no partial mid-price bar is emitted. The error is logged at `LogLevel.Warning` with the symbol, date, and which file failed. This prevents silently emitting BID-only data when the caller explicitly requested mid-price.
+
+### Partial Session Bars (Req 7)
+
+When the first minute bar of a day does not align with the aggregation window boundary, a `LogLevel.Warning` is emitted containing: symbol, date, interval, window boundary, and first bar timestamp. The bar is still emitted. Warning fires at most once per trading day per symbol.
+
+### Tick Data (Req 4)
+
+- Records with `ask ≤ 0` or `bid ≤ 0` are discarded
+- Trailing incomplete records (byte array length not a multiple of 20) are discarded without throwing
+- Ticks outside the requested `[from, to]` range are filtered before yielding
+
+---
+
+## Testing Strategy
+
+All new tests go in `src/TradingResearchEngine.IntegrationTests/MarketData/DukascopyHelpersTests.cs`, extending the existing test class. Per the steering rules, UnitTests references Core and Application only — never Infrastructure. Since `DukascopyHelpers` lives in Infrastructure, the tests belong in IntegrationTests where the existing `DukascopyHelpersTests` class already resides. The new test methods exercise pure static functions with no HTTP calls, so they are effectively unit-level tests hosted in the IntegrationTests project for dependency reasons.
+
+### Test Categories
+
+#### 1. Interval Parsing (Req 9.2)
+
+| Test | Input | Expected |
+|---|---|---|
+| `IntervalToMinutes_SupportedInterval_ReturnsCorrectMinutes` | `1m, 5m, 15m, 30m, 1h, 1H, 60m, 4h, 4H, 1d, 1D, daily, Daily` | Correct minute count |
+| `IntervalToMinutes_UnrecognizedInterval_ThrowsArgumentException` | `H1, hourly, 1 hour, "", bad` | `ArgumentException` |
+| `IntervalToMinutes_NullInterval_ThrowsException` | `null` | Any exception |
+
+#### 2. OHLC Aggregation (Req 9.3)
+
+| Test | Scenario | Assertion |
+|---|---|---|
+| `Aggregate_FirstBarOpenExceedsHigh_OutputHighCoversOpen` | Source bar: Open > High | `result.High >= result.Open` |
+| `Aggregate_LastBarCloseExceedsHigh_OutputHighCoversClose` | Last bar: Close > running High | `result.High >= result.Close` |
+| `Aggregate_FirstBarOpenBelowLow_OutputLowCoversOpen` | Source bar: Open < Low | `result.Low <= result.Open` |
+| `Aggregate_CleanInput_OhlcUnchanged` | Normal bars | OHLC values match expected |
+| `Aggregate_EmptyInput_ReturnsEmpty` | Empty list | Empty result, no throw |
+
+#### 3. Cache Path (Req 9.4)
+
+| Test | Scenario | Assertion |
+|---|---|---|
+| `GetDayCachePath_ReturnsCorrectStructure` | `EURUSD, 2024-03-05, Bid` | Path ends in `EURUSD/Bid/2024/03/05.csv` |
+| `GetDayCachePath_OverlappingRanges_SameDaySamePath` | Two ranges sharing a day | Same file path for the shared day |
+
+#### 4. Tick Parsing (Req 9.5)
+
+| Test | Scenario | Assertion |
+|---|---|---|
+| `ParseTicks_ValidRecord_ReturnsExpectedValues` | Well-formed 20-byte record | Correct ask, bid, timestamp |
+| `ParseTicks_ZeroAsk_Discarded` | Record with ask = 0 | Empty result |
+| `ParseTicks_IncompleteTrailingRecord_Discarded` | Byte array not multiple of 20 | No throw; trailing bytes ignored |
+
+#### 5. Endianness (Req 9.6)
+
+| Test | Scenario | Assertion |
+|---|---|---|
+| `Decompress_LittleEndianSize_ReadCorrectly` | Known byte slice at offset 5 | `BinaryPrimitives.ReadInt64LittleEndian` returns expected value |
+
+### Test Conventions
+
+- Naming: `<Method>_<Condition>_<Expected>`
+- Framework: xUnit with `[Fact]` and `[Theory]`/`[InlineData]`
+- No real HTTP calls
+- All tests grouped under `DukascopyHelpersTests`
+
+---
+
+## Files Changed
 
 | File | Change |
 |---|---|
-| `src/TradingResearchEngine.Infrastructure/DataProviders/DukascopyHelpers.cs` | Fix `IntervalToMinutes` (remove `_ => 1440`, add throw); fix `Aggregate` (OHLC guards on window init and close); extend `ParseCandles` (`h >= l` guard) |
-| `src/TradingResearchEngine.UnitTests/DukascopyHelpersTests.cs` | New file — `DukascopyHelpersTests` class with interval and OHLC tests |
+| `src/TradingResearchEngine.Infrastructure/DataProviders/DukascopyHelpers.cs` | Fix `IntervalToMinutes` (throw on unknown); fix `Aggregate` (OHLC guards); extend `ParseCandles` (`h >= l`); replace `BitConverter.ToInt64` with `BinaryPrimitives.ReadInt64LittleEndian`; add `ParseTicks`; add `GetDayCachePath`; add `priceType` to `BuildDayUrl` |
+| `src/TradingResearchEngine.Infrastructure/DataProviders/DukascopyDataProvider.cs` | Add `PriceType` constructor param; implement per-day cache in `GetBars`; implement `GetTicks` with real tick download; add Polly retry policy; add partial session bar warning logging; remove old monolithic cache path |
+| `src/TradingResearchEngine.IntegrationTests/MarketData/DukascopyHelpersTests.cs` | Extend existing test class with interval parsing, OHLC aggregation, cache paths, tick parsing, and endianness tests |
 
-No other files are modified. `DukascopyDataProvider.cs`, Core types, Application layer, and Web layer are untouched.
+No Core types, Application layer, or Web layer files are modified.

@@ -1,4 +1,4 @@
-# Requirements — Dukascopy Data Quality Fixes
+# Requirements Document
 
 ## Introduction
 
@@ -26,7 +26,7 @@ In addition, the following broader issues have been identified in the Dukascopy 
 
 All bugs affect correctness of backtests or analytics that consume Dukascopy data. This spec defines the fixes and regression tests.
 
-### Key Architecture Decisions
+## Key Architecture Decisions
 
 1. Only `DukascopyHelpers.cs` and `DukascopyDataProvider.cs` are modified. No changes to Core types, no changes to any other provider, no changes to the canonical CSV schema.
 2. `IntervalToMinutes()` throws `ArgumentException` for unrecognized interval strings rather than silently falling back.
