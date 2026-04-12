@@ -1,0 +1,372 @@
+# Implementation Plan — TradingResearchEngine V5 Engine Usability & Quant Upgrades
+
+## Overview
+
+V5 is implemented bottom-up by layer (Core → Application → Infrastructure → Api → Web → Tests → Docs), with property-based tests and unit tests placed close to the code they validate. Each task is a discrete coding step that builds on previous steps. The design uses C# 12 / .NET 8 throughout.
+
+## Tasks
+
+- [x] 1. Core layer — ScenarioConfig sub-object decomposition and enum changes
+  - [x] 1.1 Create `DataConfig`, `StrategyConfig`, `RiskConfig`, `ExecutionConfig`, `ResearchConfig` records in Core/Configuration
+    - One file per record, sealed records with XML doc comments
+    - _Requirements: 13.1_
+  - [x] 1.2 Amend `ScenarioConfig` with sub-object fields and `Effective*` computed properties
+    - Add trailing nullable parameters `Data`, `Strategy`, `Risk`, `Execution`, `Research`
+    - Implement `EffectiveDataConfig`, `EffectiveStrategyConfig`, `EffectiveRiskConfig`, `EffectiveExecutionConfig`, `EffectiveResearchConfig`, `EffectiveFillMode`
+    - Preserve all existing top-level fields unchanged
+    - _Requirements: 13.2, 13.3, 13.4, 13.5, 29.1, 29.2_
+  - [x] 1.3 Add `Direction.Short` to the `Direction` enum and create `LongOnlyGuard` static class in Core/Events
+    - `LongOnlyGuard.EnsureLongOnly(Direction)` throws `NotSupportedException` for `Short`
+    - Audit all existing `Direction` switch/if usages and add `Short` case or guard call
+    - _Requirements: 26.1, 26.2, 26.3_
+  - [x] 1.4 Amend `ExecutionOptions` with `MaxFillPercentOfVolume` field
+    - Nullable decimal, trailing parameter, default null
+    - _Requirements: 23.2, 23.5_
+  - [x] 1.5 Amend `BacktestResult` with `RealismAdvisories` field
+    - `IReadOnlyList<string>?`, trailing parameter, default null
+    - _Requirements: 23.4, 29.4_
+  - [x] 1.6 Amend `ExperimentMetadata` with `PresetId` and `DataFileIdentity` fields
+    - Nullable trailing parameters
+    - _Requirements: 16.5_
+  - [ ]* 1.7 Write property test: ScenarioConfig Sub-Object Equivalence (Property 9)
+    - **Property 9: ScenarioConfig sub-object equivalence**
+    - FsCheck test in `UnitTests/V5Properties/ScenarioConfigSubObjectProperties.cs`
+    - **Validates: Requirements 13.3, 13.4, 13.5, 29.1, 29.2**
+  - [ ]* 1.8 Write unit tests for Core additions
+    - `ShortSellingGuardTests`: Direction.Short exists, LongOnlyGuard throws for Short, passes for Long/Flat
+    - JSON round-trip tests for all new/amended records
+    - _Requirements: 26.1, 26.3, 26.4, 29.4, 30.5, 30.8_
+  - [ ]* 1.9 Write property test: LongOnlyGuard Enforcement (Property 21)
+    - **Property 21: LongOnlyGuard enforcement**
+    - FsCheck test in `UnitTests/V5Properties/LongOnlyGuardProperties.cs`
+    - **Validates: Requirements 26.1, 26.3**
+
+- [x] 2. Checkpoint — Core layer complete
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [x] 3. Application layer — Strategy schema, metadata, and templates
+  - [x] 3.1 Create `StrategyParameterSchema` record, `SensitivityHint` enum, `ParameterMetaAttribute` in Application/Strategy
+    - XML doc comments on all public members
+    - _Requirements: 1.1, 1.4_
+  - [x] 3.2 Create `IStrategySchemaProvider` interface and `StrategySchemaProvider` implementation in Application/Strategy
+    - Constructor inspection with `[ParameterMeta]` fallback
+    - Extend `StrategyRegistry` with `GetParameterSchema` method
+    - _Requirements: 1.2, 1.3, 1.5_
+  - [x] 3.3 Add `[ParameterMeta]` attributes to all 6 built-in strategy constructors
+    - Each parameter gets DisplayName, Description, SensitivityHint, Group, IsAdvanced, DisplayOrder
+    - _Requirements: 1.6_
+  - [x] 3.4 Amend `StrategyDescriptor` with optional `ParameterSchemas` field
+    - Trailing parameter, default null
+    - _Requirements: 1.7_
+  - [x] 3.5 Amend `StrategyTemplate` with `FamilyPresets` and `DifficultyLevel` fields
+    - Add `DifficultyLevel` enum (Beginner/Intermediate/Advanced)
+    - Each family gets at least 2 presets (e.g. "Conservative", "Aggressive")
+    - _Requirements: 2.1, 2.2_
+  - [x] 3.6 Amend `StrategyVersion` with `SourceType`, `SourceTemplateId`, `SourceVersionId`, `ImportedFrom`, `Hypothesis`, `ExpectedFailureMode`
+    - Add `SourceType` enum (Template/Import/Fork/Manual)
+    - All trailing parameters with defaults for backward compat
+    - _Requirements: 2.4, 2.6, 2.7, 2.8, 2.9_
+  - [ ]* 3.7 Write property test: Strategy Schema Completeness (Property 12)
+    - **Property 12: Strategy schema completeness**
+    - FsCheck test in `UnitTests/V5Properties/StrategySchemaProperties.cs`
+    - **Validates: Requirements 1.1, 1.3, 1.5**
+  - [ ]* 3.8 Write property test: SourceType Assignment (Property 14)
+    - **Property 14: SourceType assignment**
+    - FsCheck test in `UnitTests/V5Properties/SourceTypeProperties.cs`
+    - **Validates: Requirements 2.4, 2.6, 2.7, 2.8, 2.9**
+  - [ ]* 3.9 Write unit tests for strategy schema and templates
+    - `StrategySchemaProviderTests`: schema from attributes, fallback from constructor, all 6 built-in strategies
+    - `SourceTypeTests`: Template/Fork/Import/Manual creation semantics
+    - _Requirements: 1.1–1.7, 2.6–2.9, 30.2_
+
+- [x] 4. Application layer — Preflight validation and resolved config
+  - [x] 4.1 Create `PreflightFinding`, `PreflightSeverity`, `PreflightResult` records in Application/Engine
+    - _Requirements: 3.1, 3.2_
+  - [x] 4.2 Implement `PreflightValidator` with `Validate(ScenarioConfig)` and `ValidateAtStep(ConfigDraft, int)`
+    - Check: missing params, range violations, timeframe mismatch, risk settings, execution window, sealed test conflicts, data sufficiency, BarsPerYear mismatch, precedence conflicts
+    - MinBTL check using existing `MinBtlCalculator`
+    - _Requirements: 3.3, 3.5, 3.7, 14.1, 14.2, 14.3, 24.1_
+  - [x] 4.3 Amend `RunScenarioUseCase` to invoke `PreflightValidator` before engine construction
+    - Migrate existing validation into PreflightValidator
+    - Block on Error severity, proceed on Warning/Recommendation
+    - Increment `StrategyVersion.TotalTrialsRun` after completed run
+    - _Requirements: 3.4, 3.5, 24.2_
+  - [x] 4.4 Create `ConfigProvenance` enum, `ResolvedValue`, `ResolvedConfig` records in Application/Engine
+    - _Requirements: 16.1, 16.2_
+  - [x] 4.5 Implement `ResolvedConfigService` with `ResolveAsync(ScenarioConfig, string? presetId)`
+    - Resolve defaults → preset → explicit → override precedence
+    - Annotate each value with provenance
+    - _Requirements: 16.1, 16.2_
+  - [ ]* 4.6 Write property test: Preflight Errors Block Execution (Property 11)
+    - **Property 11: Preflight errors block execution**
+    - FsCheck test in `UnitTests/V5Properties/PreflightValidatorProperties.cs`
+    - **Validates: Requirements 3.4, 3.5**
+  - [ ]* 4.7 Write property test: Preset Application Precedence (Property 15)
+    - **Property 15: Preset application precedence**
+    - FsCheck test in `UnitTests/V5Properties/PresetPrecedenceProperties.cs`
+    - **Validates: Requirements 15.3, 15.4, 16.1, 16.2**
+  - [ ]* 4.8 Write unit tests for preflight and resolved config
+    - `PreflightValidatorTests`: all error/warning/recommendation conditions
+    - `ResolvedConfigServiceTests`: default resolution, preset application, explicit override, provenance
+    - `MinBtlPreflightTests`: bar count below threshold produces warning
+    - _Requirements: 3.1–3.7, 14.1–14.3, 16.1–16.4, 24.1, 30.1, 30.3_
+
+- [x] 5. Application layer — Strategy diff, config presets, and config draft
+  - [x] 5.1 Create `FieldChange`, `ChangeSignificance`, `StrategyDiff` records and `StrategyDiffService` in Application/Strategy
+    - Compare resolved/effective values, classify significance (Cosmetic/Minor/Material)
+    - _Requirements: 4.1, 4.2, 4.3, 4.4_
+  - [x] 5.2 Create `ConfigPreset`, `PresetCategory` records and `DefaultConfigPresets` static class in Application/Strategy
+    - Four built-in presets: Fast Idea Check, Standard Backtest, Conservative Realistic, Research-Grade Validation
+    - _Requirements: 15.1, 15.2_
+  - [x] 5.3 Create `ConfigDraft` record in Application/Strategy
+    - All fields per design, IHasId implementation
+    - _Requirements: 5.5_
+  - [ ]* 5.4 Write property test: StrategyDiff Correctness (Property 13)
+    - **Property 13: StrategyDiff correctness**
+    - FsCheck test in `UnitTests/V5Properties/StrategyDiffProperties.cs`
+    - **Validates: Requirements 4.1, 4.3, 4.4**
+  - [ ]* 5.5 Write property test: ConfigDraft Persistence Round-Trip (Property 10)
+    - **Property 10: ConfigDraft persistence round-trip**
+    - FsCheck test in `UnitTests/V5Properties/ConfigDraftProperties.cs`
+    - **Validates: Requirements 5.5**
+  - [ ]* 5.6 Write unit tests for diff, presets, and draft
+    - `StrategyDiffServiceTests`: parameter/execution changes, significance, identical versions
+    - `ConfigPresetTests`: four built-in presets valid, preset application, custom preset CRUD
+    - `ConfigDraftTests`: creation, step transitions, promotion to StrategyVersion
+    - _Requirements: 4.1–4.5, 15.1–15.5, 5.4–5.5, 30.4_
+
+- [x] 6. Application layer — Job execution and progress reporting
+  - [x] 6.1 Create `JobType`, `JobStatus` enums, `ProgressSnapshot`, `ReproducibilitySnapshot`, `BacktestJob` records in Application/Research
+    - _Requirements: 17.1, 17.7, 18.1_
+  - [x] 6.2 Extend `IProgressReporter` with `Report(ProgressSnapshot)` overload
+    - Preserve existing `Report(int, int, string)` for backward compat
+    - _Requirements: 18.1_
+  - [x] 6.3 Implement `JobExecutor` in Application/Research
+    - `ConcurrentDictionary<string, CancellationTokenSource>` for active jobs
+    - `SubmitAsync`, `GetJob`, `Cancel`, `ListJobs`, `RecoverOrphanedJobsAsync`
+    - Persist job records via `IRepository<BacktestJob>`
+    - _Requirements: 17.1, 17.4, 17.5, 17.6_
+  - [x] 6.4 Wire progress reporting into all research workflows
+    - MonteCarloWorkflow, WalkForwardWorkflow, ParameterSweepWorkflow, SensitivityAnalysisWorkflow, ParameterStabilityWorkflow, RealismSensitivityWorkflow, ParameterPerturbationWorkflow, RegimeSegmentationWorkflow, BenchmarkComparisonWorkflow
+    - RunScenarioUseCase reports at 10% bar intervals
+    - _Requirements: 18.2, 18.3_
+  - [ ]* 6.5 Write unit tests for job execution and progress
+    - `BacktestJobTests`: lifecycle (Queued → Running → Completed/Failed/Cancelled), error message storage
+    - `ProgressSnapshotTests`: snapshot creation, percentage computation
+    - _Requirements: 17.1, 17.5, 18.1, 30.6_
+
+- [x] 7. Application layer — Quant and research extensions
+  - [x] 7.1 Implement gap detection and gap-adjusted fill prices in `SimulatedExecutionHandler`
+    - Detect overnight/weekend gaps (> 2× ATR), fill at gap bar Open price
+    - _Requirements: 23.1_
+  - [x] 7.2 Implement volume constraint enforcement in `SimulatedExecutionHandler`
+    - Cap fill at `MaxFillPercentOfVolume × Volume` when set
+    - Log warning when fill > 10% of bar volume regardless of setting
+    - Collect realism advisories on `BacktestResult`
+    - _Requirements: 23.2, 23.3, 23.4_
+  - [x] 7.3 Extend `PortfolioConstraints` with `MaxExposurePerSymbol`, `MaxExposurePerSector`, `MaxCorrelatedExposure`
+    - Sector and correlation fields defined but not enforced (V5.1 roadmap, XML doc comments)
+    - _Requirements: 25.1, 25.5_
+  - [x] 7.4 Add `GetExposureBySymbol()` to `Portfolio` and enforce `MaxExposurePerSymbol` in `DefaultRiskLayer`
+    - Reject orders exceeding per-symbol limit with `RiskRejection` log
+    - _Requirements: 25.2, 25.3_
+  - [x] 7.5 Extend `ResearchChecklistService` with `NextRecommendedAction` and `TrialBudget`
+    - Add `TrialBudgetStatus` enum (Green/Amber/Red), `NextRecommendedAction` record
+    - Compute next action from stage, completed studies, metrics, suggested studies
+    - Over-optimization warning (>5 sweeps without walk-forward)
+    - _Requirements: 21.1, 21.2, 21.3, 24.5_
+  - [x] 7.6 Extend `BenchmarkComparisonWorkflow` with auto buy-and-hold and excess metrics
+    - Create `BenchmarkComparisonResult` record
+    - Auto-include `BaselineBuyAndHoldStrategy` when no explicit benchmark
+    - Compute excess return, information ratio, tracking error, max relative drawdown
+    - _Requirements: 27.1, 27.2_
+  - [ ]* 7.7 Write property test: Volume Constraint Enforcement (Property 16)
+    - **Property 16: Volume constraint enforcement**
+    - FsCheck test in `UnitTests/V5Properties/VolumeConstraintProperties.cs`
+    - **Validates: Requirements 23.2, 23.3**
+  - [ ]* 7.8 Write property test: Gap-Adjusted Fill Prices (Property 17)
+    - **Property 17: Gap-adjusted fill prices**
+    - FsCheck test in `UnitTests/V5Properties/GapFillProperties.cs`
+    - **Validates: Requirements 23.1**
+  - [ ]* 7.9 Write property test: Per-Symbol Exposure Enforcement (Property 18)
+    - **Property 18: Per-symbol exposure enforcement**
+    - FsCheck test in `UnitTests/V5Properties/ExposureEnforcementProperties.cs`
+    - **Validates: Requirements 25.2, 25.3**
+  - [ ]* 7.10 Write property test: Trial Budget Status (Property 19)
+    - **Property 19: Trial budget status**
+    - FsCheck test in `UnitTests/V5Properties/TrialBudgetProperties.cs`
+    - **Validates: Requirements 21.3, 24.2, 24.5**
+  - [ ]* 7.11 Write property test: Benchmark Excess Metrics Computation (Property 20)
+    - **Property 20: Benchmark excess metrics computation**
+    - FsCheck test in `UnitTests/V5Properties/BenchmarkMetricsProperties.cs`
+    - **Validates: Requirements 27.2**
+  - [ ]* 7.12 Write unit tests for quant and research extensions
+    - `GapDetectionTests`: gap > 2× ATR detected, fill at Open, no gap fill below threshold
+    - `VolumeConstraintTests`: MaxFillPercentOfVolume caps, 10% warning, no warning below
+    - `PortfolioExposureTests`: GetExposureBySymbol correctness, MaxExposurePerSymbol rejection
+    - `TrialBudgetTests`: Green/Amber/Red thresholds, walk-forward resets to Green
+    - `BenchmarkComparisonTests`: auto buy-and-hold, excess return, information ratio, tracking error
+    - `ResearchChecklistExtensionTests`: NextRecommendedAction, over-optimization warning
+    - `DsrWarningTests`: DSR < 0.95 produces warning, DSR ≥ 0.95 no warning
+    - _Requirements: 23.1–23.5, 24.1–24.5, 25.2–25.3, 27.1–27.2, 21.1–21.3_
+
+- [x] 8. Checkpoint — Application layer complete
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [ ] 9. Infrastructure layer — Job persistence
+  - [ ] 9.1 Implement `JsonJobRepository` in Infrastructure/Persistence
+    - Standard `JsonFileRepository<BacktestJob>` pattern for job record persistence
+    - _Requirements: 17.6_
+
+- [ ] 10. Api layer — Job endpoints and request DTOs
+  - [ ] 10.1 Create request/response DTOs in Api/Dtos
+    - `SubmitJobRequest`, `RunScenarioRequest`, `JobSubmittedResponse`, `StrategyListItem`, `SchemaResponse`, `ExecutionModelsResponse`, `NamedItem`
+    - _Requirements: 19.1, 19.2, 20.1, 20.2_
+  - [ ] 10.2 Implement `JobEndpoints` in Api/Endpoints
+    - `POST /jobs` (202 + JobId), `GET /jobs/{jobId}`, `DELETE /jobs/{jobId}`, `GET /jobs/{jobId}/result`
+    - OpenAPI annotations: `.WithName()`, `.WithTags("Jobs")`, `.Produces<T>()`
+    - _Requirements: 17.2, 17.3, 17.5, 18.4, 19.5_
+  - [ ] 10.3 Implement `DiscoveryEndpoints` in Api/Endpoints
+    - `GET /strategies`, `GET /strategies/{name}/schema`, `GET /workflows`, `GET /presets`, `GET /execution-models`
+    - Include `SchemaVersion`, `DeprecatedFields`, `CompatibilityNotes` in schema response
+    - OpenAPI annotations, tagged "Discovery"
+    - _Requirements: 20.1–20.8_
+  - [ ] 10.4 Amend `ScenarioEndpoints` for preflight validation and deprecation header
+    - Invoke `PreflightValidator` before execution, return 400 with severity/code on errors
+    - Add `X-Deprecation` header for flat ScenarioConfig payloads
+    - Add `POST /scenarios/resolve` endpoint returning `ResolvedConfig`
+    - Existing sync endpoints internally create job and wait for backward compat
+    - _Requirements: 3.6, 14.1, 16.3, 17.3, 19.3, 19.4, 29.3_
+  - [ ] 10.5 Register new endpoints and DI services in Api `Program.cs`
+    - Wire `JobExecutor` as singleton, call `RecoverOrphanedJobsAsync` on startup
+    - Register `PreflightValidator`, `ResolvedConfigService`, `StrategySchemaProvider`, `StrategyDiffService`
+    - Register `IRepository<BacktestJob>`, `IRepository<ConfigDraft>`, `IRepository<ConfigPreset>`
+    - _Requirements: 17.6, 15.5_
+  - [ ]* 10.6 Write integration tests for Api endpoints
+    - `JobEndpointTests`: submit → poll → result, submit → cancel → cancelled
+    - `DiscoveryEndpointTests`: all 5 discovery endpoints return valid responses
+    - `ScenarioEndpointBackwardCompatTests`: existing sync endpoints work with flat ScenarioConfig
+    - `ResolveEndpointTests`: POST /scenarios/resolve returns ResolvedConfig
+    - `ConfigPresetRepositoryTests`: custom preset CRUD via JsonFileRepository
+    - `ConfigDraftRepositoryTests`: draft persistence and retrieval
+    - `BacktestJobRepositoryTests`: job persistence across restart
+    - _Requirements: 17.2–17.6, 19.3–19.5, 20.1–20.8, 16.3, 29.3, 30.6, 30.7_
+
+- [ ] 11. Checkpoint — Api layer complete
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [ ] 12. Web layer — Strategy Builder 5-step flow
+  - [ ] 12.1 Create `BuilderViewModel` in Web layer
+    - Mutable ViewModel with `ToConfigDraft()`, `ToScenarioConfig()`, `ToStrategyVersion()` mappers
+    - _Requirements: 5.1, 5.4, 5.5_
+  - [ ] 12.2 Create `BuilderStepIndicator.razor` component
+    - 5-step progress bar with active/completed/upcoming states
+    - Keyboard navigable
+    - _Requirements: 5.1, 12.2_
+  - [ ] 12.3 Implement `Step1ChooseStartingPoint.razor` with sub-components
+    - `TemplateFamilyCards.razor`: family cards with name, description, use case, failure mode, difficulty badge
+    - `ForkStrategyPicker.razor`: searchable list of existing strategies
+    - `ImportConfigUpload.razor`: JSON file upload with validation
+    - Hypothesis (required, min 10 chars) and ExpectedFailureMode (optional) fields
+    - _Requirements: 6.1–6.6, 2.3, 2.4, 2.5_
+  - [ ] 12.4 Implement `Step2DataExecutionWindow.razor` with sub-components
+    - `DataFilePicker.razor`: show valid files by default, toggle for all
+    - `TimelineSplitVisualizer.razor`: IS/OOS/sealed split timeline with drag handles
+    - Live diagnostics: bar count, insufficient data warning, timeframe mismatch, overlap warnings
+    - Auto-update BarsPerYear on timeframe change
+    - _Requirements: 7.1–7.5_
+  - [ ] 12.5 Implement `Step3StrategyParameters.razor` with `ParameterGroupEditor.razor`
+    - Grouped by Schema.Group, collapsible headers
+    - Simple/Advanced mode toggle (Simple default)
+    - Each row: label, input, default indicator, help text, sensitivity badge, inline validation, provenance indicator, reset to default
+    - Preset badge on template/preset values, transitions to Custom on edit
+    - _Requirements: 8.1–8.6_
+  - [ ] 12.6 Implement `Step4RealismRiskProfile.razor` with sub-components
+    - `PresetCards.razor`: 4 preset cards with "What This Changes" expander
+    - `AdvancedOverridesPanel.razor`: fine-grained controls for all execution/risk fields
+    - Preset label changes to "Custom (based on [preset])" on override
+    - Provenance indicators on all fields
+    - _Requirements: 9.1–9.6_
+  - [ ] 12.7 Implement `Step5ReviewLaunch.razor` with sub-components
+    - `ResolvedConfigDisplay.razor`: full resolved config by section with provenance
+    - `PreflightFindingsPanel.razor`: findings grouped by severity
+    - Three launch actions: Quick Sanity Test, Standard Backtest, Save Draft
+    - Disable run actions when errors exist
+    - _Requirements: 10.1–10.5_
+  - [ ] 12.8 Implement `ResearchSummaryRail.razor` persistent side panel
+    - Live updates: strategy name, family, source, data, timeframe, split, top 3 params, risk preset, validation state, readiness status, next action
+    - Two-pane layout at 1024px+, collapsible at narrower viewports
+    - _Requirements: 5.2, 5.3, 5.6, 21.5_
+  - [ ] 12.9 Wire `StrategyBuilder.razor` orchestrator with step navigation and draft persistence
+    - Step validation before progression, back navigation preserves values
+    - Persist `ConfigDraft` via `IRepository<ConfigDraft>` on every step transition
+    - Resume draft on builder open
+    - Dirty form detection with unsaved changes prompt
+    - _Requirements: 5.1, 5.4, 5.5, 12.1, 12.4_
+  - [ ] 12.10 Implement builder UI states and accessibility
+    - Empty, loading, validation error, failed run, cancelled job, partial result, save-draft, dirty form states
+    - All fields have `<label>`, icon buttons have `aria-label`, status badges have `aria-label`
+    - Full keyboard navigation (Tab/Shift-Tab, Enter, Escape, arrow keys)
+    - _Requirements: 12.1–12.4_
+
+- [ ] 13. Web layer — Strategy Workspace and result enhancements
+  - [ ] 13.1 Enhance `StrategyDetail.razor` with Strategy Workspace Overview tab
+    - Latest run summary (or empty state), development stage, research checklist progress, key warnings, recommended next study, shortcut actions
+    - "vs Buy & Hold" comparison chip when benchmark study exists
+    - _Requirements: 11.1, 11.2, 11.3, 27.5_
+  - [ ] 13.2 Enhance `ResultDetail.razor` with tiered metrics, realism card, and regime section
+    - Tier 1 (above fold): Sharpe, Max Drawdown, Win Rate, K-Ratio, DSR
+    - Tier 2 (tabs): Sortino, Calmar, Profit Factor, Expectancy, Recovery Factor, Avg Holding Period
+    - Tier 3 (expanders): regime breakdown, MAE/MFE, event trace
+    - Realism Assumptions card always visible
+    - IS vs OOS comparison panel when available
+    - Research Readiness badge
+    - Robustness warning badges with explanations
+    - DSR < 0.95 "Possible Overfitting" warning
+    - Performance by Regime expandable section
+    - _Requirements: 22.1–22.5, 24.3, 24.4, 27.3, 27.4_
+  - [ ] 13.3 Add execution status bar consuming progress snapshots
+    - Display percentage, stage label, current/total, elapsed time
+    - _Requirements: 18.5_
+
+- [ ] 14. Checkpoint — Web layer complete
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [ ] 15. Documentation
+  - [ ] 15.1 Create `docs/V5-Developer-Guide.md`
+    - How to add a strategy with `[ParameterMeta]` attributes (step-by-step with code example)
+    - How to add a config preset
+    - How to extend the preflight validator
+    - How to add a discovery endpoint
+    - Sub-object config format explanation
+    - _Requirements: 28.5, 31.1_
+  - [ ] 15.2 Create `docs/V5-Migration-Guide.md`
+    - Config format changes (flat → sub-object) with before/after JSON examples
+    - New fields on existing records
+    - Deprecated patterns and timeline
+    - API versioning approach
+    - _Requirements: 29.3, 31.2_
+  - [ ] 15.3 Create `docs/V5-Quant-Assumptions.md`
+    - Execution realism model descriptions (each slippage/commission model)
+    - Gap handling behavior, volume constraint behavior
+    - Bar-resolution caveats and known limitations
+    - Long-only scope and short-selling roadmap
+    - Overfitting defense methodology (DSR, MinBTL, trial budget, fragility scoring)
+    - Benchmarking methodology
+    - _Requirements: 31.3_
+  - [ ] 15.4 Update existing docs referencing flat ScenarioConfig format
+    - Show both formats with note that sub-object format is preferred
+    - _Requirements: 31.4_
+
+- [ ] 16. Final checkpoint — All tests pass, full integration verified
+  - Ensure all tests pass, ask the user if questions arise.
+
+## Notes
+
+- Tasks marked with `*` are optional and can be skipped for faster MVP
+- Each task references specific requirements for traceability
+- Checkpoints ensure incremental validation after each layer
+- Property tests validate universal correctness properties (Properties 9–21) using FsCheck.Xunit with minimum 100 iterations
+- Unit tests validate specific examples and edge cases
+- The dependency rule `Core ← Application ← Infrastructure ← {Api, Web}` is preserved throughout
+- V5.1/V6 roadmap items (CPCV, correlation constraints, sector limits, short execution, WebSocket progress) are explicitly out of scope

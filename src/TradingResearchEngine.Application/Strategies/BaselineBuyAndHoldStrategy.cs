@@ -22,7 +22,10 @@ public sealed class BaselineBuyAndHoldStrategy : IStrategy
 
     /// <summary>Creates a buy-and-hold benchmark strategy.</summary>
     /// <param name="warmupBars">Number of bars before entering (default 1).</param>
-    public BaselineBuyAndHoldStrategy(int warmupBars = 1)
+    public BaselineBuyAndHoldStrategy(
+        [ParameterMeta(DisplayName = "Warmup Bars", Description = "Number of bars before entering.",
+            SensitivityHint = SensitivityHint.Low, Group = "Entry", DisplayOrder = 0, Min = 1)]
+        int warmupBars = 1)
     {
         _warmupBars = warmupBars;
     }

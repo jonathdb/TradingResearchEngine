@@ -20,7 +20,7 @@ No upward references. No circular references. Violations are caught by the `arch
   `EquityCurvePoint` (enriched: CashBalance, UnrealisedPnl, RealisedPnl, OpenPositionCount),
   `ClosedTrade` (with `ReturnOnRisk` computed property),
   `ISessionCalendar`, `TradingSession`, `IPositionSizingPolicy`
-- `Direction` enum: `{ Long, Flat }` — `Short` removed in V2 (long-only scope)
+- `Direction` enum: `{ Long, Short, Flat }` — `Short` re-added in V5 for exhaustive switch coverage; runtime short-selling guarded by `LongOnlyGuard` (V6 task)
 - `BarsPerYear` on `ScenarioConfig` is the canonical source of truth for annualisation
 - Must not reference Application, Infrastructure, Cli, or Api
 - Must not contain concrete I/O, HTTP, file system, or DI registration code

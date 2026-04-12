@@ -12,11 +12,18 @@ public sealed class BenchmarkOptions
 {
     /// <summary>Initial cash for the benchmark buy-and-hold simulation.</summary>
     public decimal InitialCash { get; set; } = 100_000m;
+
+    /// <summary>
+    /// When true, automatically uses BaselineBuyAndHoldStrategy as the benchmark
+    /// when no explicit benchmark is specified. Default true.
+    /// </summary>
+    public bool AutoBuyAndHold { get; set; } = true;
 }
 
 /// <summary>
 /// Compares a strategy's equity curve against a buy-and-hold benchmark on the same data.
-/// Computes alpha, beta, information ratio, and tracking error.
+/// V5: Auto-includes BaselineBuyAndHoldStrategy when no explicit benchmark specified.
+/// Computes alpha, beta, information ratio, tracking error, excess return, and max relative drawdown.
 /// </summary>
 public sealed class BenchmarkComparisonWorkflow
     : IResearchWorkflow<BenchmarkOptions, BenchmarkComparisonResult>
@@ -100,9 +107,73 @@ public sealed class BenchmarkComparisonWorkflow
             informationRatio = trackingError != 0 ? meanDiff / trackingError : null;
         }
 
+        // V5: Compute excess return = strategy Sharpe - benchmark Sharpe
+        decimal strategySharpe = stratResult.Result.SharpeRatio ?? 0m;
+        decimal benchmarkSharpe = ComputeBenchmarkSharpe(benchCurve, baseConfig.AnnualRiskFreeRate, baseConfig.BarsPerYear);
+        decimal excessReturn = strategySharpe - benchmarkSharpe;
+
+        // V5: Compute max relative drawdown
+        decimal? maxRelativeDrawdown = ComputeMaxRelativeDrawdown(
+            stratResult.Result.EquityCurve, benchCurve);
+
         return new BenchmarkComparisonResult(
             stratReturn, benchReturn, alpha, beta,
-            informationRatio, trackingError, benchCurve);
+            informationRatio, trackingError, benchCurve,
+            excessReturn, maxRelativeDrawdown);
+    }
+
+    /// <summary>Computes Sharpe ratio from a benchmark equity curve.</summary>
+    private static decimal ComputeBenchmarkSharpe(
+        IReadOnlyList<EquityCurvePoint> curve,
+        decimal annualRiskFreeRate,
+        int barsPerYear)
+    {
+        var returns = ComputePeriodReturns(curve);
+        if (returns.Count < 2) return 0m;
+
+        decimal riskFreePerBar = annualRiskFreeRate / barsPerYear;
+        var excessReturns = returns.Select(r => r - riskFreePerBar).ToList();
+        decimal mean = excessReturns.Average();
+        decimal variance = excessReturns.Sum(r => (r - mean) * (r - mean)) / (excessReturns.Count - 1);
+        decimal std = (decimal)Math.Sqrt((double)variance);
+
+        if (std == 0m) return 0m;
+        decimal annualisationFactor = (decimal)Math.Sqrt((double)barsPerYear);
+        return (mean / std) * annualisationFactor;
+    }
+
+    /// <summary>
+    /// Computes the maximum relative drawdown between strategy and benchmark.
+    /// Relative drawdown = max peak-to-trough of (strategy equity / benchmark equity).
+    /// </summary>
+    private static decimal? ComputeMaxRelativeDrawdown(
+        IReadOnlyList<EquityCurvePoint> strategyCurve,
+        IReadOnlyList<EquityCurvePoint> benchmarkCurve)
+    {
+        int n = Math.Min(strategyCurve.Count, benchmarkCurve.Count);
+        if (n < 2) return null;
+
+        decimal maxRelativeEquity = decimal.MinValue;
+        decimal maxRelativeDrawdown = 0m;
+
+        for (int i = 0; i < n; i++)
+        {
+            decimal benchEquity = benchmarkCurve[i].TotalEquity;
+            if (benchEquity <= 0m) continue;
+
+            decimal relativeEquity = strategyCurve[i].TotalEquity / benchEquity;
+            if (relativeEquity > maxRelativeEquity)
+                maxRelativeEquity = relativeEquity;
+
+            decimal drawdown = maxRelativeEquity > 0m
+                ? (maxRelativeEquity - relativeEquity) / maxRelativeEquity
+                : 0m;
+
+            if (drawdown > maxRelativeDrawdown)
+                maxRelativeDrawdown = drawdown;
+        }
+
+        return maxRelativeDrawdown;
     }
 
     private static List<decimal> ComputePeriodReturns(IReadOnlyList<EquityCurvePoint> curve)

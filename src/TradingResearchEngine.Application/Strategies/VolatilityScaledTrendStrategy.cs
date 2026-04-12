@@ -33,7 +33,16 @@ public sealed class VolatilityScaledTrendStrategy : IStrategy
     /// <param name="fastPeriod">Fast SMA lookback period (default 10).</param>
     /// <param name="slowPeriod">Slow SMA lookback period (default 50).</param>
     /// <param name="atrPeriod">ATR lookback period for Wilder smoothing (default 14).</param>
-    public VolatilityScaledTrendStrategy(int fastPeriod = 10, int slowPeriod = 50, int atrPeriod = 14)
+    public VolatilityScaledTrendStrategy(
+        [ParameterMeta(DisplayName = "Fast Period", Description = "Fast SMA lookback period.",
+            SensitivityHint = SensitivityHint.High, Group = "Signal", DisplayOrder = 0, Min = 2)]
+        int fastPeriod = 10,
+        [ParameterMeta(DisplayName = "Slow Period", Description = "Slow SMA lookback period.",
+            SensitivityHint = SensitivityHint.High, Group = "Signal", DisplayOrder = 1, Min = 5)]
+        int slowPeriod = 50,
+        [ParameterMeta(DisplayName = "ATR Period", Description = "ATR lookback period for Wilder smoothing.",
+            SensitivityHint = SensitivityHint.Medium, Group = "Risk", DisplayOrder = 2, Min = 2)]
+        int atrPeriod = 14)
     {
         _fastPeriod = fastPeriod;
         _slowPeriod = slowPeriod;

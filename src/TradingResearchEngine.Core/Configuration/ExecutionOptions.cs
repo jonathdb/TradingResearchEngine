@@ -9,7 +9,9 @@ public sealed record ExecutionOptions(
     string? SlippageModelOverride = null,
     Dictionary<string, object>? SlippageModelOptions = null,
     bool? EnablePartialFills = null,
-    int? DefaultMaxBarsPending = null);
+    int? DefaultMaxBarsPending = null,
+    /// <summary>V5: Cap fill quantity at this percentage of bar volume. Null = no cap.</summary>
+    decimal? MaxFillPercentOfVolume = null);
 
 /// <summary>
 /// Session filtering and calendar configuration.

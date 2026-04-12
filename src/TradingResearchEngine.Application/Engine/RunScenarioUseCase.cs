@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using TradingResearchEngine.Application.Execution;
 using TradingResearchEngine.Application.Metrics;
 using TradingResearchEngine.Application.Strategy;
 using TradingResearchEngine.Core.Configuration;
@@ -35,16 +36,19 @@ public sealed class RunScenarioUseCase
     private readonly IServiceProvider _services;
     private readonly ILogger<RunScenarioUseCase> _logger;
     private readonly IRepository<BacktestResult>? _repository;
+    private readonly PreflightValidator _preflightValidator;
 
     /// <inheritdoc cref="RunScenarioUseCase"/>
     public RunScenarioUseCase(
         StrategyRegistry strategyRegistry,
         IServiceProvider services,
-        ILogger<RunScenarioUseCase> logger)
+        ILogger<RunScenarioUseCase> logger,
+        PreflightValidator preflightValidator)
     {
         _strategyRegistry = strategyRegistry;
         _services = services;
         _logger = logger;
+        _preflightValidator = preflightValidator;
         // Optional: auto-save results if repository is registered
         _repository = services.GetService<IRepository<BacktestResult>>();
     }
@@ -58,23 +62,33 @@ public sealed class RunScenarioUseCase
     /// <param name="autoSave">When true, persists the result to the repository. Research workflows should pass false.</param>
     public async Task<ScenarioRunResult> RunAsync(ScenarioConfig config, CancellationToken ct = default, bool autoSave = true)
     {
-        var errors = Validate(config);
-        if (errors.Count > 0) return ScenarioRunResult.Failure(errors);
+        // V5: Preflight validation replaces the old inline Validate method
+        var preflight = _preflightValidator.Validate(config);
+        if (preflight.HasErrors)
+        {
+            var errors = preflight.Findings
+                .Where(f => f.Severity == PreflightSeverity.Error)
+                .Select(f => f.Message)
+                .ToList();
+            return ScenarioRunResult.Failure(errors);
+        }
 
-        // Resolve strategy type via registry
+        // Resolve strategy type via registry using effective config
+        var effectiveStrategy = config.EffectiveStrategyConfig;
         Type strategyType;
         try
         {
-            strategyType = _strategyRegistry.Resolve(config.StrategyType);
+            strategyType = _strategyRegistry.Resolve(effectiveStrategy.StrategyType);
         }
         catch (StrategyNotFoundException ex)
         {
             return ScenarioRunResult.Failure(new[] { ex.Message });
         }
 
-        var strategy = CreateStrategy(strategyType, config.StrategyParameters);
+        var strategy = CreateStrategy(strategyType, effectiveStrategy.StrategyParameters);
+        var effectiveData = config.EffectiveDataConfig;
         var dataProviderFactory = _services.GetRequiredService<IDataProviderFactory>();
-        var dataProvider = dataProviderFactory.Create(config.DataProviderType, config.DataProviderOptions);
+        var dataProvider = dataProviderFactory.Create(effectiveData.DataProviderType, effectiveData.DataProviderOptions);
         var riskLayer = _services.GetRequiredService<IRiskLayer>();
         var executionHandler = _services.GetRequiredService<IExecutionHandler>();
         var engineLogger = _services.GetRequiredService<ILogger<BacktestEngine>>();
@@ -86,6 +100,12 @@ public sealed class RunScenarioUseCase
 
         var engine = new BacktestEngine(dataProvider, strategy, riskLayer, executionHandler, engineLogger, sessionCalendar);
         var result = await engine.RunAsync(config, ct);
+
+        // V5: Collect realism advisories from SimulatedExecutionHandler
+        if (executionHandler is SimulatedExecutionHandler simHandler && simHandler.RealismAdvisories.Count > 0)
+        {
+            result = result with { RealismAdvisories = simHandler.RealismAdvisories.ToList().AsReadOnly() };
+        }
 
         // Attach experiment metadata for reproducibility
         var metadata = BuildMetadata(config);
@@ -187,6 +207,11 @@ public sealed class RunScenarioUseCase
         return ((decimal)Math.Round(skew, 6), (decimal)Math.Round(kurt, 6));
     }
 
+    /// <summary>
+    /// Legacy validation method — retained for backward compatibility.
+    /// Preflight validation is now handled by <see cref="PreflightValidator"/>.
+    /// </summary>
+    [Obsolete("Use PreflightValidator.Validate instead. This method is retained for backward compatibility.")]
     private static List<string> Validate(ScenarioConfig config)
     {
         var errors = new List<string>();

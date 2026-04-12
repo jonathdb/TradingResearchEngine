@@ -339,5 +339,8 @@ public sealed class MarketDataImportService : IDisposable
             }
             _service.OnProgress?.Invoke(new ImportProgressUpdate(_importId, current, total, label));
         }
+
+        public void Report(ProgressSnapshot snapshot)
+            => Report(snapshot.Current, snapshot.Total, snapshot.CurrentItemLabel ?? snapshot.Stage);
     }
 }

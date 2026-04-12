@@ -10,6 +10,8 @@ EngineEvent (abstract record)
 ├── SignalEvent (direction + optional strength)
 ├── OrderEvent (direction + quantity + type + RiskApproved flag + StopPrice + MaxBarsPending + StopTriggered)
 └── FillEvent (fill price + commission + slippage + ExecutionOutcome + RemainingQuantity + RejectionReason)
+
+> **V5 Note:** `Direction` is now `{ Long, Short, Flat }`. `Short` is defined for exhaustive switch coverage but guarded at runtime by `LongOnlyGuard` — short-selling execution is deferred to V6.
 ```
 
 All events carry a `DateTimeOffset Timestamp`. Events are immutable records.

@@ -16,7 +16,11 @@ public sealed record StrategyTemplate(
     Dictionary<string, object> DefaultParameters,
     string RecommendedTimeframe,
     ExecutionRealismProfile RecommendedProfile = ExecutionRealismProfile.StandardBacktest,
-    StrategyDescriptor? Descriptor = null) : IHasId
+    StrategyDescriptor? Descriptor = null,
+    /// <summary>V5: Named preset overrides keyed by preset name (e.g. "Conservative" → param dict).</summary>
+    Dictionary<string, Dictionary<string, object>>? FamilyPresets = null,
+    /// <summary>V5: Difficulty classification for builder UX.</summary>
+    DifficultyLevel DifficultyLevel = DifficultyLevel.Beginner) : IHasId
 {
     /// <inheritdoc/>
     public string Id => TemplateId;
@@ -39,7 +43,12 @@ public static class DefaultStrategyTemplates
                 "Trend following with ATR-normalized signal strength for volatility-aware sizing.",
                 "Persistent directional moves continue long enough for trend-following entries to overcome transaction costs when sized by volatility.",
                 "Trending markets with sustained directional moves",
-                new[] { "WalkForward", "AnchoredWalkForward", "MonteCarlo", "RegimeSegmentation" })),
+                new[] { "WalkForward", "AnchoredWalkForward", "MonteCarlo", "RegimeSegmentation" }),
+            FamilyPresets: new Dictionary<string, Dictionary<string, object>>
+            {
+                ["Conservative"] = new() { ["fastPeriod"] = 20, ["slowPeriod"] = 100, ["atrPeriod"] = 20 },
+                ["Aggressive"] = new() { ["fastPeriod"] = 5, ["slowPeriod"] = 20, ["atrPeriod"] = 10 }
+            }),
 
         new StrategyTemplate(
             "tpl-zscore-mr", "Z-Score Mean Reversion",
@@ -52,7 +61,12 @@ public static class DefaultStrategyTemplates
                 "Buys when z-score drops below entry threshold, exits on reversion to mean.",
                 "Short-term price dislocations around a rolling equilibrium tend to mean-revert in non-trending regimes.",
                 "Range-bound or mean-reverting instruments",
-                new[] { "Sensitivity", "RegimeSegmentation", "MonteCarlo", "ParameterStability" })),
+                new[] { "Sensitivity", "RegimeSegmentation", "MonteCarlo", "ParameterStability" }),
+            FamilyPresets: new Dictionary<string, Dictionary<string, object>>
+            {
+                ["Conservative"] = new() { ["lookback"] = 50, ["entryThreshold"] = 2.5m, ["exitThreshold"] = 0.5m },
+                ["Aggressive"] = new() { ["lookback"] = 15, ["entryThreshold"] = 1.5m, ["exitThreshold"] = 0.0m }
+            }),
 
         new StrategyTemplate(
             "tpl-donchian-breakout", "Donchian Breakout",
@@ -65,7 +79,12 @@ public static class DefaultStrategyTemplates
                 "Channel breakout trend follower using lagged Donchian bands.",
                 "Range expansion after compression signals the start of a sustained move.",
                 "Markets with periodic range expansion",
-                new[] { "WalkForward", "MonteCarlo", "Sensitivity" })),
+                new[] { "WalkForward", "MonteCarlo", "Sensitivity" }),
+            FamilyPresets: new Dictionary<string, Dictionary<string, object>>
+            {
+                ["Conservative"] = new() { ["period"] = 40 },
+                ["Aggressive"] = new() { ["period"] = 10 }
+            }),
 
         new StrategyTemplate(
             "tpl-stationary-mr", "Stationary Mean Reversion",
@@ -78,7 +97,13 @@ public static class DefaultStrategyTemplates
                 "ADF stationarity filter + z-score mean reversion on returns.",
                 "Mean reversion signals are only reliable when the return series is statistically stationary.",
                 "Instruments with statistically stationary return series",
-                new[] { "RegimeSegmentation", "Sensitivity", "MonteCarlo", "ParameterStability" })),
+                new[] { "RegimeSegmentation", "Sensitivity", "MonteCarlo", "ParameterStability" }),
+            FamilyPresets: new Dictionary<string, Dictionary<string, object>>
+            {
+                ["Conservative"] = new() { ["lookback"] = 750, ["entryThreshold"] = 1.5m, ["exitThreshold"] = 1.5m },
+                ["Aggressive"] = new() { ["lookback"] = 250, ["entryThreshold"] = 0.5m, ["exitThreshold"] = 0.5m }
+            },
+            DifficultyLevel: DifficultyLevel.Advanced),
 
         new StrategyTemplate(
             "tpl-regime-rotation", "Macro Regime Rotation",
@@ -91,7 +116,13 @@ public static class DefaultStrategyTemplates
                 "Regime-aware allocation using vol/trend/momentum indicators with monthly rebalancing.",
                 "No single signal family dominates across all regimes; switching behavior by regime improves robustness.",
                 "Broad market indices with regime shifts",
-                new[] { "RegimeSegmentation", "WalkForward", "AnchoredWalkForward", "Realism" })),
+                new[] { "RegimeSegmentation", "WalkForward", "AnchoredWalkForward", "Realism" }),
+            FamilyPresets: new Dictionary<string, Dictionary<string, object>>
+            {
+                ["Conservative"] = new() { ["volLookback"] = 42, ["trendLookback"] = 252, ["rebalanceDays"] = 42 },
+                ["Aggressive"] = new() { ["volLookback"] = 10, ["trendLookback"] = 100, ["rebalanceDays"] = 10 }
+            },
+            DifficultyLevel: DifficultyLevel.Intermediate),
 
         new StrategyTemplate(
             "tpl-buy-hold", "Buy & Hold Baseline",

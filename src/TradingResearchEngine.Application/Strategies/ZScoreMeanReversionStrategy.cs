@@ -29,7 +29,16 @@ public sealed class ZScoreMeanReversionStrategy : IStrategy
     /// <param name="lookback">Rolling window for SMA and StdDev (default 30).</param>
     /// <param name="entryThreshold">Z-score entry threshold (default 2.0 → buy when z &lt; -2).</param>
     /// <param name="exitThreshold">Z-score exit threshold (default 0.0 → sell when z &gt; 0, i.e. at the mean).</param>
-    public ZScoreMeanReversionStrategy(int lookback = 30, decimal entryThreshold = 2.0m, decimal exitThreshold = 0.0m)
+    public ZScoreMeanReversionStrategy(
+        [ParameterMeta(DisplayName = "Lookback", Description = "Rolling window for SMA and StdDev.",
+            SensitivityHint = SensitivityHint.High, Group = "Signal", DisplayOrder = 0, Min = 5)]
+        int lookback = 30,
+        [ParameterMeta(DisplayName = "Entry Threshold", Description = "Z-score entry threshold (buy when z < -threshold).",
+            SensitivityHint = SensitivityHint.High, Group = "Entry", DisplayOrder = 1, Min = 0.5)]
+        decimal entryThreshold = 2.0m,
+        [ParameterMeta(DisplayName = "Exit Threshold", Description = "Z-score exit threshold (sell when z > threshold).",
+            SensitivityHint = SensitivityHint.Medium, Group = "Exit", DisplayOrder = 2)]
+        decimal exitThreshold = 0.0m)
     {
         _lookback = lookback;
         _entryThreshold = entryThreshold;

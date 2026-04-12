@@ -13,4 +13,6 @@ public sealed record StrategyDescriptor(
     string Description,
     string Hypothesis,
     string? BestFor = null,
-    string[]? SuggestedStudies = null);
+    string[]? SuggestedStudies = null,
+    /// <summary>V5: Parameter schema list, populated lazily from <see cref="IStrategySchemaProvider"/>.</summary>
+    IReadOnlyList<StrategyParameterSchema>? ParameterSchemas = null);

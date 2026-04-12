@@ -39,7 +39,7 @@ else
                 @if (_result.FailureDetail is not null)
                 {
                     <MudExpansionPanels Dense="true" Class="mt-1">
-                        <MudExpansionPanel Text="View Full Error" @bind-IsExpanded="_errorExpanded">
+                        <MudExpansionPanel Text="View Full Error" @bind-Expanded="_errorExpanded">
                             <pre style="white-space:pre-wrap; font-size:0.8rem; max-height:200px; overflow-y:auto;">@_result.FailureDetail</pre>
                             <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Text"
                                        StartIcon="@Icons.Material.Filled.ContentCopy"
@@ -323,11 +323,12 @@ else
         _loading = false;
     }
 
-    private async Task CopyErrorToClipboard()
+    private Task CopyErrorToClipboard()
     {
-        if (_result?.FailureDetail is null) return;
+        if (_result?.FailureDetail is null) return Task.CompletedTask;
         // JS interop for clipboard would be ideal; for now use snackbar feedback
         Snackbar.Add("Error copied (use browser dev tools to access clipboard API)", Severity.Info);
+        return Task.CompletedTask;
     }
 
     private void RerunSameConfig()

@@ -42,9 +42,17 @@ public sealed class MacroRegimeRotationStrategy : IStrategy
     /// <param name="momentumLookback">Rate of change lookback (default 63 = ~3 months).</param>
     /// <param name="rebalanceDays">Bars between rebalances (default 21 = monthly).</param>
     public MacroRegimeRotationStrategy(
+        [ParameterMeta(DisplayName = "Volatility Lookback", Description = "Realized volatility lookback (~1 month).",
+            SensitivityHint = SensitivityHint.Medium, Group = "Signal", DisplayOrder = 0, Min = 5)]
         int volLookback = 21,
+        [ParameterMeta(DisplayName = "Trend Lookback", Description = "Trend SMA lookback (~10 months).",
+            SensitivityHint = SensitivityHint.High, Group = "Signal", DisplayOrder = 1, Min = 20)]
         int trendLookback = 200,
+        [ParameterMeta(DisplayName = "Momentum Lookback", Description = "Rate of change lookback (~3 months).",
+            SensitivityHint = SensitivityHint.Medium, Group = "Signal", DisplayOrder = 2, Min = 5)]
         int momentumLookback = 63,
+        [ParameterMeta(DisplayName = "Rebalance Days", Description = "Bars between rebalances (monthly).",
+            SensitivityHint = SensitivityHint.Low, Group = "Execution", DisplayOrder = 3, Min = 1)]
         int rebalanceDays = 21)
     {
         _volLookback = volLookback;

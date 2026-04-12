@@ -37,6 +37,8 @@ public sealed class DefaultRiskLayer : IRiskLayer
     /// <inheritdoc/>
     public OrderEvent? ConvertSignal(SignalEvent signal, PortfolioSnapshot snapshot)
     {
+        LongOnlyGuard.EnsureLongOnly(signal.Direction);
+
         // Flat signal = close existing position for this symbol
         if (signal.Direction == Direction.Flat)
         {
@@ -122,6 +124,24 @@ public sealed class DefaultRiskLayer : IRiskLayer
                 {
                     _logger.LogWarning("RiskRejection: {Symbol} — gross exposure at max ({Max:P0}).",
                         order.Symbol, _constraints.MaxGrossExposurePercent.Value / 100m);
+                    return null;
+                }
+            }
+
+            if (_constraints.MaxExposurePerSymbol.HasValue)
+            {
+                decimal maxPerSymbolExposure = snapshot.TotalEquity * (_constraints.MaxExposurePerSymbol.Value / 100m);
+                decimal existingSymbolExposure = 0m;
+                if (snapshot.Positions.TryGetValue(order.Symbol, out var existingPos))
+                    existingSymbolExposure = existingPos.Quantity * existingPos.AverageEntryPrice;
+
+                decimal price = order.LimitPrice ?? GetOrderPrice(order);
+                decimal newSymbolExposure = existingSymbolExposure + (price * order.Quantity);
+                if (newSymbolExposure > maxPerSymbolExposure)
+                {
+                    _logger.LogWarning(
+                        "RiskRejection: {Symbol} — order would cause symbol exposure {Exposure:F2} to exceed max per-symbol limit {Max:F2}.",
+                        order.Symbol, newSymbolExposure, maxPerSymbolExposure);
                     return null;
                 }
             }

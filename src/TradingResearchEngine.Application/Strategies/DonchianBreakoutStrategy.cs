@@ -27,7 +27,10 @@ public sealed class DonchianBreakoutStrategy : IStrategy
     private bool _warmedUp;
 
     /// <param name="period">Donchian channel lookback period (default 20).</param>
-    public DonchianBreakoutStrategy(int period = 20)
+    public DonchianBreakoutStrategy(
+        [ParameterMeta(DisplayName = "Period", Description = "Donchian channel lookback period.",
+            SensitivityHint = SensitivityHint.High, Group = "Signal", DisplayOrder = 0, Min = 5)]
+        int period = 20)
     {
         _period = period;
     }

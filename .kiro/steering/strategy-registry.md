@@ -78,4 +78,4 @@ Strategies must remain focused on signal generation. They must not embed:
 - Report generation or analytics concerns
 
 Strategies emit `Direction.Long` to enter and `Direction.Flat` to exit.
-V2 is long-only; short-selling is out of scope.
+V5 adds `Direction.Short` for exhaustive switch coverage; runtime short-selling is guarded by `LongOnlyGuard` (V6 task).
