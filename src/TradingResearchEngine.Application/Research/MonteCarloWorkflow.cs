@@ -69,6 +69,9 @@ public sealed class MonteCarloWorkflow : IResearchWorkflow<MonteCarloOptions, Mo
         for (int s = 0; s <= tradeCount; s++)
             stepEquities[s] = new decimal[options.SimulationCount];
 
+        // Clamp BlockSize to tradeCount when it exceeds the number of trades
+        int effectiveBlockSize = Math.Min(Math.Max(options.BlockSize, 1), tradeCount);
+
         for (int sim = 0; sim < options.SimulationCount; sim++)
         {
             ct.ThrowIfCancellationRequested();
@@ -82,10 +85,24 @@ public sealed class MonteCarloWorkflow : IResearchWorkflow<MonteCarloOptions, Mo
             var path = new decimal[tradeCount + 1];
             path[0] = equity;
             stepEquities[0][sim] = equity;
+            int blockStart = 0;
 
             for (int i = 0; i < tradeCount; i++)
             {
-                int idx = rng.Next(tradeCount);
+                int idx;
+                if (effectiveBlockSize <= 1)
+                {
+                    // IID bootstrap: identical RNG call sequence to V5.0
+                    idx = rng.Next(tradeCount);
+                }
+                else
+                {
+                    // Block bootstrap: pick a new block start every effectiveBlockSize trades
+                    if (i % effectiveBlockSize == 0)
+                        blockStart = rng.Next(tradeCount);
+                    idx = (blockStart + (i % effectiveBlockSize)) % tradeCount;
+                }
+
                 decimal sampledReturn = returns[idx];
                 equity *= (1m + sampledReturn);
                 path[i + 1] = equity;

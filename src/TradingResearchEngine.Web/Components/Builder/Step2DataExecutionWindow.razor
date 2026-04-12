@@ -13,8 +13,8 @@
 else
 {
     <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-3">
-        <MudSelect T="string" @bind-Value="Model.DataFilePath" Label="Data File" Style="flex: 1;"
-                   aria-label="Select data file">
+        <MudSelect T="string" Value="@Model.DataFilePath" ValueChanged="OnDataFileChanged" Label="Data File" Style="flex: 1;"
+           aria-label="Select data file">
             @foreach (var file in FilteredFiles)
             {
                 <MudSelectItem Value="@file.FilePath">
@@ -79,7 +79,8 @@ else
         }
     </MudText>
 
-    @if (_selectedFile.DetectedTimeframe is not null && _selectedFile.DetectedTimeframe != Model.Timeframe)
+    @if (_selectedFile.DetectedTimeframe is not null &&
+     NormaliseTimeframe(_selectedFile.DetectedTimeframe) != NormaliseTimeframe(Model.Timeframe))
     {
         <MudAlert Severity="Severity.Warning" Dense="true" Class="mb-2" aria-label="Timeframe mismatch warning">
             Data file timeframe (@_selectedFile.DetectedTimeframe) differs from selected timeframe (@Model.Timeframe).
@@ -123,5 +124,20 @@ else
     {
         Model.Timeframe = tf;
         Model.IsDirty = true;
+    }
+    private static string NormaliseTimeframe(string tf) =>
+    tf.ToUpperInvariant() switch
+    {
+        "H1" or "1H" => "1H",
+        "H4" or "4H" => "4H",
+        "M15" or "15M" => "15m",
+        "D"  or "DAILY" or "D1" => "Daily",
+        _ => tf
+    };
+    private async Task OnDataFileChanged(string path)
+    {
+        Model.DataFilePath = path;
+        Model.IsDirty = true;
+        await OnModelChanged.InvokeAsync();
     }
 }

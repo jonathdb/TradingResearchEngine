@@ -1,4 +1,5 @@
 using System.Text.Json;
+using TradingResearchEngine.Api.Dtos;
 using TradingResearchEngine.Application.Configuration;
 using TradingResearchEngine.Application.Engine;
 using TradingResearchEngine.Application.Research;
@@ -41,14 +42,19 @@ public static class ScenarioEndpoints
 
         app.MapPost("/scenarios/sweep", async (
             HttpContext httpContext,
-            ScenarioConfig config,
             PreflightValidator preflightValidator,
             ParameterSweepWorkflow workflow,
             CancellationToken ct) =>
         {
-            AddDeprecationHeaderIfFlat(httpContext, config);
+            var (request, isBare) = await DeserializeOrWrap<SweepRequest, ScenarioConfig>(
+                httpContext, (c) => new SweepRequest(c));
 
-            var preflight = preflightValidator.Validate(config);
+            AddDeprecationHeaderIfFlat(httpContext, request.Config);
+            if (isBare)
+                httpContext.Response.Headers["X-Deprecation"] =
+                    "Bare ScenarioConfig body is deprecated. Wrap in { \"Config\": ... }.";
+
+            var preflight = preflightValidator.Validate(request.Config);
             if (preflight.HasErrors)
                 return Results.BadRequest(new
                 {
@@ -57,21 +63,27 @@ public static class ScenarioEndpoints
                         .Select(f => new { field = f.Field, message = f.Message, severity = f.Severity.ToString(), code = f.Code })
                 });
 
-            var options = new SweepOptions();
-            var result = await workflow.RunAsync(config, options, ct);
+            var options = request.Options ?? new SweepOptions();
+            var result = await workflow.RunAsync(request.Config, options, ct);
             return Results.Ok(result);
-        }).WithName("ParameterSweep").WithTags("Scenarios");
+        }).WithName("ParameterSweep").WithTags("Scenarios")
+          .Accepts<SweepRequest>("application/json");
 
         app.MapPost("/scenarios/montecarlo", async (
             HttpContext httpContext,
-            ScenarioConfig config,
             PreflightValidator preflightValidator,
             MonteCarloWorkflow workflow,
             CancellationToken ct) =>
         {
-            AddDeprecationHeaderIfFlat(httpContext, config);
+            var (request, isBare) = await DeserializeOrWrap<MonteCarloRequest, ScenarioConfig>(
+                httpContext, (c) => new MonteCarloRequest(c));
 
-            var preflight = preflightValidator.Validate(config);
+            AddDeprecationHeaderIfFlat(httpContext, request.Config);
+            if (isBare)
+                httpContext.Response.Headers["X-Deprecation"] =
+                    "Bare ScenarioConfig body is deprecated. Wrap in { \"Config\": ... }.";
+
+            var preflight = preflightValidator.Validate(request.Config);
             if (preflight.HasErrors)
                 return Results.BadRequest(new
                 {
@@ -80,21 +92,43 @@ public static class ScenarioEndpoints
                         .Select(f => new { field = f.Field, message = f.Message, severity = f.Severity.ToString(), code = f.Code })
                 });
 
-            var options = new MonteCarloOptions();
-            var mcResult = await workflow.RunAsync(config, options, ct);
+            var options = request.Options ?? new MonteCarloOptions();
+            var mcResult = await workflow.RunAsync(request.Config, options, ct);
             return Results.Ok(mcResult);
-        }).WithName("MonteCarlo").WithTags("Scenarios");
+        }).WithName("MonteCarlo").WithTags("Scenarios")
+          .Accepts<MonteCarloRequest>("application/json");
 
         app.MapPost("/scenarios/walkforward", async (
             HttpContext httpContext,
-            ScenarioConfig config,
             PreflightValidator preflightValidator,
             WalkForwardWorkflow workflow,
             CancellationToken ct) =>
         {
-            AddDeprecationHeaderIfFlat(httpContext, config);
+            var (request, isBare) = await DeserializeOrWrap<WalkForwardRequest, ScenarioConfig>(
+                httpContext, (c) => new WalkForwardRequest(c));
 
-            var preflight = preflightValidator.Validate(config);
+            AddDeprecationHeaderIfFlat(httpContext, request.Config);
+            if (isBare)
+                httpContext.Response.Headers["X-Deprecation"] =
+                    "Bare ScenarioConfig body is deprecated. Wrap in { \"Config\": ... }.";
+
+            var options = request.Options ?? new WalkForwardOptions();
+
+            // Validate zero-TimeSpan fields on WalkForwardOptions
+            var wfErrors = new List<object>();
+            if (request.Options is not null)
+            {
+                if (request.Options.InSampleLength == TimeSpan.Zero)
+                    wfErrors.Add(new { field = "Options.InSampleLength", message = "InSampleLength must be non-zero." });
+                if (request.Options.OutOfSampleLength == TimeSpan.Zero)
+                    wfErrors.Add(new { field = "Options.OutOfSampleLength", message = "OutOfSampleLength must be non-zero." });
+                if (request.Options.StepSize == TimeSpan.Zero)
+                    wfErrors.Add(new { field = "Options.StepSize", message = "StepSize must be non-zero." });
+            }
+            if (wfErrors.Count > 0)
+                return Results.BadRequest(new { errors = wfErrors });
+
+            var preflight = preflightValidator.Validate(request.Config);
             if (preflight.HasErrors)
                 return Results.BadRequest(new
                 {
@@ -103,10 +137,10 @@ public static class ScenarioEndpoints
                         .Select(f => new { field = f.Field, message = f.Message, severity = f.Severity.ToString(), code = f.Code })
                 });
 
-            var options = new WalkForwardOptions();
-            var result = await workflow.RunAsync(config, options, ct);
+            var result = await workflow.RunAsync(request.Config, options, ct);
             return Results.Ok(result);
-        }).WithName("WalkForward").WithTags("Scenarios");
+        }).WithName("WalkForward").WithTags("Scenarios")
+          .Accepts<WalkForwardRequest>("application/json");
 
         app.MapPost("/scenarios/resolve", async (
             ScenarioConfig config,
@@ -117,6 +151,29 @@ public static class ScenarioEndpoints
             return Results.Ok(resolved);
         }).WithName("ResolveConfig").WithTags("Scenarios")
           .Produces<ResolvedConfig>();
+    }
+
+    private static readonly JsonSerializerOptions s_jsonOptions = new(JsonSerializerDefaults.Web);
+
+    /// <summary>
+    /// Two-pass deserialization: checks for a "Config" property to decide between
+    /// the typed wrapper and a bare ScenarioConfig body (backward compatibility).
+    /// </summary>
+    private static async Task<(TWrapper Request, bool IsBare)> DeserializeOrWrap<TWrapper, TBare>(
+        HttpContext httpContext, Func<TBare, TWrapper> wrapBare)
+    {
+        httpContext.Request.EnableBuffering();
+        using var doc = await JsonDocument.ParseAsync(httpContext.Request.Body);
+
+        if (doc.RootElement.TryGetProperty("Config", out _) ||
+            doc.RootElement.TryGetProperty("config", out _))
+        {
+            var wrapper = doc.RootElement.Deserialize<TWrapper>(s_jsonOptions)!;
+            return (wrapper, false);
+        }
+
+        var bare = doc.RootElement.Deserialize<TBare>(s_jsonOptions)!;
+        return (wrapBare(bare), true);
     }
 
     /// <summary>

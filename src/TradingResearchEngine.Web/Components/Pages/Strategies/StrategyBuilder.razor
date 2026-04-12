@@ -186,6 +186,13 @@
         try
         {
             var draft = _vm.ToConfigDraft();
+            var validationErrors = ConfigDraftValidator.ValidateStep(draft);
+            if (validationErrors.Count > 0)
+            {
+                foreach (var error in validationErrors)
+                    Snackbar.Add(error, Severity.Warning);
+                return;
+            }
             await DraftRepo.SaveAsync(draft);
             _vm.IsDirty = false;
         }

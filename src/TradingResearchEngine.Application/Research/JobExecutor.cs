@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
+using TradingResearchEngine.Core.Configuration;
 using TradingResearchEngine.Core.Persistence;
 
 namespace TradingResearchEngine.Application.Research;
@@ -69,16 +70,18 @@ public sealed class JobExecutor : IDisposable
     /// status and a <see cref="CancellationTokenSource"/> is registered for cancellation support.
     /// </summary>
     /// <param name="jobType">The type of execution to perform.</param>
+    /// <param name="config">The scenario configuration to execute.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>The unique job identifier.</returns>
-    public async Task<string> SubmitAsync(JobType jobType, CancellationToken ct = default)
+    public async Task<string> SubmitAsync(JobType jobType, ScenarioConfig config, CancellationToken ct = default)
     {
         var jobId = Guid.NewGuid().ToString("N");
         var job = new BacktestJob(
             JobId: jobId,
             JobType: jobType,
             Status: JobStatus.Queued,
-            SubmittedAt: DateTimeOffset.UtcNow);
+            SubmittedAt: DateTimeOffset.UtcNow,
+            Config: config);
 
         await _jobRepo.SaveAsync(job, ct);
 

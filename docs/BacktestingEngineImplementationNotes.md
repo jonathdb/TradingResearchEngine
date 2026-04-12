@@ -228,6 +228,10 @@ Each day's minute data is cached locally as a CSV file. On subsequent imports th
 
 `Program.cs` calls `RecoverOnStartupAsync` on startup inside a try/catch so recovery failures don't prevent the app from starting.
 
+### Job Executor Startup (Web Host)
+
+`JobExecutor` is registered as a singleton in the Web host's `Program.cs`. After the app is built, `RecoverOrphanedJobsAsync` is called to reset any `Queued` or `Running` jobs left over from a previous process lifetime. Like market data import recovery, this runs inside a try/catch so failures don't prevent the app from starting.
+
 ### Integration Tests (`IntegrationTests/MarketData/MarketDataImportFlowTests.cs`)
 
 End-to-end tests that exercise the full import lifecycle using real `JsonMarketDataImportRepository` and `JsonDataFileRepository` instances against temp directories. Each test creates a fresh `MarketDataImportService` with mock providers and verifies the complete flow from `StartImportAsync` through to persisted records and output files.

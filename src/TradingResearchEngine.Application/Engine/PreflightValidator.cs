@@ -1,3 +1,4 @@
+using TradingResearchEngine.Application.Configuration;
 using TradingResearchEngine.Application.Strategy;
 using TradingResearchEngine.Core.Configuration;
 
@@ -35,6 +36,7 @@ public sealed class PreflightValidator
     {
         var findings = new List<PreflightFinding>();
         ValidateRequiredFields(config, findings);
+        ValidateUnknownKeys(config, findings);
         ValidateMissingParams(config, findings);
         ValidateParamRanges(config, findings);
         ValidateTimeframeConsistency(config, findings);
@@ -91,15 +93,49 @@ public sealed class PreflightValidator
         catch { return; } // Strategy not found — already caught by ValidateRequiredFields
 
         var parameters = config.EffectiveStrategyConfig.StrategyParameters;
+        var knownNames = new HashSet<string>(
+            schema.Select(s => s.Name), StringComparer.OrdinalIgnoreCase);
+
         foreach (var param in schema.Where(p => p.IsRequired))
         {
-            if (!parameters.ContainsKey(param.Name))
+            // Case-insensitive check: see if any supplied key matches this required param
+            if (!parameters.Keys.Any(k => string.Equals(k, param.Name, StringComparison.OrdinalIgnoreCase)))
             {
+                var severity = param.DefaultValue is not null
+                    ? PreflightSeverity.Warning
+                    : PreflightSeverity.Error;
+
                 findings.Add(new PreflightFinding(
                     $"StrategyParameters.{param.Name}",
                     $"Required parameter '{param.DisplayName}' is missing.",
-                    PreflightSeverity.Error,
+                    severity,
                     "MISSING_PARAM"));
+            }
+        }
+    }
+
+    private void ValidateUnknownKeys(ScenarioConfig config, List<PreflightFinding> findings)
+    {
+        var strategyType = config.EffectiveStrategyConfig.StrategyType;
+        if (string.IsNullOrWhiteSpace(strategyType)) return;
+
+        IReadOnlyList<StrategyParameterSchema> schema;
+        try { schema = _schemaProvider.GetSchema(strategyType); }
+        catch { return; }
+
+        var knownNames = new HashSet<string>(
+            schema.Select(s => s.Name), StringComparer.OrdinalIgnoreCase);
+        var parameters = config.EffectiveStrategyConfig.StrategyParameters;
+
+        foreach (var key in parameters.Keys)
+        {
+            if (!knownNames.Contains(key))
+            {
+                findings.Add(new PreflightFinding(
+                    $"StrategyParameters.{key}",
+                    $"Unknown parameter '{key}'.",
+                    PreflightSeverity.Error,
+                    "UNKNOWN_PARAM"));
             }
         }
     }
@@ -414,6 +450,28 @@ public sealed class PreflightValidator
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Validates <see cref="MonteCarloOptions"/> fields that are not part of the
+    /// <see cref="ScenarioConfig"/> preflight chain. Call from endpoints before dispatch.
+    /// </summary>
+    public static IReadOnlyList<PreflightFinding> ValidateMonteCarloOptions(MonteCarloOptions options)
+    {
+        var findings = new List<PreflightFinding>();
+        if (options.BlockSize < 1)
+            findings.Add(new PreflightFinding(
+                "MonteCarloOptions.BlockSize",
+                "BlockSize must be >= 1.",
+                PreflightSeverity.Error,
+                "RANGE_VIOLATION"));
+        if (options.SimulationCount < 1)
+            findings.Add(new PreflightFinding(
+                "MonteCarloOptions.SimulationCount",
+                "SimulationCount must be >= 1.",
+                PreflightSeverity.Error,
+                "RANGE_VIOLATION"));
+        return findings;
+    }
 
     /// <summary>
     /// Attempts a numeric comparison between two values.

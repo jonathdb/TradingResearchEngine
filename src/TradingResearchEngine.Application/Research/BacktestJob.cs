@@ -1,3 +1,4 @@
+using TradingResearchEngine.Core.Configuration;
 using TradingResearchEngine.Core.Persistence;
 
 namespace TradingResearchEngine.Application.Research;
@@ -16,6 +17,7 @@ namespace TradingResearchEngine.Application.Research;
 /// <param name="ResultId">Identifier of the persisted result, or <c>null</c> if not yet available.</param>
 /// <param name="ErrorMessage">User-friendly error message when the job has failed, or <c>null</c>.</param>
 /// <param name="ReproducibilitySnapshot">Snapshot of all inputs needed to reproduce this run, or <c>null</c>.</param>
+/// <param name="Config">The scenario configuration to execute, or <c>null</c> for legacy jobs.</param>
 public sealed record BacktestJob(
     string JobId,
     JobType JobType,
@@ -26,7 +28,8 @@ public sealed record BacktestJob(
     ProgressSnapshot? Progress = null,
     string? ResultId = null,
     string? ErrorMessage = null,
-    ReproducibilitySnapshot? ReproducibilitySnapshot = null) : IHasId
+    ReproducibilitySnapshot? ReproducibilitySnapshot = null,
+    ScenarioConfig? Config = null) : IHasId
 {
     /// <inheritdoc/>
     public string Id => JobId;

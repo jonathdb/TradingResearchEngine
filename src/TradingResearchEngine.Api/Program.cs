@@ -1,6 +1,7 @@
 using TradingResearchEngine.Api.Endpoints;
 using TradingResearchEngine.Api.Middleware;
 using TradingResearchEngine.Application;
+using TradingResearchEngine.Application.Configuration;
 using TradingResearchEngine.Application.Research;
 using TradingResearchEngine.Infrastructure;
 
@@ -13,6 +14,10 @@ builder.Services.AddEndpointsApiExplorer();
 
 // V5: Register JobExecutor as singleton for async job lifecycle management
 builder.Services.AddSingleton<JobExecutor>();
+
+// V5.1: Background job worker with configurable polling
+builder.Services.Configure<JobWorkerOptions>(builder.Configuration.GetSection("JobWorker"));
+builder.Services.AddHostedService<JobWorkerService>();
 
 builder.Services.AddCors(options =>
 {
