@@ -1,0 +1,139 @@
+@* Persistent side panel with live updates showing builder state summary *@
+@using TradingResearchEngine.Application.Engine
+
+<MudPaper Class="pa-3" Outlined="true" Style="position: sticky; top: 16px;">
+    <MudText Typo="Typo.subtitle1" Class="mb-2">Research Summary</MudText>
+
+    @* Strategy identity *@
+    <MudStack Spacing="1" Class="mb-3">
+        <MudText Typo="Typo.caption" Class="text-muted">Strategy</MudText>
+        <MudText Typo="Typo.body2">@(string.IsNullOrWhiteSpace(Model.StrategyName) ? "Unnamed" : Model.StrategyName)</MudText>
+
+        @if (Model.StrategyType is not null)
+        {
+            <MudText Typo="Typo.caption" Class="text-muted">Type: @Model.StrategyType</MudText>
+        }
+
+        <MudText Typo="Typo.caption" Class="text-muted">Source: @Model.SourceType</MudText>
+
+        @if (!string.IsNullOrWhiteSpace(Model.Hypothesis))
+        {
+            <MudText Typo="Typo.caption" Style="font-style: italic">💡 @Model.Hypothesis</MudText>
+        }
+    </MudStack>
+
+    <MudDivider Class="mb-2" />
+
+    @* Data & window *@
+    <MudStack Spacing="1" Class="mb-3">
+        <MudText Typo="Typo.caption" Class="text-muted">Data</MudText>
+        <MudText Typo="Typo.body2">
+            @(Model.DataFilePath is not null ? System.IO.Path.GetFileName(Model.DataFilePath) : "Not selected")
+        </MudText>
+        <MudText Typo="Typo.caption" Class="text-muted">
+            @Model.Timeframe (@Model.BarsPerYear bars/yr)
+        </MudText>
+        <MudText Typo="Typo.caption" Class="text-muted">
+            IS: @Model.InSamplePercent% | OOS: @(100 - Model.InSamplePercent - (Model.SealedTestPercent ?? 0))%
+            @if (Model.SealedTestPercent.HasValue)
+            {
+                <text> | Sealed: @Model.SealedTestPercent%</text>
+            }
+        </MudText>
+    </MudStack>
+
+    <MudDivider Class="mb-2" />
+
+    @* Top parameters by sensitivity *@
+    @if (TopParameters.Count > 0)
+    {
+        <MudStack Spacing="1" Class="mb-3">
+            <MudText Typo="Typo.caption" Class="text-muted">Key Parameters</MudText>
+            @foreach (var p in TopParameters)
+            {
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                    <MudText Typo="Typo.caption">@p.DisplayName:</MudText>
+                    <MudText Typo="Typo.caption">
+                        @(Model.Parameters.TryGetValue(p.Name, out var v) ? v?.ToString() ?? "—" : "—")
+                    </MudText>
+                    <MudChip T="string" Size="MudBlazor.Size.Small"
+                             Color="@GetSensitivityColor(p.SensitivityHint)"
+                             Variant="Variant.Outlined" aria-label="@($"Sensitivity: {p.SensitivityHint}")">
+                        @p.SensitivityHint
+                    </MudChip>
+                </MudStack>
+            }
+        </MudStack>
+        <MudDivider Class="mb-2" />
+    }
+
+    @* Risk preset *@
+    <MudStack Spacing="1" Class="mb-3">
+        <MudText Typo="Typo.caption" Class="text-muted">Risk Preset</MudText>
+        <MudText Typo="Typo.body2">@(Model.PresetId ?? "None")</MudText>
+    </MudStack>
+
+    <MudDivider Class="mb-2" />
+
+    @* Validation state *@
+    <MudStack Spacing="1" Class="mb-2">
+        <MudText Typo="Typo.caption" Class="text-muted">Validation</MudText>
+        @if (PreflightResult is null)
+        {
+            <MudChip T="string" Size="MudBlazor.Size.Small" Color="Color.Default" Variant="Variant.Outlined"
+                     aria-label="Validation pending">Pending</MudChip>
+        }
+        else if (PreflightResult.HasErrors)
+        {
+            <MudChip T="string" Size="MudBlazor.Size.Small" Color="Color.Error" Variant="Variant.Filled"
+                     aria-label="@($"{PreflightResult.ErrorCount} errors, {PreflightResult.WarningCount} warnings")">
+                @PreflightResult.ErrorCount errors, @PreflightResult.WarningCount warnings
+            </MudChip>
+        }
+        else if (PreflightResult.WarningCount > 0)
+        {
+            <MudChip T="string" Size="MudBlazor.Size.Small" Color="Color.Warning" Variant="Variant.Filled"
+                     aria-label="@($"{PreflightResult.WarningCount} warnings")">
+                @PreflightResult.WarningCount warnings
+            </MudChip>
+        }
+        else
+        {
+            <MudChip T="string" Size="MudBlazor.Size.Small" Color="Color.Success" Variant="Variant.Filled"
+                     aria-label="Ready">Ready</MudChip>
+        }
+    </MudStack>
+
+    @* Readiness status *@
+    <MudText Typo="Typo.caption" Class="text-muted">
+        @ReadinessStatus
+    </MudText>
+</MudPaper>
+
+@code {
+    [Parameter] public BuilderViewModel Model { get; set; } = default!;
+    [Parameter] public IReadOnlyList<StrategyParameterSchema> Schemas { get; set; } = Array.Empty<StrategyParameterSchema>();
+    [Parameter] public PreflightResult? PreflightResult { get; set; }
+
+    private IReadOnlyList<StrategyParameterSchema> TopParameters =>
+        Schemas.OrderByDescending(s => s.SensitivityHint).Take(3).ToList();
+
+    private string ReadinessStatus
+    {
+        get
+        {
+            if (PreflightResult?.HasErrors == true) return "Needs Fixes";
+            if (Model.PresetId is not null && Model.DataFilePath is not null) return "Research-Grade Ready";
+            if (Model.DataFilePath is not null) return "Ready for Quick Run";
+            return "Incomplete";
+        }
+    }
+
+    private static Color GetSensitivityColor(SensitivityHint hint) => hint switch
+    {
+        SensitivityHint.Low => Color.Success,
+        SensitivityHint.Medium => Color.Warning,
+        SensitivityHint.High => Color.Error,
+        _ => Color.Default
+    };
+}

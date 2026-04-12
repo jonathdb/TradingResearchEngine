@@ -1,0 +1,141 @@
+@* Grouped parameter editor with label, input, default indicator, help text, sensitivity badge, provenance, reset *@
+
+<MudExpansionPanels MultiExpansion="true">
+    @foreach (var group in GroupedParameters)
+    {
+        <MudExpansionPanel Text="@group.Key" Expanded="true"
+                           aria-label="@($"Parameter group: {group.Key}")">
+            @foreach (var schema in group)
+            {
+                @if (!AdvancedMode && schema.IsAdvanced) continue;
+
+                var paramKey = schema.Name;
+                var currentValue = GetParameterValue(paramKey);
+                var isDefault = IsDefaultValue(paramKey, schema);
+                var provenance = isDefault ? "Default" : (IsPresetValue(paramKey) ? "Preset" : "Custom");
+
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-2 pa-1">
+                    @* Label *@
+                    <MudText Typo="Typo.body2" Style="min-width: 160px;">
+                        <label for="@($"param-{paramKey}")">@schema.DisplayName</label>
+                    </MudText>
+
+                    @* Input *@
+                    @if (schema.Type == "bool")
+                    {
+                        <MudSwitch T="bool" Value="@(GetBoolValue(paramKey))"
+                                   ValueChanged="@((bool v) => SetParameter(paramKey, v))"
+                                   id="@($"param-{paramKey}")"
+                                   aria-label="@schema.DisplayName" />
+                    }
+                    else if (schema.EnumChoices is not null)
+                    {
+                        <MudSelect T="string" Value="@currentValue" ValueChanged="@((string v) => SetParameter(paramKey, v))"
+                                   Style="max-width: 200px;"
+                                   id="@($"param-{paramKey}")"
+                                   aria-label="@schema.DisplayName">
+                            @foreach (var choice in schema.EnumChoices)
+                            {
+                                <MudSelectItem Value="@choice">@choice</MudSelectItem>
+                            }
+                        </MudSelect>
+                    }
+                    else
+                    {
+                        <MudTextField T="string" Value="@currentValue"
+                                      ValueChanged="@((string v) => SetParameter(paramKey, v))"
+                                      Style="max-width: 200px;"
+                                      id="@($"param-{paramKey}")"
+                                      aria-label="@schema.DisplayName" />
+                    }
+
+                    @* Default indicator *@
+                    @if (isDefault)
+                    {
+                        <MudChip T="string" Size="MudBlazor.Size.Small" Color="Color.Default" Variant="Variant.Text"
+                                 aria-label="Default value">default</MudChip>
+                    }
+
+                    @* Sensitivity badge *@
+                    <MudChip T="string" Size="MudBlazor.Size.Small"
+                             Color="@GetSensitivityColor(schema.SensitivityHint)"
+                             Variant="Variant.Outlined"
+                             aria-label="@($"Sensitivity: {schema.SensitivityHint}")">
+                        @schema.SensitivityHint
+                    </MudChip>
+
+                    @* Provenance indicator *@
+                    @if (provenance != "Custom")
+                    {
+                        <MudChip T="string" Size="MudBlazor.Size.Small"
+                                 Color="@(provenance == "Preset" ? Color.Info : Color.Default)"
+                                 Variant="Variant.Text"
+                                 aria-label="@($"Value source: {provenance}")">
+                            @provenance
+                        </MudChip>
+                    }
+
+                    @* Reset to default *@
+                    @if (!isDefault)
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.Undo" Size="MudBlazor.Size.Small"
+                                       OnClick="@(() => ResetToDefault(paramKey, schema))"
+                                       aria-label="@($"Reset {schema.DisplayName} to default")" />
+                    }
+                </MudStack>
+
+                @* Help text *@
+                @if (!string.IsNullOrWhiteSpace(schema.Description))
+                {
+                    <MudText Typo="Typo.caption" Class="text-muted ml-4 mb-2">@schema.Description</MudText>
+                }
+            }
+        </MudExpansionPanel>
+    }
+</MudExpansionPanels>
+
+@code {
+    [Parameter] public IReadOnlyList<StrategyParameterSchema> Schemas { get; set; } = Array.Empty<StrategyParameterSchema>();
+    [Parameter] public Dictionary<string, object> Parameters { get; set; } = new();
+    [Parameter] public Dictionary<string, object>? PresetParameters { get; set; }
+    [Parameter] public bool AdvancedMode { get; set; }
+    [Parameter] public EventCallback<(string Key, object Value)> OnParameterChanged { get; set; }
+
+    private IEnumerable<IGrouping<string, StrategyParameterSchema>> GroupedParameters =>
+        Schemas.OrderBy(s => s.DisplayOrder).GroupBy(s => s.Group);
+
+    private string GetParameterValue(string key) =>
+        Parameters.TryGetValue(key, out var val) ? val?.ToString() ?? "" : "";
+
+    private bool GetBoolValue(string key) =>
+        Parameters.TryGetValue(key, out var val) && val is true or "true" or "True";
+
+    private bool IsDefaultValue(string key, StrategyParameterSchema schema) =>
+        !Parameters.ContainsKey(key) ||
+        Parameters[key]?.ToString() == schema.DefaultValue?.ToString();
+
+    private bool IsPresetValue(string key) =>
+        PresetParameters is not null && PresetParameters.ContainsKey(key) &&
+        Parameters.TryGetValue(key, out var val) &&
+        val?.ToString() == PresetParameters[key]?.ToString();
+
+    private async Task SetParameter(string key, object value)
+    {
+        Parameters[key] = value;
+        await OnParameterChanged.InvokeAsync((key, value));
+    }
+
+    private async Task ResetToDefault(string key, StrategyParameterSchema schema)
+    {
+        Parameters[key] = schema.DefaultValue;
+        await OnParameterChanged.InvokeAsync((key, schema.DefaultValue));
+    }
+
+    private static Color GetSensitivityColor(SensitivityHint hint) => hint switch
+    {
+        SensitivityHint.Low => Color.Success,
+        SensitivityHint.Medium => Color.Warning,
+        SensitivityHint.High => Color.Error,
+        _ => Color.Default
+    };
+}

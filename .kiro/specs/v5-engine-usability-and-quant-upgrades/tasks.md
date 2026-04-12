@@ -213,31 +213,31 @@ V5 is implemented bottom-up by layer (Core → Application → Infrastructure �
 - [x] 8. Checkpoint — Application layer complete
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 9. Infrastructure layer — Job persistence
-  - [ ] 9.1 Implement `JsonJobRepository` in Infrastructure/Persistence
+- [x] 9. Infrastructure layer — Job persistence
+  - [x] 9.1 Implement `JsonJobRepository` in Infrastructure/Persistence
     - Standard `JsonFileRepository<BacktestJob>` pattern for job record persistence
     - _Requirements: 17.6_
 
-- [ ] 10. Api layer — Job endpoints and request DTOs
-  - [ ] 10.1 Create request/response DTOs in Api/Dtos
+- [x] 10. Api layer — Job endpoints and request DTOs
+  - [x] 10.1 Create request/response DTOs in Api/Dtos
     - `SubmitJobRequest`, `RunScenarioRequest`, `JobSubmittedResponse`, `StrategyListItem`, `SchemaResponse`, `ExecutionModelsResponse`, `NamedItem`
     - _Requirements: 19.1, 19.2, 20.1, 20.2_
-  - [ ] 10.2 Implement `JobEndpoints` in Api/Endpoints
+  - [x] 10.2 Implement `JobEndpoints` in Api/Endpoints
     - `POST /jobs` (202 + JobId), `GET /jobs/{jobId}`, `DELETE /jobs/{jobId}`, `GET /jobs/{jobId}/result`
     - OpenAPI annotations: `.WithName()`, `.WithTags("Jobs")`, `.Produces<T>()`
     - _Requirements: 17.2, 17.3, 17.5, 18.4, 19.5_
-  - [ ] 10.3 Implement `DiscoveryEndpoints` in Api/Endpoints
+  - [x] 10.3 Implement `DiscoveryEndpoints` in Api/Endpoints
     - `GET /strategies`, `GET /strategies/{name}/schema`, `GET /workflows`, `GET /presets`, `GET /execution-models`
     - Include `SchemaVersion`, `DeprecatedFields`, `CompatibilityNotes` in schema response
     - OpenAPI annotations, tagged "Discovery"
     - _Requirements: 20.1–20.8_
-  - [ ] 10.4 Amend `ScenarioEndpoints` for preflight validation and deprecation header
+  - [x] 10.4 Amend `ScenarioEndpoints` for preflight validation and deprecation header
     - Invoke `PreflightValidator` before execution, return 400 with severity/code on errors
     - Add `X-Deprecation` header for flat ScenarioConfig payloads
     - Add `POST /scenarios/resolve` endpoint returning `ResolvedConfig`
     - Existing sync endpoints internally create job and wait for backward compat
     - _Requirements: 3.6, 14.1, 16.3, 17.3, 19.3, 19.4, 29.3_
-  - [ ] 10.5 Register new endpoints and DI services in Api `Program.cs`
+  - [x] 10.5 Register new endpoints and DI services in Api `Program.cs`
     - Wire `JobExecutor` as singleton, call `RecoverOrphanedJobsAsync` on startup
     - Register `PreflightValidator`, `ResolvedConfigService`, `StrategySchemaProvider`, `StrategyDiffService`
     - Register `IRepository<BacktestJob>`, `IRepository<ConfigDraft>`, `IRepository<ConfigPreset>`
@@ -252,69 +252,69 @@ V5 is implemented bottom-up by layer (Core → Application → Infrastructure �
     - `BacktestJobRepositoryTests`: job persistence across restart
     - _Requirements: 17.2–17.6, 19.3–19.5, 20.1–20.8, 16.3, 29.3, 30.6, 30.7_
 
-- [ ] 11. Checkpoint — Api layer complete
+- [x] 11. Checkpoint — Api layer complete
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 12. Web layer — Strategy Builder 5-step flow
-  - [ ] 12.1 Create `BuilderViewModel` in Web layer
+- [x] 12. Web layer — Strategy Builder 5-step flow
+  - [x] 12.1 Create `BuilderViewModel` in Web layer
     - Mutable ViewModel with `ToConfigDraft()`, `ToScenarioConfig()`, `ToStrategyVersion()` mappers
     - _Requirements: 5.1, 5.4, 5.5_
-  - [ ] 12.2 Create `BuilderStepIndicator.razor` component
+  - [x] 12.2 Create `BuilderStepIndicator.razor` component
     - 5-step progress bar with active/completed/upcoming states
     - Keyboard navigable
     - _Requirements: 5.1, 12.2_
-  - [ ] 12.3 Implement `Step1ChooseStartingPoint.razor` with sub-components
+  - [x] 12.3 Implement `Step1ChooseStartingPoint.razor` with sub-components
     - `TemplateFamilyCards.razor`: family cards with name, description, use case, failure mode, difficulty badge
     - `ForkStrategyPicker.razor`: searchable list of existing strategies
     - `ImportConfigUpload.razor`: JSON file upload with validation
     - Hypothesis (required, min 10 chars) and ExpectedFailureMode (optional) fields
     - _Requirements: 6.1–6.6, 2.3, 2.4, 2.5_
-  - [ ] 12.4 Implement `Step2DataExecutionWindow.razor` with sub-components
+  - [x] 12.4 Implement `Step2DataExecutionWindow.razor` with sub-components
     - `DataFilePicker.razor`: show valid files by default, toggle for all
     - `TimelineSplitVisualizer.razor`: IS/OOS/sealed split timeline with drag handles
     - Live diagnostics: bar count, insufficient data warning, timeframe mismatch, overlap warnings
     - Auto-update BarsPerYear on timeframe change
     - _Requirements: 7.1–7.5_
-  - [ ] 12.5 Implement `Step3StrategyParameters.razor` with `ParameterGroupEditor.razor`
+  - [x] 12.5 Implement `Step3StrategyParameters.razor` with `ParameterGroupEditor.razor`
     - Grouped by Schema.Group, collapsible headers
     - Simple/Advanced mode toggle (Simple default)
     - Each row: label, input, default indicator, help text, sensitivity badge, inline validation, provenance indicator, reset to default
     - Preset badge on template/preset values, transitions to Custom on edit
     - _Requirements: 8.1–8.6_
-  - [ ] 12.6 Implement `Step4RealismRiskProfile.razor` with sub-components
+  - [x] 12.6 Implement `Step4RealismRiskProfile.razor` with sub-components
     - `PresetCards.razor`: 4 preset cards with "What This Changes" expander
     - `AdvancedOverridesPanel.razor`: fine-grained controls for all execution/risk fields
     - Preset label changes to "Custom (based on [preset])" on override
     - Provenance indicators on all fields
     - _Requirements: 9.1–9.6_
-  - [ ] 12.7 Implement `Step5ReviewLaunch.razor` with sub-components
+  - [x] 12.7 Implement `Step5ReviewLaunch.razor` with sub-components
     - `ResolvedConfigDisplay.razor`: full resolved config by section with provenance
     - `PreflightFindingsPanel.razor`: findings grouped by severity
     - Three launch actions: Quick Sanity Test, Standard Backtest, Save Draft
     - Disable run actions when errors exist
     - _Requirements: 10.1–10.5_
-  - [ ] 12.8 Implement `ResearchSummaryRail.razor` persistent side panel
+  - [x] 12.8 Implement `ResearchSummaryRail.razor` persistent side panel
     - Live updates: strategy name, family, source, data, timeframe, split, top 3 params, risk preset, validation state, readiness status, next action
     - Two-pane layout at 1024px+, collapsible at narrower viewports
     - _Requirements: 5.2, 5.3, 5.6, 21.5_
-  - [ ] 12.9 Wire `StrategyBuilder.razor` orchestrator with step navigation and draft persistence
+  - [x] 12.9 Wire `StrategyBuilder.razor` orchestrator with step navigation and draft persistence
     - Step validation before progression, back navigation preserves values
     - Persist `ConfigDraft` via `IRepository<ConfigDraft>` on every step transition
     - Resume draft on builder open
     - Dirty form detection with unsaved changes prompt
     - _Requirements: 5.1, 5.4, 5.5, 12.1, 12.4_
-  - [ ] 12.10 Implement builder UI states and accessibility
+  - [x] 12.10 Implement builder UI states and accessibility
     - Empty, loading, validation error, failed run, cancelled job, partial result, save-draft, dirty form states
     - All fields have `<label>`, icon buttons have `aria-label`, status badges have `aria-label`
     - Full keyboard navigation (Tab/Shift-Tab, Enter, Escape, arrow keys)
     - _Requirements: 12.1–12.4_
 
-- [ ] 13. Web layer — Strategy Workspace and result enhancements
-  - [ ] 13.1 Enhance `StrategyDetail.razor` with Strategy Workspace Overview tab
+- [x] 13. Web layer — Strategy Workspace and result enhancements
+  - [x] 13.1 Enhance `StrategyDetail.razor` with Strategy Workspace Overview tab
     - Latest run summary (or empty state), development stage, research checklist progress, key warnings, recommended next study, shortcut actions
     - "vs Buy & Hold" comparison chip when benchmark study exists
     - _Requirements: 11.1, 11.2, 11.3, 27.5_
-  - [ ] 13.2 Enhance `ResultDetail.razor` with tiered metrics, realism card, and regime section
+  - [x] 13.2 Enhance `ResultDetail.razor` with tiered metrics, realism card, and regime section
     - Tier 1 (above fold): Sharpe, Max Drawdown, Win Rate, K-Ratio, DSR
     - Tier 2 (tabs): Sortino, Calmar, Profit Factor, Expectancy, Recovery Factor, Avg Holding Period
     - Tier 3 (expanders): regime breakdown, MAE/MFE, event trace
@@ -325,28 +325,28 @@ V5 is implemented bottom-up by layer (Core → Application → Infrastructure �
     - DSR < 0.95 "Possible Overfitting" warning
     - Performance by Regime expandable section
     - _Requirements: 22.1–22.5, 24.3, 24.4, 27.3, 27.4_
-  - [ ] 13.3 Add execution status bar consuming progress snapshots
+  - [x] 13.3 Add execution status bar consuming progress snapshots
     - Display percentage, stage label, current/total, elapsed time
     - _Requirements: 18.5_
 
-- [ ] 14. Checkpoint — Web layer complete
+- [x] 14. Checkpoint — Web layer complete
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 15. Documentation
-  - [ ] 15.1 Create `docs/V5-Developer-Guide.md`
+- [x] 15. Documentation
+  - [x] 15.1 Create `docs/V5-Developer-Guide.md`
     - How to add a strategy with `[ParameterMeta]` attributes (step-by-step with code example)
     - How to add a config preset
     - How to extend the preflight validator
     - How to add a discovery endpoint
     - Sub-object config format explanation
     - _Requirements: 28.5, 31.1_
-  - [ ] 15.2 Create `docs/V5-Migration-Guide.md`
+  - [x] 15.2 Create `docs/V5-Migration-Guide.md`
     - Config format changes (flat → sub-object) with before/after JSON examples
     - New fields on existing records
     - Deprecated patterns and timeline
     - API versioning approach
     - _Requirements: 29.3, 31.2_
-  - [ ] 15.3 Create `docs/V5-Quant-Assumptions.md`
+  - [x] 15.3 Create `docs/V5-Quant-Assumptions.md`
     - Execution realism model descriptions (each slippage/commission model)
     - Gap handling behavior, volume constraint behavior
     - Bar-resolution caveats and known limitations
@@ -354,11 +354,11 @@ V5 is implemented bottom-up by layer (Core → Application → Infrastructure �
     - Overfitting defense methodology (DSR, MinBTL, trial budget, fragility scoring)
     - Benchmarking methodology
     - _Requirements: 31.3_
-  - [ ] 15.4 Update existing docs referencing flat ScenarioConfig format
+  - [x] 15.4 Update existing docs referencing flat ScenarioConfig format
     - Show both formats with note that sub-object format is preferred
     - _Requirements: 31.4_
 
-- [ ] 16. Final checkpoint — All tests pass, full integration verified
+- [x] 16. Final checkpoint — All tests pass, full integration verified
   - Ensure all tests pass, ask the user if questions arise.
 
 ## Notes

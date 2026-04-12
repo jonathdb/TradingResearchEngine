@@ -1,0 +1,76 @@
+@* 4 preset cards with "What This Changes" expander *@
+
+<MudGrid>
+    @foreach (var preset in Presets)
+    {
+        var isSelected = SelectedPresetId == preset.PresetId;
+        <MudItem xs="12" sm="6" md="3">
+            <MudCard Outlined="@(!isSelected)"
+                     Elevation="@(isSelected ? 4 : 1)"
+                     Style="@(isSelected ? "border: 2px solid var(--mud-palette-primary); cursor:pointer" : "cursor:pointer")"
+                     @onclick="() => SelectPreset(preset)"
+                     tabindex="0"
+                     aria-label="@($"Preset: {preset.Name}")">
+                <MudCardContent>
+                    <MudText Typo="Typo.subtitle2">@preset.Name</MudText>
+                    <MudChip T="string" Size="MudBlazor.Size.Small" Color="@GetCategoryColor(preset.Category)"
+                             Variant="Variant.Outlined" aria-label="@($"Category: {preset.Category}")">
+                        @preset.Category
+                    </MudChip>
+                    <MudText Typo="Typo.body2" Class="text-muted mt-1">@preset.Description</MudText>
+                </MudCardContent>
+                <MudCardActions>
+                    <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Text"
+                               OnClick="@(() => ToggleDetails(preset.PresetId))"
+                               aria-label="@($"Toggle details for {preset.Name}")">
+                        @(_expandedPreset == preset.PresetId ? "Hide Details" : "What This Changes")
+                    </MudButton>
+                </MudCardActions>
+                @if (_expandedPreset == preset.PresetId)
+                {
+                    <MudCardContent>
+                        <MudSimpleTable Dense="true" Striped="true">
+                            <tbody>
+                                <tr><td>Slippage</td><td>@preset.ExecutionConfig.SlippageModelType</td></tr>
+                                <tr><td>Commission</td><td>@preset.ExecutionConfig.CommissionModelType</td></tr>
+                                <tr><td>Fill Mode</td><td>@preset.ExecutionConfig.FillMode</td></tr>
+                                <tr><td>Realism Profile</td><td>@preset.ExecutionConfig.RealismProfile</td></tr>
+                                @if (preset.RiskConfig is not null)
+                                {
+                                    <tr><td>Initial Cash</td><td>$@preset.RiskConfig.InitialCash.ToString("N0")</td></tr>
+                                }
+                            </tbody>
+                        </MudSimpleTable>
+                    </MudCardContent>
+                }
+            </MudCard>
+        </MudItem>
+    }
+</MudGrid>
+
+@code {
+    [Parameter] public IReadOnlyList<ConfigPreset> Presets { get; set; } = Array.Empty<ConfigPreset>();
+    [Parameter] public string? SelectedPresetId { get; set; }
+    [Parameter] public EventCallback<ConfigPreset> OnPresetSelected { get; set; }
+
+    private string? _expandedPreset;
+
+    private async Task SelectPreset(ConfigPreset preset)
+    {
+        await OnPresetSelected.InvokeAsync(preset);
+    }
+
+    private void ToggleDetails(string presetId)
+    {
+        _expandedPreset = _expandedPreset == presetId ? null : presetId;
+    }
+
+    private static Color GetCategoryColor(PresetCategory cat) => cat switch
+    {
+        PresetCategory.QuickCheck => Color.Info,
+        PresetCategory.Standard => Color.Primary,
+        PresetCategory.Realistic => Color.Warning,
+        PresetCategory.ResearchGrade => Color.Error,
+        _ => Color.Default
+    };
+}

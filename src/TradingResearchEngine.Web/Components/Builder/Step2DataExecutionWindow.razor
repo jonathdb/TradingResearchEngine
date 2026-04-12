@@ -1,0 +1,127 @@
+@* Step 2: Data & Execution Window *@
+@using TradingResearchEngine.Application.DataFiles
+
+<MudText Typo="Typo.h6" Class="mb-3">Data & Execution Window</MudText>
+
+@* Data file picker *@
+@if (DataFiles.Count == 0)
+{
+    <MudAlert Severity="Severity.Warning" Class="mb-3">
+        No data files found. <MudLink Href="/data">Go to Data Files</MudLink> to add one.
+    </MudAlert>
+}
+else
+{
+    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-3">
+        <MudSelect T="string" @bind-Value="Model.DataFilePath" Label="Data File" Style="flex: 1;"
+                   aria-label="Select data file">
+            @foreach (var file in FilteredFiles)
+            {
+                <MudSelectItem Value="@file.FilePath">
+                    @file.FileName (@file.BarCount bars, @file.DetectedTimeframe)
+                </MudSelectItem>
+            }
+        </MudSelect>
+        <MudSwitch T="bool" @bind-Value="_showAllFiles" Label="Show all files" Size="MudBlazor.Size.Small"
+                   aria-label="Toggle show all files including invalid" />
+    </MudStack>
+}
+
+@* Timeframe selector *@
+<MudSelect T="string" Value="@Model.Timeframe" ValueChanged="OnTimeframeChanged" Label="Timeframe" Class="mb-3"
+           aria-label="Select timeframe">
+    <MudSelectItem Value="@("Daily")">Daily (252 bars/year)</MudSelectItem>
+    <MudSelectItem Value="@("H4")">H4 (1,512 bars/year)</MudSelectItem>
+    <MudSelectItem Value="@("H1")">H1 (6,048 bars/year)</MudSelectItem>
+    <MudSelectItem Value="@("M15")">M15 (24,192 bars/year)</MudSelectItem>
+</MudSelect>
+
+<MudAlert Severity="Severity.Info" Dense="true" Class="mb-3" aria-label="Bars per year info">
+    @Model.Timeframe uses @Model.BarsPerYear bars/year for annualisation.
+</MudAlert>
+
+@* Date range *@
+<MudStack Row="true" Spacing="2" Class="mb-3">
+    <MudDatePicker @bind-Date="_startDate" Label="Start Date" Class="flex-1"
+                   aria-label="Start date" />
+    <MudDatePicker @bind-Date="_endDate" Label="End Date" Class="flex-1"
+                   aria-label="End date" />
+</MudStack>
+
+@* IS/OOS/Sealed split *@
+<MudText Typo="Typo.subtitle2" Class="mb-2">In-Sample / Out-of-Sample Split</MudText>
+<MudSlider T="decimal" @bind-Value="Model.InSamplePercent" Min="30" Max="90" Step="5"
+           aria-label="In-sample percentage">
+    In-Sample: @Model.InSamplePercent.ToString("F0")%
+</MudSlider>
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-3">
+    <MudSwitch T="bool" @bind-Value="_enableSealed" Label="Enable Sealed Test Set"
+               aria-label="Enable sealed test set" />
+    @if (_enableSealed)
+    {
+        <MudNumericField T="decimal" @bind-Value="_sealedPercent" Label="Sealed %" Min="5" Max="30" Step="5"
+                         Style="max-width: 120px;" aria-label="Sealed test percentage" />
+    }
+</MudStack>
+
+<TimelineSplitVisualizer InSamplePercent="@Model.InSamplePercent"
+                         SealedTestPercent="@(Model.SealedTestPercent)" />
+
+@* Live diagnostics *@
+@if (_selectedFile is not null)
+{
+    <MudText Typo="Typo.caption" Class="text-muted mb-1">
+        Estimated bars: @_selectedFile.BarCount
+        @if (_selectedFile.FirstBar.HasValue && _selectedFile.LastBar.HasValue)
+        {
+            <text> | Range: @_selectedFile.FirstBar.Value.ToString("yyyy-MM-dd") to @_selectedFile.LastBar.Value.ToString("yyyy-MM-dd")</text>
+        }
+    </MudText>
+
+    @if (_selectedFile.DetectedTimeframe is not null && _selectedFile.DetectedTimeframe != Model.Timeframe)
+    {
+        <MudAlert Severity="Severity.Warning" Dense="true" Class="mb-2" aria-label="Timeframe mismatch warning">
+            Data file timeframe (@_selectedFile.DetectedTimeframe) differs from selected timeframe (@Model.Timeframe).
+        </MudAlert>
+    }
+
+    @if (_selectedFile.BarCount < 200)
+    {
+        <MudAlert Severity="Severity.Warning" Dense="true" Class="mb-2" aria-label="Insufficient data warning">
+            Data file has only @_selectedFile.BarCount bars — may be insufficient for reliable backtesting.
+        </MudAlert>
+    }
+}
+
+@code {
+    [Parameter] public BuilderViewModel Model { get; set; } = default!;
+    [Parameter] public IReadOnlyList<DataFileRecord> DataFiles { get; set; } = Array.Empty<DataFileRecord>();
+    [Parameter] public EventCallback OnModelChanged { get; set; }
+
+    private bool _showAllFiles;
+    private bool _enableSealed;
+    private decimal _sealedPercent = 10m;
+    private DateTime? _startDate;
+    private DateTime? _endDate;
+
+    private IEnumerable<DataFileRecord> FilteredFiles =>
+        _showAllFiles ? DataFiles : DataFiles.Where(f => f.ValidationStatus == ValidationStatus.Valid);
+
+    private DataFileRecord? _selectedFile =>
+        DataFiles.FirstOrDefault(f => f.FilePath == Model.DataFilePath);
+
+    protected override void OnParametersSet()
+    {
+        _enableSealed = Model.SealedTestPercent.HasValue;
+        _sealedPercent = Model.SealedTestPercent ?? 10m;
+        _startDate = Model.StartDate?.DateTime;
+        _endDate = Model.EndDate?.DateTime;
+    }
+
+    private void OnTimeframeChanged(string tf)
+    {
+        Model.Timeframe = tf;
+        Model.IsDirty = true;
+    }
+}

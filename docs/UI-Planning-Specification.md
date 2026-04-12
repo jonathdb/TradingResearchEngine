@@ -47,6 +47,8 @@ The Blazor Server host injects these services directly via DI — no HTTP round-
 - The UI never accesses `IDataProvider` or `IEventQueue` — those are engine internals
 - All UI state is derived from `BacktestResult`, `ScenarioConfig`, and research workflow result types
 - The UI builds `ScenarioConfig` objects and passes them to use cases — same contract as CLI and API
+
+> **V5 Note:** `ScenarioConfig` now supports a sub-object format (`Data`, `Strategy`, `Risk`, `Execution`, `Research` sub-objects) alongside the flat format. New UI code should use the sub-object format exclusively. The flat format is deprecated but functional. See `docs/V5-Migration-Guide.md` for details.
 - Long-running jobs use `CancellationToken` propagation and progress reporting via injected services, not SignalR-specific patterns
 
 ### New Blazor Server project

@@ -1,0 +1,118 @@
+@* Family cards with name, description, use case, failure mode, difficulty badge *@
+
+<MudGrid>
+    @foreach (var family in Families)
+    {
+        var firstTpl = family.Value.FirstOrDefault();
+        <MudItem xs="12" sm="6" md="4">
+            <MudCard Outlined="@(SelectedFamily != family.Key)"
+                     Elevation="@(SelectedFamily == family.Key ? 4 : 1)"
+                     Style="@(SelectedFamily == family.Key ? "border: 2px solid var(--mud-palette-primary); cursor:pointer" : "cursor:pointer")"
+                     @onclick="() => SelectFamily(family.Key)"
+                     tabindex="0"
+                     aria-label="@($"Strategy family: {family.Key}")">
+                <MudCardContent>
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Class="mb-1">
+                        <MudChip T="string" Size="MudBlazor.Size.Small" Color="@GetFamilyColor(family.Key)">
+                            @family.Key
+                        </MudChip>
+                        @if (firstTpl is not null)
+                        {
+                            <MudChip T="string" Size="MudBlazor.Size.Small"
+                                     Color="@GetDifficultyColor(firstTpl.DifficultyLevel)"
+                                     Variant="Variant.Outlined"
+                                     aria-label="@($"Difficulty: {firstTpl.DifficultyLevel}")">
+                                @firstTpl.DifficultyLevel
+                            </MudChip>
+                        }
+                    </MudStack>
+                    @if (firstTpl is not null)
+                    {
+                        <MudText Typo="Typo.body2" Class="text-muted mb-1">
+                            @firstTpl.Description
+                        </MudText>
+                        @if (firstTpl.TypicalUseCase is not null)
+                        {
+                            <MudText Typo="Typo.caption" Class="text-muted">
+                                Use case: @firstTpl.TypicalUseCase
+                            </MudText>
+                        }
+                        @if (firstTpl.Descriptor?.Hypothesis is not null)
+                        {
+                            <MudText Typo="Typo.caption" Class="text-muted" Style="font-style: italic">
+                                Failure mode: Strategy fails when the underlying assumption breaks
+                            </MudText>
+                        }
+                    }
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+    }
+</MudGrid>
+
+@if (SelectedFamily is not null && Families.ContainsKey(SelectedFamily))
+{
+    <MudText Typo="Typo.subtitle1" Class="mt-4 mb-2">Templates in @SelectedFamily</MudText>
+    <MudGrid>
+        @foreach (var tpl in Families[SelectedFamily])
+        {
+            <MudItem xs="12" sm="6">
+                <MudCard Outlined="@(SelectedTemplateId != tpl.TemplateId)"
+                         Elevation="@(SelectedTemplateId == tpl.TemplateId ? 4 : 1)"
+                         Style="@(SelectedTemplateId == tpl.TemplateId ? "border: 2px solid var(--mud-palette-primary); cursor:pointer" : "cursor:pointer")"
+                         @onclick="() => SelectTemplate(tpl)"
+                         tabindex="0"
+                         aria-label="@($"Template: {tpl.Name}")">
+                    <MudCardContent>
+                        <MudText Typo="Typo.subtitle2">@tpl.Name</MudText>
+                        <MudText Typo="Typo.body2" Class="text-muted">@tpl.Description</MudText>
+                        @if (tpl.FamilyPresets is not null && tpl.FamilyPresets.Count > 0)
+                        {
+                            <MudStack Row="true" Spacing="1" Class="mt-1">
+                                @foreach (var preset in tpl.FamilyPresets.Keys)
+                                {
+                                    <MudChip T="string" Size="MudBlazor.Size.Small" Variant="Variant.Outlined">@preset</MudChip>
+                                }
+                            </MudStack>
+                        }
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+        }
+    </MudGrid>
+}
+
+@code {
+    [Parameter] public Dictionary<string, List<StrategyTemplate>> Families { get; set; } = new();
+    [Parameter] public string? SelectedFamily { get; set; }
+    [Parameter] public string? SelectedTemplateId { get; set; }
+    [Parameter] public EventCallback<StrategyTemplate> OnTemplateSelected { get; set; }
+
+    private void SelectFamily(string family)
+    {
+        SelectedFamily = family;
+    }
+
+    private async Task SelectTemplate(StrategyTemplate tpl)
+    {
+        await OnTemplateSelected.InvokeAsync(tpl);
+    }
+
+    private static Color GetFamilyColor(string family) => family switch
+    {
+        StrategyFamily.Trend => Color.Info,
+        StrategyFamily.MeanReversion => Color.Secondary,
+        StrategyFamily.Breakout => Color.Warning,
+        StrategyFamily.RegimeAware => Color.Tertiary,
+        StrategyFamily.Benchmark => Color.Default,
+        _ => Color.Default
+    };
+
+    private static Color GetDifficultyColor(DifficultyLevel level) => level switch
+    {
+        DifficultyLevel.Beginner => Color.Success,
+        DifficultyLevel.Intermediate => Color.Warning,
+        DifficultyLevel.Advanced => Color.Error,
+        _ => Color.Default
+    };
+}

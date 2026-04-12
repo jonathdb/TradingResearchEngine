@@ -1,0 +1,104 @@
+@* Fine-grained controls for execution and risk fields with provenance indicators *@
+
+<MudExpansionPanels>
+    <MudExpansionPanel Text="Advanced Overrides" Expanded="false"
+                       aria-label="Advanced execution and risk overrides">
+        <MudText Typo="Typo.subtitle2" Class="mb-2">Execution Settings</MudText>
+
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-2">
+            <MudSelect T="string" @bind-Value="Model.SlippageModelType" Label="Slippage Model"
+                       Style="flex: 1;" aria-label="Slippage model">
+                <MudSelectItem Value="@("ZeroSlippageModel")">Zero</MudSelectItem>
+                <MudSelectItem Value="@("FixedSpreadSlippageModel")">Fixed Spread</MudSelectItem>
+                <MudSelectItem Value="@("AtrScaledSlippageModel")">ATR-Scaled</MudSelectItem>
+                <MudSelectItem Value="@("PercentOfPriceSlippageModel")">Percent of Price</MudSelectItem>
+            </MudSelect>
+            <MudChip T="string" Size="MudBlazor.Size.Small" Color="@GetProvenanceColor("SlippageModelType")"
+                     Variant="Variant.Text" aria-label="@($"Provenance: {GetProvenance("SlippageModelType")}")">
+                @GetProvenance("SlippageModelType")
+            </MudChip>
+        </MudStack>
+
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-2">
+            <MudSelect T="string" @bind-Value="Model.CommissionModelType" Label="Commission Model"
+                       Style="flex: 1;" aria-label="Commission model">
+                <MudSelectItem Value="@("ZeroCommissionModel")">Zero</MudSelectItem>
+                <MudSelectItem Value="@("PerTradeCommissionModel")">Per Trade</MudSelectItem>
+                <MudSelectItem Value="@("PerShareCommissionModel")">Per Share</MudSelectItem>
+            </MudSelect>
+            <MudChip T="string" Size="MudBlazor.Size.Small" Color="@GetProvenanceColor("CommissionModelType")"
+                     Variant="Variant.Text" aria-label="@($"Provenance: {GetProvenance("CommissionModelType")}")">
+                @GetProvenance("CommissionModelType")
+            </MudChip>
+        </MudStack>
+
+        <MudDivider Class="my-3" />
+        <MudText Typo="Typo.subtitle2" Class="mb-2">Risk Settings</MudText>
+
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-2">
+            <MudNumericField T="decimal" @bind-Value="Model.InitialCash" Label="Initial Cash ($)"
+                             Min="1000m" Style="flex: 1;" aria-label="Initial cash" />
+            <MudChip T="string" Size="MudBlazor.Size.Small" Color="@GetProvenanceColor("InitialCash")"
+                     Variant="Variant.Text" aria-label="@($"Provenance: {GetProvenance("InitialCash")}")">
+                @GetProvenance("InitialCash")
+            </MudChip>
+        </MudStack>
+
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-2">
+            <MudNumericField T="decimal" @bind-Value="Model.AnnualRiskFreeRate" Label="Annual Risk-Free Rate"
+                             Min="0m" Max="0.2m" Step="0.01m" Style="flex: 1;"
+                             aria-label="Annual risk-free rate" />
+            <MudChip T="string" Size="MudBlazor.Size.Small" Color="@GetProvenanceColor("AnnualRiskFreeRate")"
+                     Variant="Variant.Text" aria-label="@($"Provenance: {GetProvenance("AnnualRiskFreeRate")}")">
+                @GetProvenance("AnnualRiskFreeRate")
+            </MudChip>
+        </MudStack>
+
+        @if (HasOverrides)
+        {
+            <MudAlert Severity="Severity.Info" Dense="true" Class="mt-2" aria-label="Custom overrides active">
+                Custom overrides active — preset label shows "Custom (based on @(PresetName ?? "none"))".
+            </MudAlert>
+        }
+    </MudExpansionPanel>
+</MudExpansionPanels>
+
+@code {
+    [Parameter] public BuilderViewModel Model { get; set; } = default!;
+    [Parameter] public string? PresetName { get; set; }
+    [Parameter] public ConfigPreset? ActivePreset { get; set; }
+    [Parameter] public EventCallback OnModelChanged { get; set; }
+
+    private bool HasOverrides =>
+        ActivePreset is not null && (
+            Model.SlippageModelType != ActivePreset.ExecutionConfig.SlippageModelType ||
+            Model.CommissionModelType != ActivePreset.ExecutionConfig.CommissionModelType ||
+            (ActivePreset.RiskConfig is not null && Model.InitialCash != ActivePreset.RiskConfig.InitialCash));
+
+    private string GetProvenance(string field)
+    {
+        if (ActivePreset is null) return "Default";
+
+        var isOverridden = field switch
+        {
+            "SlippageModelType" => Model.SlippageModelType != ActivePreset.ExecutionConfig.SlippageModelType,
+            "CommissionModelType" => Model.CommissionModelType != ActivePreset.ExecutionConfig.CommissionModelType,
+            "InitialCash" => ActivePreset.RiskConfig is not null && Model.InitialCash != ActivePreset.RiskConfig.InitialCash,
+            "AnnualRiskFreeRate" => ActivePreset.RiskConfig is not null && Model.AnnualRiskFreeRate != ActivePreset.RiskConfig.AnnualRiskFreeRate,
+            _ => false
+        };
+
+        return isOverridden ? "Custom" : "Preset";
+    }
+
+    private Color GetProvenanceColor(string field)
+    {
+        var prov = GetProvenance(field);
+        return prov switch
+        {
+            "Preset" => Color.Info,
+            "Custom" => Color.Warning,
+            _ => Color.Default
+        };
+    }
+}

@@ -1,21 +1,56 @@
 @inject TradingResearchEngine.Application.Research.BackgroundStudyService StudyService
+@inject TradingResearchEngine.Application.Research.JobExecutor JobExecutor
 @inject NavigationManager Nav
 @implements IDisposable
 
-@if (_activeStudies.Count > 0 || _recentCompletions.Count > 0)
+@if (_activeStudies.Count > 0 || _recentCompletions.Count > 0 || _activeJobs.Count > 0)
 {
-    <div style="position:fixed; bottom:0; left:0; right:0; z-index:1000; background:var(--mud-palette-surface); border-top:1px solid var(--mud-palette-divider); padding:4px 16px; min-height:32px;">
+    <div style="position:fixed; bottom:0; left:0; right:0; z-index:1000; background:var(--mud-palette-surface); border-top:1px solid var(--mud-palette-divider); padding:4px 16px; min-height:32px;"
+         role="status" aria-label="Execution status bar">
         <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap">
+            @* V5: Job-based progress snapshots *@
+            @foreach (var job in _activeJobs)
+            {
+                var pct = job.Progress?.Percentage ?? 0m;
+                var stage = job.Progress?.Stage ?? "Queued";
+                var current = job.Progress?.Current ?? 0;
+                var total = job.Progress?.Total ?? 0;
+                var elapsed = job.Progress?.ElapsedTime ?? TimeSpan.Zero;
+                <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
+                    <MudProgressCircular Size="MudBlazor.Size.Small" Value="@((int)pct)"
+                                         aria-label="@($"Job {job.JobId}: {pct:F0}% complete")" />
+                    <MudText Typo="Typo.caption" aria-label="@($"Stage: {stage}, {current} of {total}")">
+                        @job.JobType — @stage: @pct.ToString("F0")%
+                    </MudText>
+                    <MudText Typo="Typo.caption" Class="text-muted" aria-label="@($"Progress: {current} of {total}")">
+                        (@current/@total)
+                    </MudText>
+                    <MudText Typo="Typo.caption" Class="text-muted" aria-label="@($"Elapsed: {elapsed:mm\\:ss}")">
+                        @elapsed.ToString(@"mm\:ss")
+                    </MudText>
+                    <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Text" Color="Color.Error"
+                               OnClick="@(() => CancelJob(job.JobId))"
+                               aria-label="@($"Cancel job {job.JobId}")">Stop</MudButton>
+                </MudStack>
+            }
+
+            @* Existing study-based progress *@
             @foreach (var study in _activeStudies)
             {
                 var pct = study.Total > 0 ? (int)(100.0 * study.Current / study.Total) : 0;
+                var elapsed = DateTimeOffset.UtcNow - study.StartedAt;
                 <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
-                    <MudProgressCircular Size="MudBlazor.Size.Small" Indeterminate="@(study.Total == 0)" Value="@pct" />
+                    <MudProgressCircular Size="MudBlazor.Size.Small" Indeterminate="@(study.Total == 0)" Value="@pct"
+                                         aria-label="@($"Study {study.Type}: {pct}% complete")" />
                     <MudText Typo="Typo.caption">@study.Type (@GetStrategyLabel(study)): @pct%</MudText>
+                    <MudText Typo="Typo.caption" Class="text-muted">(@study.Current/@study.Total)</MudText>
+                    <MudText Typo="Typo.caption" Class="text-muted">@elapsed.ToString(@"mm\:ss")</MudText>
                     <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Text"
-                               OnClick="@(() => Nav.NavigateTo($"/research/study/{study.StudyId}"))">View</MudButton>
+                               OnClick="@(() => Nav.NavigateTo($"/research/study/{study.StudyId}"))"
+                               aria-label="@($"View study {study.StudyId}")">View</MudButton>
                     <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Text" Color="Color.Error"
-                               OnClick="@(() => StudyService.CancelStudy(study.StudyId))">Stop</MudButton>
+                               OnClick="@(() => StudyService.CancelStudy(study.StudyId))"
+                               aria-label="@($"Cancel study {study.StudyId}")">Stop</MudButton>
                 </MudStack>
             }
             @foreach (var completion in _recentCompletions)
@@ -24,7 +59,8 @@
                 <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
                     <MudText Typo="Typo.caption">@icon @completion.StudyId</MudText>
                     <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Text"
-                               OnClick="@(() => Nav.NavigateTo($"/research/study/{completion.StudyId}"))">View Results</MudButton>
+                               OnClick="@(() => Nav.NavigateTo($"/research/study/{completion.StudyId}"))"
+                               aria-label="@($"View results for {completion.StudyId}")">View Results</MudButton>
                     <MudIconButton Icon="@Icons.Material.Filled.Close" Size="MudBlazor.Size.Small"
                                    OnClick="@(() => DismissCompletion(completion.StudyId))"
                                    aria-label="Dismiss notification" />
@@ -37,12 +73,43 @@
 @code {
     private List<TradingResearchEngine.Application.Research.ActiveStudy> _activeStudies = new();
     private List<TradingResearchEngine.Application.Research.StudyCompletionUpdate> _recentCompletions = new();
+    private List<TradingResearchEngine.Application.Research.BacktestJob> _activeJobs = new();
+    private System.Timers.Timer? _pollTimer;
 
     protected override void OnInitialized()
     {
         StudyService.OnProgress += OnProgress;
         StudyService.OnCompleted += OnCompleted;
         _activeStudies = StudyService.GetActiveStudies().ToList();
+
+        // V5: Poll for active job progress snapshots
+        _pollTimer = new System.Timers.Timer(2000);
+        _pollTimer.Elapsed += async (_, _) => await PollJobProgress();
+        _pollTimer.Start();
+    }
+
+    private async Task PollJobProgress()
+    {
+        try
+        {
+            var jobs = await JobExecutor.ListJobsAsync();
+            _activeJobs = jobs
+                .Where(j => j.Status == TradingResearchEngine.Application.Research.JobStatus.Running
+                         || j.Status == TradingResearchEngine.Application.Research.JobStatus.Queued)
+                .ToList();
+            await InvokeAsync(StateHasChanged);
+        }
+        catch
+        {
+            // Silently ignore polling errors
+        }
+    }
+
+    private void CancelJob(string jobId)
+    {
+        _ = JobExecutor.CancelAsync(jobId);
+        _activeJobs.RemoveAll(j => j.JobId == jobId);
+        StateHasChanged();
     }
 
     private void OnProgress(TradingResearchEngine.Application.Research.StudyProgressUpdate update)
@@ -73,5 +140,7 @@
     {
         StudyService.OnProgress -= OnProgress;
         StudyService.OnCompleted -= OnCompleted;
+        _pollTimer?.Stop();
+        _pollTimer?.Dispose();
     }
 }
