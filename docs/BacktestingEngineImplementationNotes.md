@@ -324,6 +324,16 @@ Long-running research workflows report progress via `IProgress<ProgressUpdate>`.
 
 `FirmRuleSet` implements `IHasId` (mapping `Id` to `FirmName`), enabling CRUD via `IRepository<FirmRuleSet>` and `JsonFileRepository<T>`. This allows prop-firm rule sets to be saved, loaded, and managed through the same persistence infrastructure as `BacktestResult` and `ScenarioConfig`. The Blazor UI Rule Set Editor and the CLI/API can persist firm configurations for reuse across evaluations.
 
+## V5 Persistence — BacktestJob, ConfigDraft, ConfigPreset
+
+V5 adds three new repository registrations in `Infrastructure/ServiceCollectionExtensions.cs`, following the same `JsonFileRepository<T>` pattern used for `BacktestResult`, `ScenarioConfig`, and `FirmRuleSet`:
+
+- `IRepository<BacktestJob>` → `JsonFileRepository<BacktestJob>` — persists async job records (lifecycle: Queued → Running → Completed/Failed/Cancelled). `BacktestJob` implements `IHasId` via `JobId`.
+- `IRepository<ConfigDraft>` → `JsonFileRepository<ConfigDraft>` — persists in-progress builder sessions. `ConfigDraft` implements `IHasId` via `DraftId`. Drafts are deleted on promotion to `StrategyVersion`.
+- `IRepository<ConfigPreset>` → `JsonFileRepository<ConfigPreset>` — persists custom config presets alongside the four built-in presets. `ConfigPreset` implements `IHasId` via `PresetId`.
+
+All three are registered as singletons, consistent with the existing repository registrations.
+
 ### Repository Directory Resolution
 
 `JsonFileRepository<T>` resolves its storage directory using the following logic:

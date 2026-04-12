@@ -14,6 +14,9 @@ builder.Services.AddTradingResearchEngine(builder.Configuration);
 builder.Services.AddTradingResearchEngineInfrastructure(builder.Configuration);
 builder.Services.AddStrategyAssembly(typeof(DonchianBreakoutStrategy).Assembly);
 
+// V5: Register JobExecutor as singleton for async job lifecycle management
+builder.Services.AddSingleton<TradingResearchEngine.Application.Research.JobExecutor>();
+
 // MudBlazor
 builder.Services.AddMudServices();
 
@@ -39,6 +42,17 @@ try
 catch (Exception ex)
 {
     app.Logger.LogWarning(ex, "Market data import recovery failed on startup");
+}
+
+// V5: Recover orphaned jobs (Queued/Running) from previous process lifetime
+try
+{
+    var jobExecutor = app.Services.GetRequiredService<TradingResearchEngine.Application.Research.JobExecutor>();
+    await jobExecutor.RecoverOrphanedJobsAsync();
+}
+catch (Exception ex)
+{
+    app.Logger.LogWarning(ex, "Job recovery failed on startup");
 }
 
 if (!app.Environment.IsDevelopment())
