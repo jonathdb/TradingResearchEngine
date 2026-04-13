@@ -126,7 +126,7 @@ else
                                 <MudText Typo="Typo.body2">@run.ScenarioConfig.StrategyType</MudText>
                             }
                             <MudIconButton Icon="@Icons.Material.Filled.OpenInNew" Size="MudBlazor.Size.Small" Class="text-muted"
-                                           Href="@($"/backtests/{run.Id}")" Title="View run result" />
+                                           Href="@($"/backtests/{run.Id}")" aria-label="View run result" />
                         </MudStack>
                         <MudStack Row="true" Spacing="1" Wrap="Wrap.Wrap">
                             @foreach (var w in warnings)

@@ -53,7 +53,7 @@ V2 is engine-only. UI rework is V3.
 - Eliminated look-ahead bias: pending-order queue with 4-step per-bar processing (BUG-01)
 - Sharpe/Sortino computed from equity curve period returns with configurable BarsPerYear (BUG-02)
 - Continuous mark-to-market on every bar with enriched EquityCurvePoint (BUG-03)
-- Direction.Short removed; long-only V2 scope (BUG-04)
+- Direction.Short removed; long-only V2 scope (BUG-04) — V5 re-adds `Direction.Short` for exhaustive switch coverage with `LongOnlyGuard` runtime guard; short execution deferred to V6
 - Monte Carlo resamples normalised ReturnOnRisk, multiplicative path reconstruction (BUG-05)
 - O(1) rolling SMA in all strategies (IMP-01)
 - ADF stationarity test cached with recheck interval (IMP-02)

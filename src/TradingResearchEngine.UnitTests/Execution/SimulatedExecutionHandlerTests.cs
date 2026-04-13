@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging.Abstractions;
 using TradingResearchEngine.Application.Execution;
 using TradingResearchEngine.Core.Events;
 
@@ -12,7 +13,8 @@ public class SimulatedExecutionHandlerTests
     {
         var slippage = new FixedSpreadSlippageModel(0.10m);
         var commission = new PerTradeCommissionModel(5m);
-        var handler = new SimulatedExecutionHandler(slippage, commission);
+        var handler = new SimulatedExecutionHandler(slippage, commission,
+            NullLogger<SimulatedExecutionHandler>.Instance);
 
         var order = new OrderEvent("AAPL", Direction.Long, 100m, OrderType.Market, null, T0, true);
         var bar = new BarEvent("AAPL", "1D", 100m, 105m, 99m, 102m, 1000m, T0);
@@ -32,7 +34,8 @@ public class SimulatedExecutionHandlerTests
     {
         var slippage = new FixedSpreadSlippageModel(0.05m);
         var commission = new ZeroCommissionModel();
-        var handler = new SimulatedExecutionHandler(slippage, commission);
+        var handler = new SimulatedExecutionHandler(slippage, commission,
+            NullLogger<SimulatedExecutionHandler>.Instance);
 
         var order = new OrderEvent("AAPL", Direction.Flat, 50m, OrderType.Market, null, T0, true);
         var bar = new BarEvent("AAPL", "1D", 100m, 105m, 99m, 102m, 1000m, T0);
@@ -48,7 +51,8 @@ public class SimulatedExecutionHandlerTests
     {
         var slippage = new ZeroSlippageModel();
         var commission = new ZeroCommissionModel();
-        var handler = new SimulatedExecutionHandler(slippage, commission);
+        var handler = new SimulatedExecutionHandler(slippage, commission,
+            NullLogger<SimulatedExecutionHandler>.Instance);
 
         var order = new OrderEvent("AAPL", Direction.Long, 10m, OrderType.Market, null, T0, true);
         var tick = new TickEvent("AAPL",

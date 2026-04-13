@@ -47,10 +47,28 @@ public sealed class Portfolio
         new(Positions, CashBalance, TotalEquity);
 
     /// <summary>
+    /// Returns exposure by symbol as a dictionary of symbol → exposure percentage.
+    /// Exposure is computed as (position market value / total equity) for each symbol.
+    /// </summary>
+    public Dictionary<string, decimal> GetExposureBySymbol()
+    {
+        if (TotalEquity <= 0m)
+            return new Dictionary<string, decimal>();
+
+        return _positions
+            .Where(kv => kv.Value.Quantity > 0m)
+            .ToDictionary(
+                kv => kv.Key,
+                kv => (kv.Value.AverageEntryPrice * kv.Value.Quantity) / TotalEquity * 100m);
+    }
+
+    /// <summary>
     /// Updates portfolio state from a fill. Logs a <c>MarginBreachWarning</c> if cash would go negative.
     /// </summary>
     public void Update(FillEvent fill)
     {
+        LongOnlyGuard.EnsureLongOnly(fill.Direction);
+
         if (fill.Direction == Direction.Long)
         {
             decimal cost = fill.FillPrice * fill.Quantity + fill.Commission;

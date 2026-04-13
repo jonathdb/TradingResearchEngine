@@ -16,4 +16,8 @@ public sealed class BlazorProgressReporter : IProgressReporter
     /// <inheritdoc/>
     public void Report(int current, int total, string label)
         => _callback(current, total, label);
+
+    /// <inheritdoc/>
+    public void Report(ProgressSnapshot snapshot)
+        => _callback(snapshot.Current, snapshot.Total, snapshot.CurrentItemLabel ?? snapshot.Stage);
 }

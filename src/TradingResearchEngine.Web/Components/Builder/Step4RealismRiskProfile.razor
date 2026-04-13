@@ -1,0 +1,73 @@
+@* Step 4: Realism & Risk Profile — preset cards + advanced overrides *@
+
+<MudText Typo="Typo.h6" Class="mb-3">Realism & Risk Profile</MudText>
+
+<MudText Typo="Typo.body2" Class="text-muted mb-3">
+    Choose a preset to configure execution realism and risk settings. You can fine-tune individual settings below.
+</MudText>
+
+<PresetCards Presets="@Presets"
+             SelectedPresetId="@Model.PresetId"
+             OnPresetSelected="OnPresetSelected" />
+
+@if (_activePreset is not null && _hasOverrides)
+{
+    <MudAlert Severity="Severity.Info" Dense="true" Class="mt-3" aria-label="Custom preset label">
+        Custom (based on @_activePreset.Name)
+    </MudAlert>
+}
+
+<div class="mt-4">
+    <AdvancedOverridesPanel Model="@Model"
+                            PresetName="@(_activePreset?.Name)"
+                            ActivePreset="@_activePreset"
+                            OnModelChanged="OnChanged" />
+</div>
+
+@code {
+    [Parameter] public BuilderViewModel Model { get; set; } = default!;
+    [Parameter] public IReadOnlyList<ConfigPreset> Presets { get; set; } = Array.Empty<ConfigPreset>();
+    [Parameter] public EventCallback OnModelChanged { get; set; }
+
+    private ConfigPreset? _activePreset;
+    private bool _hasOverrides;
+
+    protected override void OnParametersSet()
+    {
+        _activePreset = Presets.FirstOrDefault(p => p.PresetId == Model.PresetId);
+        UpdateOverrideStatus();
+    }
+
+    private async Task OnPresetSelected(ConfigPreset preset)
+    {
+        Model.PresetId = preset.PresetId;
+        Model.SlippageModelType = preset.ExecutionConfig.SlippageModelType;
+        Model.CommissionModelType = preset.ExecutionConfig.CommissionModelType;
+        if (preset.RiskConfig is not null)
+        {
+            Model.InitialCash = preset.RiskConfig.InitialCash;
+            Model.AnnualRiskFreeRate = preset.RiskConfig.AnnualRiskFreeRate;
+        }
+        Model.PresetOverrides.Clear();
+        Model.IsDirty = true;
+        _activePreset = preset;
+        _hasOverrides = false;
+        await OnModelChanged.InvokeAsync();
+    }
+
+    private async Task OnChanged()
+    {
+        Model.IsDirty = true;
+        UpdateOverrideStatus();
+        await OnModelChanged.InvokeAsync();
+    }
+
+    private void UpdateOverrideStatus()
+    {
+        if (_activePreset is null) { _hasOverrides = false; return; }
+        _hasOverrides =
+            Model.SlippageModelType != _activePreset.ExecutionConfig.SlippageModelType ||
+            Model.CommissionModelType != _activePreset.ExecutionConfig.CommissionModelType ||
+            (_activePreset.RiskConfig is not null && Model.InitialCash != _activePreset.RiskConfig.InitialCash);
+    }
+}

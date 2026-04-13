@@ -46,6 +46,14 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IRepository<TradingResearchEngine.Application.PropFirm.FirmRuleSet>,
             JsonFileRepository<TradingResearchEngine.Application.PropFirm.FirmRuleSet>>();
 
+        // V5: Job, ConfigDraft, and ConfigPreset repositories
+        services.AddSingleton<IRepository<TradingResearchEngine.Application.Research.BacktestJob>,
+            JsonFileRepository<TradingResearchEngine.Application.Research.BacktestJob>>();
+        services.AddSingleton<IRepository<TradingResearchEngine.Application.Strategy.ConfigDraft>,
+            JsonFileRepository<TradingResearchEngine.Application.Strategy.ConfigDraft>>();
+        services.AddSingleton<IRepository<TradingResearchEngine.Application.Strategy.ConfigPreset>,
+            JsonFileRepository<TradingResearchEngine.Application.Strategy.ConfigPreset>>();
+
         // V3: Strategy and study repositories
         services.AddSingleton<TradingResearchEngine.Application.Strategy.IStrategyRepository>(sp =>
         {

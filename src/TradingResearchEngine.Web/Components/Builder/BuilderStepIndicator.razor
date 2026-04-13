@@ -1,0 +1,51 @@
+@* 5-step progress bar for the strategy builder *@
+
+<MudStack Row="true" Spacing="1" Class="mb-4" AlignItems="AlignItems.Center" role="navigation" aria-label="Builder steps">
+    @foreach (var (title, idx) in Steps)
+    {
+        var stepNum = idx + 1;
+        var state = stepNum < CurrentStep ? "completed" : stepNum == CurrentStep ? "active" : "upcoming";
+        <MudChip T="string"
+                 Size="MudBlazor.Size.Small"
+                 Color="@GetStepColor(state)"
+                 Variant="@(state != "upcoming" ? Variant.Filled : Variant.Outlined)"
+                 Disabled="@(state == "upcoming")"
+                 Icon="@(state == "completed" ? Icons.Material.Filled.Check : null)"
+                 aria-label="@($"Step {stepNum}: {title} — {state}")"
+                 OnClick="@(() => OnStepClicked(stepNum))"
+                 tabindex="0">
+            @title
+        </MudChip>
+        @if (idx < 4)
+        {
+            <MudIcon Icon="@Icons.Material.Filled.ChevronRight" Size="MudBlazor.Size.Small" Class="text-faint" />
+        }
+    }
+</MudStack>
+
+@code {
+    [Parameter] public int CurrentStep { get; set; } = 1;
+    [Parameter] public EventCallback<int> OnStepSelected { get; set; }
+
+    private static readonly (string Title, int Index)[] Steps = new[]
+    {
+        ("Starting Point", 0),
+        ("Data & Window", 1),
+        ("Parameters", 2),
+        ("Realism & Risk", 3),
+        ("Review & Launch", 4)
+    };
+
+    private static Color GetStepColor(string state) => state switch
+    {
+        "completed" => Color.Success,
+        "active" => Color.Primary,
+        _ => Color.Default
+    };
+
+    private async Task OnStepClicked(int step)
+    {
+        if (step < CurrentStep)
+            await OnStepSelected.InvokeAsync(step);
+    }
+}

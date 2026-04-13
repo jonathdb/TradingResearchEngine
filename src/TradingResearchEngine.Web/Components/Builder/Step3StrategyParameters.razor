@@ -1,0 +1,54 @@
+@* Step 3: Strategy Parameters — grouped by schema, Simple/Advanced toggle *@
+
+<MudText Typo="Typo.h6" Class="mb-3">Strategy Parameters</MudText>
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-3">
+    <MudText Typo="Typo.body2">Mode:</MudText>
+    <MudToggleGroup T="bool" @bind-Value="Model.AdvancedMode" aria-label="Parameter mode toggle">
+        <MudToggleItem Value="false" Text="Simple" aria-label="Simple mode — essential parameters only" />
+        <MudToggleItem Value="true" Text="Advanced" aria-label="Advanced mode — all parameters" />
+    </MudToggleGroup>
+</MudStack>
+
+@if (Schemas.Count == 0)
+{
+    <MudAlert Severity="Severity.Info" Class="mb-3" aria-label="No schema available">
+        No parameter schema available for this strategy. Parameters can be edited as key-value pairs.
+    </MudAlert>
+
+    @foreach (var key in Model.Parameters.Keys.ToList())
+    {
+        <MudTextField T="string" Value="@(Model.Parameters[key]?.ToString() ?? "")"
+                      ValueChanged="@((string v) => { Model.Parameters[key] = v; Model.IsDirty = true; })"
+                      Label="@key" Class="mb-2" aria-label="@key" />
+    }
+}
+else
+{
+    <ParameterGroupEditor Schemas="@Schemas"
+                          Parameters="@Model.Parameters"
+                          PresetParameters="@_presetParameters"
+                          AdvancedMode="@Model.AdvancedMode"
+                          OnParameterChanged="OnParamChanged" />
+}
+
+@code {
+    [Parameter] public BuilderViewModel Model { get; set; } = default!;
+    [Parameter] public IReadOnlyList<StrategyParameterSchema> Schemas { get; set; } = Array.Empty<StrategyParameterSchema>();
+    [Parameter] public Dictionary<string, object>? PresetParameters { get; set; }
+    [Parameter] public EventCallback OnModelChanged { get; set; }
+
+    private Dictionary<string, object>? _presetParameters;
+
+    protected override void OnParametersSet()
+    {
+        _presetParameters = PresetParameters;
+    }
+
+    private async Task OnParamChanged((string Key, object Value) change)
+    {
+        Model.Parameters[change.Key] = change.Value;
+        Model.IsDirty = true;
+        await OnModelChanged.InvokeAsync();
+    }
+}

@@ -1,0 +1,136 @@
+@* Step 1: Choose Starting Point — Template, Fork, Blank, Import *@
+
+<MudText Typo="Typo.h6" Class="mb-3">Choose a Starting Point</MudText>
+
+<MudStack Row="true" Spacing="2" Class="mb-4">
+    <MudButton Variant="@(Model.SourceType == SourceType.Template ? Variant.Filled : Variant.Outlined)"
+               Color="Color.Primary" OnClick="@(() => SetSource(SourceType.Template))"
+               aria-label="Start from template">
+        Template
+    </MudButton>
+    <MudButton Variant="@(Model.SourceType == SourceType.Fork ? Variant.Filled : Variant.Outlined)"
+               Color="Color.Primary" OnClick="@(() => SetSource(SourceType.Fork))"
+               aria-label="Fork existing strategy">
+        Fork Existing
+    </MudButton>
+    <MudButton Variant="@(Model.SourceType == SourceType.Manual ? Variant.Filled : Variant.Outlined)"
+               Color="Color.Primary" OnClick="@(() => SetSource(SourceType.Manual))"
+               aria-label="Start from blank">
+        Blank
+    </MudButton>
+    <MudButton Variant="@(Model.SourceType == SourceType.Import ? Variant.Filled : Variant.Outlined)"
+               Color="Color.Primary" OnClick="@(() => SetSource(SourceType.Import))"
+               aria-label="Import from JSON">
+        Import
+    </MudButton>
+</MudStack>
+
+@if (Model.SourceType == SourceType.Template)
+{
+    <TemplateFamilyCards Families="@_families"
+                        SelectedFamily="@_selectedFamily"
+                        SelectedTemplateId="@Model.TemplateId"
+                        OnTemplateSelected="OnTemplateSelected" />
+}
+else if (Model.SourceType == SourceType.Fork)
+{
+    <MudText Typo="Typo.body2" Class="mb-2 text-muted">Select an existing strategy to fork:</MudText>
+    <MudSelect T="string" @bind-Value="_forkStrategyId" Label="Strategy to Fork" Class="mb-3">
+        @foreach (var s in _strategies)
+        {
+            <MudSelectItem Value="@s.StrategyId">@s.StrategyName (@s.StrategyType)</MudSelectItem>
+        }
+    </MudSelect>
+}
+else if (Model.SourceType == SourceType.Import)
+{
+    <MudText Typo="Typo.body2" Class="mb-2 text-muted">Paste or upload a JSON config file:</MudText>
+    <MudTextField @bind-Value="_importJson" Label="JSON Config" Lines="6" Class="mb-3"
+                  Placeholder="Paste JSON config here..." />
+}
+else if (Model.SourceType == SourceType.Manual)
+{
+    <MudAlert Severity="Severity.Info" Class="mb-3">
+        Starting from blank — you'll configure everything manually in the following steps.
+    </MudAlert>
+    <MudSelect T="string" @bind-Value="_manualStrategyType" Label="Strategy Type" Class="mb-3">
+        @foreach (var name in _knownStrategies)
+        {
+            <MudSelectItem Value="@name">@name</MudSelectItem>
+        }
+    </MudSelect>
+}
+
+<MudDivider Class="my-4" />
+
+<MudTextField @bind-Value="Model.Hypothesis"
+              Label="Hypothesis (required)"
+              HelperText="Why should this strategy work? Minimum 10 characters."
+              Required="true"
+              Validation="@(new Func<string?, string?>(ValidateHypothesis))"
+              Class="mb-3"
+              aria-label="Strategy hypothesis" />
+
+<MudTextField @bind-Value="Model.ExpectedFailureMode"
+              Label="Expected Failure Mode (optional)"
+              HelperText="How is this strategy most likely to fail?"
+              Class="mb-3"
+              aria-label="Expected failure mode" />
+
+@code {
+    [Parameter] public BuilderViewModel Model { get; set; } = default!;
+    [Parameter] public IReadOnlyList<StrategyTemplate> Templates { get; set; } = Array.Empty<StrategyTemplate>();
+    [Parameter] public IReadOnlyList<StrategyIdentity> Strategies { get; set; } = Array.Empty<StrategyIdentity>();
+    [Parameter] public IReadOnlyList<string> KnownStrategies { get; set; } = Array.Empty<string>();
+    [Parameter] public EventCallback<StrategyTemplate> OnTemplateSelected { get; set; }
+    [Parameter] public EventCallback OnModelChanged { get; set; }
+
+    private Dictionary<string, List<StrategyTemplate>> _families = new();
+    private IReadOnlyList<StrategyIdentity> _strategies = Array.Empty<StrategyIdentity>();
+    private IReadOnlyList<string> _knownStrategies = Array.Empty<string>();
+    private string? _selectedFamily;
+    private string? _forkStrategyId;
+    private string? _importJson;
+    private string? _manualStrategyType;
+
+    protected override void OnParametersSet()
+    {
+        _strategies = Strategies;
+        _knownStrategies = KnownStrategies;
+        _families = Templates
+            .Where(t => t.Descriptor is not null)
+            .GroupBy(t => t.Descriptor!.Family)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        if (Model.TemplateId is not null)
+        {
+            var tpl = Templates.FirstOrDefault(t => t.TemplateId == Model.TemplateId);
+            if (tpl?.Descriptor is not null)
+                _selectedFamily = tpl.Descriptor.Family;
+        }
+    }
+
+    private void SetSource(SourceType source)
+    {
+        Model.SourceType = source;
+        Model.IsDirty = true;
+    }
+
+    private async Task OnTemplateSelected_Internal(StrategyTemplate tpl)
+    {
+        Model.TemplateId = tpl.TemplateId;
+        Model.StrategyType = tpl.StrategyType;
+        Model.Parameters = new Dictionary<string, object>(tpl.DefaultParameters);
+        Model.Timeframe = tpl.RecommendedTimeframe;
+        Model.Hypothesis ??= tpl.Descriptor?.Hypothesis;
+        Model.IsDirty = true;
+        await OnTemplateSelected.InvokeAsync(tpl);
+    }
+
+    private static string? ValidateHypothesis(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return "Hypothesis is required.";
+        if (value.Length < 10) return "Hypothesis must be at least 10 characters.";
+        return null;
+    }
+}

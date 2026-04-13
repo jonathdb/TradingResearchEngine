@@ -137,10 +137,18 @@ public sealed class DukascopyImportProvider : IMarketDataProvider
             try
             {
                 var cached = DukascopyHelpers.LoadFromCsv(cachePath, symbol, "1m");
-                if (cached.Count > 0)
+                if (cached.Count > 1)
                 {
                     _logger.LogDebug("Cache hit: {Symbol} {Date:yyyy-MM-dd} ({Count} bars)", symbol, date, cached.Count);
                     return cached;
+                }
+
+                // A single-bar cache file is likely stale daily data from before
+                // the interval fix — invalidate and re-download.
+                if (cached.Count <= 1)
+                {
+                    _logger.LogDebug("Stale cache for {Symbol} {Date:yyyy-MM-dd} ({Count} bar), re-downloading",
+                        symbol, date, cached.Count);
                 }
             }
             catch

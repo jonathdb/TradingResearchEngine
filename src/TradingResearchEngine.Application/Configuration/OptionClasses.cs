@@ -32,6 +32,14 @@ public sealed class MonteCarloOptions
 
     /// <summary>Equity drawdown fraction at which a path is classified as ruin.</summary>
     public decimal RuinThresholdPercent { get; set; } = 0.5m;
+
+    /// <summary>
+    /// Block size for block bootstrap resampling. Default 1 = IID bootstrap.
+    /// Values &gt; 1 sample contiguous blocks to preserve serial autocorrelation.
+    /// Recommended for trend-following strategies: set to approximate average
+    /// holding period in trades.
+    /// </summary>
+    public int BlockSize { get; set; } = 1;
 }
 
 /// <summary>Options for the risk layer.</summary>

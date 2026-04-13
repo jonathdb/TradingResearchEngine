@@ -2,6 +2,7 @@ using System.Buffers.Binary;
 using System.Globalization;
 using SharpCompress.Compressors.LZMA;
 using TradingResearchEngine.Core.DataHandling;
+using TradingResearchEngine.Core.Events;
 
 namespace TradingResearchEngine.Infrastructure.DataProviders;
 
@@ -29,7 +30,7 @@ public static class DukascopyHelpers
     public static byte[] Decompress(byte[] data)
     {
         byte[] props = data[..5];
-        long uncompressedSize = BitConverter.ToInt64(data, 5);
+        long uncompressedSize = BinaryPrimitives.ReadInt64LittleEndian(data.AsSpan(5, 8));
         if (uncompressedSize <= 0 || uncompressedSize > 50_000_000)
             return Array.Empty<byte>();
 
@@ -69,13 +70,56 @@ public static class DukascopyHelpers
             int vb = BinaryPrimitives.ReadInt32BigEndian(rec.AsSpan(20, 4));
             float vol = BitConverter.Int32BitsToSingle(vb);
 
-            var ts = new DateTimeOffset(dayStart, TimeSpan.Zero).AddMilliseconds(ms);
+            var ts = new DateTimeOffset(dayStart, TimeSpan.Zero).AddSeconds(ms);
             decimal o = op / pointSize, h = hi / pointSize, l = lo / pointSize, c = cl / pointSize;
 
-            if (o > 0 && h > 0 && l > 0 && c > 0)
+            if (o > 0 && h > 0 && l > 0 && c > 0 && h >= l)
                 bars.Add(new BarRecord(symbol, "1m", o, h, l, c, (decimal)vol, ts));
         }
         return bars;
+    }
+
+    /// <summary>
+    /// Parses decompressed binary tick data into TickRecords.
+    /// Dukascopy provides top-of-book data only (one bid, one ask, no depth).
+    /// <c>LastTrade</c> is synthesized from the mid-price <c>(ask + bid) / 2</c>
+    /// with size <c>Math.Min(askVol, bidVol)</c>. This is provider-derived,
+    /// not exchange-reported — Dukascopy does not publish actual trade prints.
+    /// </summary>
+    public static List<TickRecord> ParseTicks(
+        byte[] data, DateTime hourStart, string symbol, decimal pointSize)
+    {
+        const int Size = 20;
+        var ticks = new List<TickRecord>(data.Length / Size);
+
+        for (int i = 0; i + Size <= data.Length; i += Size)
+        {
+            uint ms = BinaryPrimitives.ReadUInt32BigEndian(data.AsSpan(i, 4));
+            uint askRaw = BinaryPrimitives.ReadUInt32BigEndian(data.AsSpan(i + 4, 4));
+            uint bidRaw = BinaryPrimitives.ReadUInt32BigEndian(data.AsSpan(i + 8, 4));
+            float askVol = BitConverter.Int32BitsToSingle(
+                BinaryPrimitives.ReadInt32BigEndian(data.AsSpan(i + 12, 4)));
+            float bidVol = BitConverter.Int32BitsToSingle(
+                BinaryPrimitives.ReadInt32BigEndian(data.AsSpan(i + 16, 4)));
+
+            decimal ask = askRaw / pointSize;
+            decimal bid = bidRaw / pointSize;
+
+            if (ask <= 0 || bid <= 0) continue;
+
+            var ts = new DateTimeOffset(hourStart, TimeSpan.Zero).AddMilliseconds(ms);
+            decimal midPrice = (ask + bid) / 2m;
+            decimal tradeSize = Math.Min((decimal)askVol, (decimal)bidVol);
+
+            ticks.Add(new TickRecord(
+                symbol,
+                new[] { new BidLevel(bid, (decimal)bidVol) },
+                new[] { new AskLevel(ask, (decimal)askVol) },
+                new LastTrade(midPrice, tradeSize, ts),
+                ts));
+        }
+
+        return ticks;
     }
 
     /// <summary>Aggregates minute bars to the target interval using time-based boundaries.</summary>
@@ -95,8 +139,8 @@ public static class DukascopyHelpers
             var windowEnd = windowStart.AddMinutes(mins);
 
             decimal open = bars[i].Open;
-            decimal high = bars[i].High;
-            decimal low = bars[i].Low;
+            decimal high = Math.Max(bars[i].High, bars[i].Open);
+            decimal low = Math.Min(bars[i].Low, bars[i].Open);
             decimal close = bars[i].Close;
             decimal volume = bars[i].Volume;
             var timestamp = windowStart;
@@ -111,13 +155,17 @@ public static class DukascopyHelpers
                 i++;
             }
 
+            // Clamp high/low to cover the final close value
+            high = Math.Max(high, close);
+            low = Math.Min(low, close);
+
             result.Add(new BarRecord(symbol, interval, open, high, low, close, volume, timestamp));
         }
         return result;
     }
 
     /// <summary>Truncates a timestamp to the nearest interval boundary (UTC-safe).</summary>
-    private static DateTimeOffset TruncateToInterval(DateTimeOffset ts, int intervalMinutes)
+    internal static DateTimeOffset TruncateToInterval(DateTimeOffset ts, int intervalMinutes)
     {
         // Use UtcDateTime to avoid local timezone offset issues
         var utc = ts.UtcDateTime;
@@ -127,12 +175,20 @@ public static class DukascopyHelpers
     }
 
     /// <summary>Converts an interval string to minutes.</summary>
-    public static int IntervalToMinutes(string interval) => interval.ToLowerInvariant() switch
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="interval"/> is <c>null</c>.</exception>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="interval"/> is not a recognized value.</exception>
+    public static int IntervalToMinutes(string interval)
     {
-        "1m" => 1, "5m" => 5, "15m" => 15, "30m" => 30,
-        "1h" or "60m" => 60, "4h" => 240, "1d" or "daily" => 1440,
-        _ => 1440
-    };
+        ArgumentNullException.ThrowIfNull(interval);
+        return interval.ToLowerInvariant() switch
+        {
+            "1m" => 1, "5m" => 5, "15m" => 15, "30m" => 30,
+            "1h" or "60m" => 60, "4h" => 240, "1d" or "daily" => 1440,
+            var unknown => throw new ArgumentException(
+                $"Unrecognized interval '{unknown}'. Supported values: 1m, 5m, 15m, 30m, 1h, 60m, 4h, 1d, daily.",
+                nameof(interval))
+        };
+    }
 
     /// <summary>Builds the list of trading days (skipping weekends) in a date range.</summary>
     public static List<DateTime> BuildTradingDays(DateTime startDate, DateTime endDate)
@@ -150,9 +206,44 @@ public static class DukascopyHelpers
 
     /// <summary>Builds the Dukascopy URL for a specific day's BID minute candles.</summary>
     public static string BuildDayUrl(string symbol, DateTime date)
+        => BuildDayUrl(symbol, date, DukascopyPriceType.Bid);
+
+    /// <summary>Builds the Dukascopy URL for a specific day's minute candles for the given price type.</summary>
+    public static string BuildDayUrl(string symbol, DateTime date, DukascopyPriceType priceType)
     {
         int month = date.Month - 1; // Dukascopy months are 0-indexed
-        return $"{BaseUrl}/{symbol}/{date.Year}/{month:D2}/{date.Day:D2}/BID_candles_min_1.bi5";
+        string file = priceType == DukascopyPriceType.Ask
+            ? "ASK_candles_min_1.bi5"
+            : "BID_candles_min_1.bi5";
+        return $"{BaseUrl}/{symbol}/{date.Year}/{month:D2}/{date.Day:D2}/{file}";
+    }
+
+    /// <summary>
+    /// Returns the per-day cache file path for a symbol, price type, and date.
+    /// Creates the directory structure if it does not exist.
+    /// </summary>
+    public static string GetDayCachePath(string cacheDir, string symbol, string priceType, DateTime date)
+    {
+        var path = Path.Combine(cacheDir, symbol, priceType,
+            date.Year.ToString("D4"), date.Month.ToString("D2"), $"{date.Day:D2}.csv");
+        var dir = Path.GetDirectoryName(path)!;
+        if (!Directory.Exists(dir))
+            Directory.CreateDirectory(dir);
+        return path;
+    }
+
+    /// <summary>
+    /// Returns true if a cache file exists and contains data beyond just a header row.
+    /// Zero-byte or header-only files are treated as missing.
+    /// </summary>
+    public static bool IsCacheFileValid(string path)
+    {
+        if (!File.Exists(path)) return false;
+        var info = new FileInfo(path);
+        if (info.Length == 0) return false;
+        // Header-only CSV: "Timestamp,Open,High,Low,Close,Volume\r\n" is ~44 bytes
+        // Any file with data rows will be larger than 60 bytes
+        return info.Length > 60;
     }
 
     /// <summary>Writes bars to a CSV file in canonical engine format.</summary>

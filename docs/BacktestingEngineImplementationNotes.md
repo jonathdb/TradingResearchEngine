@@ -63,36 +63,56 @@ When `DefaultRiskLayer.ConvertSignal` receives a `SignalEvent` with `Direction.F
 
 `RunScenarioUseCase` resolves the `IDataProvider` based on `ScenarioConfig.DataProviderType` at run time rather than pulling a single provider from DI. This allows each scenario to specify its own data source (e.g. `csv`, `http`, `dukascopy`) and pass provider-specific settings via `DataProviderOptions`.
 
+> **V5:** Data provider settings can also be specified via the `DataConfig` sub-object on `ScenarioConfig`. When `ScenarioConfig.Data` is set, `EffectiveDataConfig` returns it directly; otherwise it falls back to the top-level `DataProviderType`, `DataProviderOptions`, `Timeframe`, and `BarsPerYear` fields. See "ScenarioConfig Sub-Object Decomposition" below.
+
 ### CSV Relative Path Resolution
 
 When `DataProviderType` is `csv`, the `DataProviderFactory` resolves relative file paths using a walk-up strategy. If the path is not rooted and does not exist relative to the current working directory, the factory walks up the directory tree (up to 6 levels) looking for a match. This handles the common case where the Blazor Web project runs from `src/TradingResearchEngine.Web/` but CSV paths in `ScenarioConfig` are relative to the solution root (e.g. `samples/data/spy-daily.csv`). If no match is found, the original relative path is passed through unchanged and the provider will report a file-not-found error at read time.
 
 ### DukascopyHelpers
 
-`DukascopyHelpers` (`Infrastructure/DataProviders/DukascopyHelpers.cs`) is a shared static helper class that centralises all Dukascopy-specific logic: LZMA decompression, binary candle parsing, bar aggregation, point-size lookups, URL construction, weekend filtering, and canonical CSV read/write. Both `DukascopyDataProvider` (inline backtest) and `DukascopyImportProvider` (market data import) delegate to these helpers.
+`DukascopyHelpers` (`Infrastructure/DataProviders/DukascopyHelpers.cs`) is a shared static helper class that centralises all Dukascopy-specific logic: LZMA decompression, binary candle parsing, tick parsing, bar aggregation, point-size lookups, URL construction, weekend filtering, and canonical CSV read/write. Both `DukascopyDataProvider` (inline backtest) and `DukascopyImportProvider` (market data import) delegate to these helpers.
 
 | Method | Description |
 |---|---|
 | `Decompress(byte[])` | Decompresses LZMA-compressed `.bi5` data using the standard 13-byte header (5-byte properties + 8-byte uncompressed size + compressed stream) |
-| `ParseCandles(byte[], DateTime, string, decimal)` | Parses decompressed 24-byte binary candle records into `BarRecord` instances; skips zero-price entries |
-| `Aggregate(List<BarRecord>, string, string)` | Aggregates minute bars to a target interval (5m, 15m, 30m, 1H, 4H, Daily) using time-based boundaries; each output bar's timestamp is truncated to the nearest UTC interval boundary (using `UtcDateTime` to avoid local timezone offset issues) and all minute bars within that window are merged |
-| `IntervalToMinutes(string)` | Converts an interval string to minutes; defaults to 1440 (daily) for unknown intervals |
+| `ParseCandles(byte[], DateTime, string, decimal)` | Parses decompressed 24-byte binary candle records into `BarRecord` instances. The first 4 bytes of each record are a seconds offset from day start (unlike tick records which use milliseconds from hour start). Skips zero-price entries and records where high < low |
+| `ParseTicks(byte[], DateTime, string, decimal)` | Parses decompressed 20-byte big-endian tick records into `TickRecord` instances; each record contains ms offset, ask, bid, ask volume, and bid volume. Synthesises `LastTrade` from mid-price `(ask + bid) / 2` with size `Min(askVol, bidVol)`. Discards records with `ask <= 0` or `bid <= 0` and ignores trailing incomplete records |
+| `Aggregate(List<BarRecord>, string, string)` | Aggregates minute bars to a target interval (5m, 15m, 30m, 1H, 4H, Daily) using time-based boundaries; each output bar's timestamp is truncated to the nearest UTC interval boundary (using `UtcDateTime` to avoid local timezone offset issues) and all minute bars within that window are merged. OHLC integrity is enforced: the window's High is initialised as `Max(High, Open)` and Low as `Min(Low, Open)` so that the Open price is always contained within the High–Low range |
+| `IntervalToMinutes(string)` | Converts an interval string to minutes; throws `ArgumentNullException` for `null` and `ArgumentException` for unrecognized intervals (supported: 1m, 5m, 15m, 30m, 1h, 60m, 4h, 1d, daily) |
 | `BuildTradingDays(DateTime, DateTime)` | Builds a list of weekday dates in a range (skips Saturday/Sunday) |
-| `BuildDayUrl(string, DateTime)` | Constructs the Dukascopy datafeed URL for a day's BID minute candles (0-indexed months) |
+| `BuildDayUrl(string, DateTime)` | Constructs the Dukascopy datafeed URL for a day's BID minute candles (0-indexed months); delegates to the 3-arg overload with `DukascopyPriceType.Bid` |
+| `BuildDayUrl(string, DateTime, DukascopyPriceType)` | Constructs the Dukascopy datafeed URL for a day's minute candles for the given price type — `Bid` → `BID_candles_min_1.bi5`, `Ask` → `ASK_candles_min_1.bi5` |
+| `GetDayCachePath(string, string, string, DateTime)` | Returns the per-day cache file path for a symbol, price type, and date (`{cacheDir}/{symbol}/{priceType}/{YYYY}/{MM}/{DD}.csv`); creates the directory structure if it does not exist |
+| `IsCacheFileValid(string)` | Returns true if a cache file exists and contains data beyond a header row; zero-byte or header-only files (≤60 bytes) are treated as missing |
 | `SaveToCsv(string, List<BarRecord>)` | Writes bars to canonical CSV format (`Timestamp,Open,High,Low,Close,Volume`) |
 | `LoadFromCsv(string, string, string)` | Loads bars from a canonical CSV file |
 
 `PointSizes` is a static dictionary mapping 15 supported symbols (major forex pairs, gold, silver, equity index CFDs) to their pipette divisors. Unknown symbols should default to 100,000 at the call site.
 
+### DukascopyPriceType
+
+`DukascopyPriceType` is an enum defined in `Infrastructure/DataProviders/DukascopyDataProvider.cs` that selects which Dukascopy price series to download.
+
+| Value | Description |
+|---|---|
+| `Bid` | BID candles (default) |
+| `Ask` | ASK candles |
+| `Mid` | Mid-price: average of BID and ASK OHLC |
+
 ### DukascopyDataProvider
 
 `DukascopyDataProvider` downloads historical minute-bar data from Dukascopy's free datafeed. It requires no API key. Data is served as LZMA-compressed binary files (`.bi5` format) and decoded into `BarRecord` instances. All decompression, parsing, aggregation, URL construction, and CSV I/O is delegated to `DukascopyHelpers`.
 
+Constructor: `DukascopyDataProvider(HttpClient, ILogger<DukascopyDataProvider>, DukascopyPriceType priceType = DukascopyPriceType.Bid)`. The `priceType` parameter controls which price series is fetched — `Bid` downloads BID candles, `Ask` downloads ASK candles, and `Mid` fetches both BID and ASK files for each day and computes `MidOHLC = (BidOHLC + AskOHLC) / 2` (volume from the BID file). If an ASK file fails but BID succeeds when computing mid-price, the day is treated as a download failure (no partial mid-price bars). Default behaviour is unchanged when `priceType` is not specified.
+
 > **Note:** `DukascopyDataProvider` is no longer resolvable via `DataProviderType` in `ScenarioConfig`. It was removed from the `DataProviderFactory` switch. The class still exists in Infrastructure but must be constructed manually if needed.
 
-The provider implements a local CSV cache keyed by symbol, interval, and date range. On each `GetBars` call it checks for a cached file first. If a cache hit is found, bars are loaded from CSV via `DukascopyHelpers.LoadFromCsv` and filtered to the requested range — no HTTP requests are made. On a cache miss, the provider downloads, aggregates, and then saves the result to CSV via `DukascopyHelpers.SaveToCsv` before yielding bars.
+The provider implements a local CSV cache keyed by symbol, price type, and date. On each `GetBars` call it checks each day's cache file independently; cached days are loaded from CSV via `DukascopyHelpers.LoadFromCsv` and skip HTTP. On a cache miss, the provider downloads, aggregates, and then saves the result to CSV via `DukascopyHelpers.SaveToCsv` before yielding bars. Zero-byte or header-only cache files are treated as missing and re-fetched.
 
 When downloading, the provider uses `DukascopyHelpers.BuildTradingDays` to enumerate weekdays, then downloads them in parallel batches of up to 4 concurrent HTTP requests. Each `.bi5` payload is decompressed via `DukascopyHelpers.Decompress` and parsed via `DukascopyHelpers.ParseCandles`. After all batches complete, minute bars are sorted by timestamp and aggregated via `DukascopyHelpers.Aggregate`. `CancellationToken` is checked between batches.
+
+All HTTP requests (candle and tick downloads) are wrapped in a Polly `ResiliencePipeline` with exponential back-off. The policy retries up to 3 times on `HttpRequestException` or HTTP 5xx responses (delays: 1s → 2s → 4s). HTTP 404 is not retried — it returns an empty byte array (expected for missing data files). After exhausting retries the provider logs at `LogLevel.Error` with the URL and exception message, then re-throws.
 
 ### YahooFinanceDataProvider
 
@@ -157,6 +177,9 @@ All imported data is normalized to: `Timestamp,Open,High,Low,Close,Volume` with 
 
 ### Infrastructure — DukascopyImportProvider (`Infrastructure/MarketData/`)
 
+`DukascopyImportProvider` implements `IMarketDataProvider` with `SourceName = "Dukascopy"`. It downloads minute BID candles day-by-day (sequential, not batched), aggregates to the requested timeframe via `DukascopyHelpers.Aggregate`, filters to the requested range (start inclusive, end exclusive), and writes canonical CSV via `DukascopyHelpers.SaveToCsv`.
+
+Each day's minute data is cached locally as a CSV file. On subsequent imports the provider loads the cached file via `DukascopyHelpers.LoadFromCsv` and skips the HTTP download when the cache contains more than one bar. Single-bar (or empty) cache files are treated as stale — likely artefacts from an earlier interval bug — and are re-downloaded automatically.
 `DukascopyImportProvider` implements `IMarketDataProvider` with `SourceName = "Dukascopy"`. It downloads minute BID candles in parallel batches (up to 8 concurrent requests), aggregates to the requested timeframe via `DukascopyHelpers.Aggregate`, filters to the requested range (start inclusive, end exclusive), and writes canonical CSV via `DukascopyHelpers.SaveToCsv`. Constructor accepts an optional `cacheDir` override; defaults to `%LOCALAPPDATA%/TradingResearchEngine/DukascopyDayCache`.
 
 - Caches raw minute bars per (symbol, date) as individual CSV files (`{symbol}_{yyyyMMdd}_1m.csv`). On re-imports or different-timeframe imports, cached days are loaded from disk without HTTP requests. Empty days (holidays) are also cached to avoid redundant downloads. Corrupted cache files are detected and re-downloaded automatically.
@@ -206,6 +229,10 @@ All imported data is normalized to: `Timestamp,Open,High,Low,Close,Volume` with 
 #### Startup Recovery (Web Host)
 
 `Program.cs` calls `RecoverOnStartupAsync` on startup inside a try/catch so recovery failures don't prevent the app from starting.
+
+### Job Executor Startup (Web Host)
+
+`JobExecutor` is registered as a singleton in the Web host's `Program.cs`. After the app is built, `RecoverOrphanedJobsAsync` is called to reset any `Queued` or `Running` jobs left over from a previous process lifetime. Like market data import recovery, this runs inside a try/catch so failures don't prevent the app from starting.
 
 ### Integration Tests (`IntegrationTests/MarketData/MarketDataImportFlowTests.cs`)
 
@@ -303,6 +330,16 @@ Long-running research workflows report progress via `IProgress<ProgressUpdate>`.
 
 `FirmRuleSet` implements `IHasId` (mapping `Id` to `FirmName`), enabling CRUD via `IRepository<FirmRuleSet>` and `JsonFileRepository<T>`. This allows prop-firm rule sets to be saved, loaded, and managed through the same persistence infrastructure as `BacktestResult` and `ScenarioConfig`. The Blazor UI Rule Set Editor and the CLI/API can persist firm configurations for reuse across evaluations.
 
+## V5 Persistence — BacktestJob, ConfigDraft, ConfigPreset
+
+V5 adds three new repository registrations in `Infrastructure/ServiceCollectionExtensions.cs`, following the same `JsonFileRepository<T>` pattern used for `BacktestResult`, `ScenarioConfig`, and `FirmRuleSet`:
+
+- `IRepository<BacktestJob>` → `JsonFileRepository<BacktestJob>` — persists async job records (lifecycle: Queued → Running → Completed/Failed/Cancelled). `BacktestJob` implements `IHasId` via `JobId`.
+- `IRepository<ConfigDraft>` → `JsonFileRepository<ConfigDraft>` — persists in-progress builder sessions. `ConfigDraft` implements `IHasId` via `DraftId`. Drafts are deleted on promotion to `StrategyVersion`.
+- `IRepository<ConfigPreset>` → `JsonFileRepository<ConfigPreset>` — persists custom config presets alongside the four built-in presets. `ConfigPreset` implements `IHasId` via `PresetId`.
+
+All three are registered as singletons, consistent with the existing repository registrations.
+
 ### Repository Directory Resolution
 
 `JsonFileRepository<T>` resolves its storage directory using the following logic:
@@ -394,6 +431,7 @@ Both values are defined in `Core/Configuration/` (`FillMode.cs` enum and the `Sc
 | SlippageModelOptions | Dictionary\<string, object\>? | Model-specific slippage parameters |
 | EnablePartialFills | bool? | Overrides the profile's partial fill setting |
 | DefaultMaxBarsPending | int? | Overrides the profile's order expiry bar count |
+| MaxFillPercentOfVolume | decimal? | V5: Cap fill quantity at this percentage of bar volume. Null = no cap |
 
 The computed property `ScenarioConfig.EffectiveFillMode` resolves the active fill mode: `ExecutionOptions.FillModeOverride` takes precedence over the top-level `FillMode` field.
 
@@ -500,6 +538,7 @@ V3 adds a product domain model to the Application layer. Core remains untouched.
 | `FailureDetail` | string? | V4 | Exception message and context when `Status` is `Failed` |
 | `DeflatedSharpeRatio` | decimal? | V4 | Deflated Sharpe Ratio adjusted for multiple testing bias (Bailey & López de Prado 2014) |
 | `TrialCount` | int? | V4 | Snapshot of `StrategyVersion.TotalTrialsRun` at the time this run completed |
+| `RealismAdvisories` | IReadOnlyList\<string\>? | V5 | Realism warnings collected during the run (gap fills, volume cap hits, session boundary fills) |
 
 Legacy runs without these fields continue to deserialise unchanged.
 
@@ -619,6 +658,90 @@ The concrete Web host is responsible for actually running studies on background 
 ### Startup Integration
 
 `MigrationService.MigrateIfNeededAsync` is called during application startup (after DI is built, before the host starts accepting requests). Both the CLI and Web hosts invoke it.
+
+## V5 Core Layer Changes
+
+### ScenarioConfig Sub-Object Decomposition
+
+V5 decomposes `ScenarioConfig` into five focused sub-objects to reduce the god-object problem while preserving full backward compatibility. All existing top-level fields remain unchanged; the sub-objects are optional trailing parameters defaulting to `null`.
+
+| Sub-Object | Fields | Replaces Top-Level |
+|---|---|---|
+| `DataConfig` | `DataProviderType`, `DataProviderOptions`, `Timeframe`, `BarsPerYear` | Data provider fields |
+| `StrategyConfig` | `StrategyType`, `StrategyParameters` | Strategy fields |
+| `RiskConfig` | `RiskParameters`, `InitialCash`, `AnnualRiskFreeRate` | Risk fields |
+| `ExecutionConfig` | `SlippageModelType`, `CommissionModelType`, `FillMode`, `RealismProfile`, `ExecutionOptions`, `SessionOptions` | Execution fields |
+| `ResearchConfig` | `ResearchWorkflowType`, `ResearchWorkflowOptions`, `RandomSeed`, `TraceOptions` | Research fields |
+
+Each sub-object is a sealed record in `Core/Configuration/`. `ScenarioConfig` exposes computed `Effective*` properties (e.g. `EffectiveDataConfig`) that return the sub-object if present, or construct one from the top-level fields as fallback. These are the single source of truth for engine consumption.
+
+When both a sub-object and the corresponding top-level properties are present, the sub-object takes precedence.
+
+### Direction.Short and LongOnlyGuard
+
+V5 re-adds `Direction.Short` to the enum (`{ Long, Short, Flat }`) to force exhaustive switch handling across the codebase. Runtime short-selling is guarded by `LongOnlyGuard.EnsureLongOnly(Direction)` in `Core/Events/`, which throws `NotSupportedException` for `Short`. Short execution is a V6 task.
+
+### ExperimentMetadata V5 Fields
+
+`ExperimentMetadata` gains two trailing parameters for reproducibility:
+- `PresetId` (string?, default null) — the config preset used for the run, if any.
+- `DataFileIdentity` (string?, default null) — data file hash or last-modified timestamp.
+
+## V5 Application Layer Changes
+
+### Typed Strategy Parameter Schema
+
+V5 introduces a typed parameter schema system so that the builder UI, API discovery endpoints, and validation logic can introspect strategy parameters without hard-coding knowledge of each strategy.
+
+- `SensitivityHint` (`Application/Strategy/`) — enum indicating overfitting risk for a parameter: `Low`, `Medium`, `High`. Surfaced in the builder UI as a visual badge.
+- `ParameterMetaAttribute` (`Application/Strategy/`) — optional attribute on strategy constructor parameters providing `DisplayName`, `Description`, `SensitivityHint`, `Group`, `IsAdvanced`, `DisplayOrder`, `Min`, `Max`. All 6 built-in strategies carry this attribute on every constructor parameter.
+- `StrategyParameterSchema` (`Application/Strategy/`) — sealed record describing a single parameter: `Name`, `DisplayName`, `Type` (int/decimal/bool/enum), `DefaultValue`, `IsRequired`, `Min`, `Max`, `EnumChoices`, `Description`, `SensitivityHint`, `Group` (Signal/Entry/Exit/Risk/Filters/Execution), `IsAdvanced`, `DisplayOrder`.
+- `IStrategySchemaProvider` / `StrategySchemaProvider` (`Application/Strategy/`) — inspects strategy constructors and `[ParameterMeta]` attributes to build `IReadOnlyList<StrategyParameterSchema>`. Falls back to constructor parameter name, inferred type, and default value when the attribute is absent — the schema is never empty for a registered strategy.
+- `StrategyDescriptor` gains an optional `ParameterSchemas` field (trailing parameter, default null) for lazy population from the schema provider.
+
+### Strategy Version Provenance
+
+`StrategyVersion` gains V5 trailing parameters for creation provenance:
+- `SourceType` (enum: `Template`, `Import`, `Fork`, `Manual`) — how the version was created.
+- `SourceTemplateId` (string?, default null) — template ID when `SourceType` is `Template`.
+- `SourceVersionId` (string?, default null) — forked version ID when `SourceType` is `Fork`.
+- `ImportedFrom` (string?, default null) — original filename when `SourceType` is `Import`.
+- `Hypothesis` (string?, default null) — user's hypothesis for the expected market edge.
+- `ExpectedFailureMode` (string?, default null) — how the strategy is most likely to fail.
+
+### Strategy Templates V5 Extensions
+
+- `StrategyTemplate` gains `FamilyPresets` (dictionary of preset name → parameter overrides, nullable) and `DifficultyLevel` (enum: `Beginner`/`Intermediate`/`Advanced`, default `Beginner`).
+- Each strategy family has at least one template with at least two presets (e.g. "Conservative" and "Aggressive").
+
+### Preflight Validation
+
+`PreflightValidator` (`Application/Engine/`) validates a `ScenarioConfig` before engine execution, returning structured `PreflightResult` with `PreflightFinding` entries. Each finding has `Field`, `Message`, `Severity` (Error/Warning/Recommendation), and `Code`. Errors block execution; warnings and recommendations are displayed but do not block. `RunScenarioUseCase` invokes the validator before engine construction.
+
+### Resolved Config and Presets
+
+- `ConfigPreset` (`Application/Strategy/`) — a named, reusable set of configuration defaults with `PresetId`, `Name`, `Description`, `Category` (QuickCheck/Standard/Realistic/ResearchGrade), `ExecutionConfig`, optional `RiskConfig`, and `IsBuiltIn` flag. Four built-in presets ship with V5.
+- `ResolvedConfigService` (`Application/Engine/`) — resolves a `ScenarioConfig` with optional preset into a `ResolvedConfig` where every field is annotated with `ConfigProvenance` (Default/Preset/Explicit/Override).
+- `ConfigDraft` (`Application/Strategy/`) — an in-progress builder session persisted via `IRepository<ConfigDraft>` on every step transition. Promoted to a `StrategyVersion` on save; the draft is then deleted.
+
+### Strategy Diff
+
+`StrategyDiffService` (`Application/Strategy/`) compares two `StrategyVersion` instances and produces a `StrategyDiff` with `FieldChange` entries classified by `ChangeSignificance` (Cosmetic/Minor/Material). Compares resolved/effective values, not raw stored values.
+
+### Job-Based Async Execution
+
+- `BacktestJob` (`Application/Research/`) — async execution unit with lifecycle: Queued → Running → Completed/Failed/Cancelled.
+- `JobExecutor` (`Application/Research/`) — manages active jobs via `ConcurrentDictionary<string, CancellationTokenSource>`. Methods: `SubmitAsync`, `GetJob`, `Cancel`, `ListJobs`, `RecoverOrphanedJobsAsync`.
+- `ProgressSnapshot` (`Application/Research/`) — richer progress reporting with `Current`, `Total`, `Percentage`, `Stage`, `CurrentItemLabel`, `ElapsedTime`, and `Warnings`.
+
+### Quant and Research Extensions
+
+- Gap detection and gap-adjusted fill prices in `SimulatedExecutionHandler` — detects overnight/weekend gaps (> 2× ATR) and fills at gap bar Open price.
+- Volume constraint enforcement — caps fill at `MaxFillPercentOfVolume × Volume` when set; logs warning when fill > 10% of bar volume.
+- `PortfolioConstraints` extended with `MaxExposurePerSymbol`, `MaxExposurePerSector`, `MaxCorrelatedExposure` (sector and correlation fields defined but not enforced until V5.1).
+- `Portfolio.GetExposureBySymbol()` and `MaxExposurePerSymbol` enforcement in `DefaultRiskLayer`.
+- `ResearchChecklistService` extended with `NextRecommendedAction` and `TrialBudgetStatus` (Green/Amber/Red) for over-optimization detection.
+- `BenchmarkComparisonWorkflow` extended with auto buy-and-hold baseline and excess metrics (excess return, information ratio, tracking error, max relative drawdown).
 
 ## Deterministic Replay
 

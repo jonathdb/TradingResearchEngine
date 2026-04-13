@@ -1,0 +1,47 @@
+@* Preflight findings grouped by severity *@
+@using TradingResearchEngine.Application.Engine
+
+@if (Result is null || Result.Findings.Count == 0)
+{
+    <MudAlert Severity="Severity.Success" Dense="true" Class="mb-3" aria-label="No preflight issues">
+        No preflight issues found. Configuration looks good.
+    </MudAlert>
+}
+else
+{
+    @if (Result.HasErrors)
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-2" aria-label="@($"{Result.ErrorCount} errors found")">
+            @Result.ErrorCount error(s) must be fixed before running.
+        </MudAlert>
+    }
+
+    @foreach (var group in Result.Findings.GroupBy(f => f.Severity).OrderBy(g => g.Key))
+    {
+        var severity = group.Key switch
+        {
+            PreflightSeverity.Error => Severity.Error,
+            PreflightSeverity.Warning => Severity.Warning,
+            _ => Severity.Info
+        };
+
+        <MudText Typo="Typo.subtitle2" Class="mt-2 mb-1">
+            @group.Key (@group.Count())
+        </MudText>
+
+        @foreach (var finding in group)
+        {
+            <MudAlert Severity="@severity" Dense="true" Class="mb-1"
+                      aria-label="@($"{finding.Severity}: {finding.Message}")">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                    <MudChip T="string" Size="MudBlazor.Size.Small" Variant="Variant.Text">@finding.Code</MudChip>
+                    <MudText Typo="Typo.body2">@finding.Field: @finding.Message</MudText>
+                </MudStack>
+            </MudAlert>
+        }
+    }
+}
+
+@code {
+    [Parameter] public PreflightResult? Result { get; set; }
+}

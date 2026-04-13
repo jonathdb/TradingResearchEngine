@@ -1,0 +1,66 @@
+@* Full resolved config by section with provenance indicators *@
+
+@if (Config is null)
+{
+    <MudAlert Severity="Severity.Info" aria-label="No resolved config">
+        Resolved configuration not available.
+    </MudAlert>
+}
+else
+{
+    <MudExpansionPanels MultiExpansion="true">
+        @RenderSection("Data", Config.DataValues)
+        @RenderSection("Strategy", Config.StrategyValues)
+        @RenderSection("Risk", Config.RiskValues)
+        @RenderSection("Execution", Config.ExecutionValues)
+        @RenderSection("Research", Config.ResearchValues)
+    </MudExpansionPanels>
+}
+
+@code {
+    [Parameter] public ResolvedConfig? Config { get; set; }
+
+    private RenderFragment RenderSection(string title, IReadOnlyList<ResolvedValue> values) => __builder =>
+    {
+        if (values.Count == 0) return;
+
+        <MudExpansionPanel Text="@title" Expanded="true"
+                           aria-label="@($"Config section: {title}")">
+            <MudSimpleTable Dense="true" Striped="true">
+                <thead>
+                    <tr>
+                        <th>Field</th>
+                        <th>Value</th>
+                        <th>Source</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var val in values)
+                    {
+                        <tr>
+                            <td>@val.FieldName</td>
+                            <td>@(val.Value?.ToString() ?? "—")</td>
+                            <td>
+                                <MudChip T="string" Size="MudBlazor.Size.Small"
+                                         Color="@GetProvenanceColor(val.Provenance)"
+                                         Variant="Variant.Outlined"
+                                         aria-label="@($"Source: {val.Provenance}")">
+                                    @val.Provenance
+                                </MudChip>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </MudSimpleTable>
+        </MudExpansionPanel>
+    };
+
+    private static Color GetProvenanceColor(ConfigProvenance prov) => prov switch
+    {
+        ConfigProvenance.Default => Color.Default,
+        ConfigProvenance.Preset => Color.Info,
+        ConfigProvenance.Explicit => Color.Primary,
+        ConfigProvenance.Override => Color.Warning,
+        _ => Color.Default
+    };
+}

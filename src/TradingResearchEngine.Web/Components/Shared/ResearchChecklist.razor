@@ -4,14 +4,14 @@
     <MudText Typo="Typo.subtitle2" Class="text-muted mb-3">RESEARCH PROGRESS</MudText>
 
     <MudStack Spacing="1">
-        <CheckItem Done="@Checklist.InitialBacktest" Label="Initial backtest completed" />
-        <CheckItem Done="@Checklist.MonteCarloRobustness" Label="Monte Carlo robustness" />
-        <CheckItem Done="@Checklist.WalkForwardValidation" Label="Walk-forward validation" />
-        <CheckItem Done="@Checklist.RegimeSensitivity" Label="Regime sensitivity checked" />
-        <CheckItem Done="@Checklist.RealismImpact" Label="Execution realism impact measured" />
-        <CheckItem Done="@Checklist.ParameterSurface" Label="Parameter surface mapped" />
-        <CheckItem Done="@Checklist.FinalHeldOutTest" Label="Final held-out test" />
-        <CheckItem Done="@Checklist.PropFirmEvaluation" Label="Prop firm evaluation" />
+        @CheckItem(Checklist.InitialBacktest, "Initial backtest completed")
+        @CheckItem(Checklist.MonteCarloRobustness, "Monte Carlo robustness")
+        @CheckItem(Checklist.WalkForwardValidation, "Walk-forward validation")
+        @CheckItem(Checklist.RegimeSensitivity, "Regime sensitivity checked")
+        @CheckItem(Checklist.RealismImpact, "Execution realism impact measured")
+        @CheckItem(Checklist.ParameterSurface, "Parameter surface mapped")
+        @CheckItem(Checklist.FinalHeldOutTest, "Final held-out test")
+        @CheckItem(Checklist.PropFirmEvaluation, "Prop firm evaluation")
     </MudStack>
 
     <MudDivider Class="my-3" />

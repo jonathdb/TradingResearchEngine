@@ -19,4 +19,8 @@ public sealed record ExperimentMetadata(
     FillMode FillMode,
     int BarsPerYear,
     int? RandomSeed,
-    string? EngineVersion);
+    string? EngineVersion,
+    /// <summary>V5: Preset ID used for this run, if any.</summary>
+    string? PresetId = null,
+    /// <summary>V5: Data file hash or last-modified timestamp for reproducibility.</summary>
+    string? DataFileIdentity = null);

@@ -55,7 +55,7 @@ graph LR
 
 | # | Decision | Rationale |
 |---|---|---|
-| 1 | `IntervalToMinutes()` throws `ArgumentException` on unrecognized input | Silent fallback to daily was the root cause of the 1H bug; fail-fast is safer |
+| 1 | `IntervalToMinutes()` throws `ArgumentException` on unrecognized input; `null` throws `ArgumentNullException` | Silent fallback to daily was the root cause of the 1H bug; fail-fast is safer. Explicit null guard gives a clean API contract rather than leaking `NullReferenceException` from `.ToLowerInvariant()` |
 | 2 | OHLC integrity enforced at aggregation, not post-processing | Single enforcement point; prevents invalid bars from ever being emitted |
 | 3 | Per-day cache replaces monolithic date-range file | Enables incremental fetches; overlapping ranges reuse cached days |
 | 4 | No migration of old cache files | Old files are simply not found and regenerated on next request |
@@ -64,6 +64,10 @@ graph LR
 | 7 | Partial session bars logged as warnings, still emitted | Informational only; no new fields on `BarRecord` |
 | 8 | HTTP retry via Polly with exponential back-off (3 attempts) | Handles transient failures; 404 is not retried |
 | 9 | Tick parsing uses big-endian reads for the 20-byte record format | Matches Dukascopy's documented binary layout |
+| 10 | Dukascopy ticks mapped to `TickRecord` as single-element bid/ask lists with synthesized `LastTrade` at mid-price | Dukascopy provides top-of-book only (no depth, no trade prints). `LastTrade` is synthesized from `(ask+bid)/2` with `min(askVol, bidVol)` for size. This is documented as provider-derived, not exchange-reported |
+| 11 | `BuildDayUrl` adds an overload with `priceType` parameter; original 2-arg signature delegates to `BuildDayUrl(symbol, date, "Bid")` | Preserves `DukascopyImportProvider` compatibility without forcing changes to that class |
+| 12 | `DukascopyImportProvider` is out of scope for behavioral changes | Import provider keeps its own cache layout and manual retry. Only non-breaking compatibility changes (e.g. helper overloads) are made. Consolidation is a separate follow-up spec |
+| 13 | Polly retry applies only to `DukascopyDataProvider` | `DukascopyImportProvider` retains its existing manual retry loop; migrating it to Polly is out of scope |
 
 ---
 
@@ -73,12 +77,12 @@ graph LR
 
 | Member | Change | Requirement |
 |---|---|---|
-| `IntervalToMinutes(string)` | Replace `_ => 1440` with `var unknown => throw new ArgumentException(...)` | Req 1 |
+| `IntervalToMinutes(string)` | Add `null` guard throwing `ArgumentNullException`; replace `_ => 1440` with `var unknown => throw new ArgumentException(...)` | Req 1 |
 | `Aggregate(List<BarRecord>, string, string)` | Add OHLC guards on window init and close-clamping before emit | Req 2 |
 | `ParseCandles(byte[], DateTime, string, decimal)` | Add `h >= l` to the existing positivity guard | Req 2.4 |
 | `Decompress(byte[])` | Replace `BitConverter.ToInt64(data, 5)` with `BinaryPrimitives.ReadInt64LittleEndian(data.AsSpan(5, 8))` | Req 6 |
-| `ParseTicks(byte[], DateTime, string, decimal)` | **New** — parses 20-byte big-endian tick records | Req 4 |
-| `BuildDayUrl(string, DateTime, string)` | Add `priceType` parameter to select `BID_candles_min_1.bi5` or `ASK_candles_min_1.bi5` | Req 5 |
+| `ParseTicks(byte[], DateTime, string, decimal)` | **New** — parses 20-byte big-endian tick records into `TickRecord` instances using single-element bid/ask lists and synthesized mid-price `LastTrade` | Req 4 |
+| `BuildDayUrl(string, DateTime, string)` | **New overload** with `priceType` parameter to select `BID_candles_min_1.bi5` or `ASK_candles_min_1.bi5`; original 2-arg signature delegates to this with `"Bid"` default | Req 5 |
 | `GetDayCachePath(string, string, DateTime)` | **New** — returns `{CacheDir}/{symbol}/{priceType}/{yyyy}/{MM}/{dd}.csv` | Req 3, 5 |
 
 ### `DukascopyDataProvider` (class — modified)
@@ -117,6 +121,18 @@ No new Core data models are introduced. The existing `BarRecord` and `TickRecord
 
 Total: 20 bytes per tick record.
 
+### Tick-to-TickRecord Mapping
+
+Dukascopy provides top-of-book data only: one bid price, one ask price, and two volumes. There is no market depth and no real trade print stream. The mapping to the existing `TickRecord` type (which expects `IReadOnlyList<BidLevel>`, `IReadOnlyList<AskLevel>`, and `LastTrade`) is as follows:
+
+- `BidLevels`: single-element list `[ new BidLevel(bidPrice, bidVol) ]`
+- `AskLevels`: single-element list `[ new AskLevel(askPrice, askVol) ]`
+- `LastTrade`: synthesized from mid-price `(ask + bid) / 2` with size `Math.Min(askVol, bidVol)` and the tick's timestamp
+- `Symbol`: passed through from the request
+- `Timestamp`: computed as `hourStart + TimeSpan.FromMilliseconds(offset)`
+
+**Important**: This `LastTrade` is provider-derived, not exchange-reported. Dukascopy does not publish actual trade prints. Consumers should not treat this as a real trade record. This is documented in the XML doc comment on `ParseTicks`.
+
 ### Per-Day Cache Path
 
 ```
@@ -143,12 +159,20 @@ Volume = BidVolume  (ASK volume is discarded)
 
 ### Interval Parsing (Req 1)
 
-`IntervalToMinutes()` throws `ArgumentException` with the unrecognized value and the list of supported values:
+`IntervalToMinutes()` throws `ArgumentNullException` for `null` input and `ArgumentException` with the unrecognized value and the list of supported values for non-null invalid input:
 
 ```csharp
-var unknown => throw new ArgumentException(
-    $"Unrecognized interval '{unknown}'. Supported values: 1m, 5m, 15m, 30m, 1h, 60m, 4h, 1d, daily.",
-    nameof(interval))
+public static int IntervalToMinutes(string interval)
+{
+    ArgumentNullException.ThrowIfNull(interval);
+    return interval.ToLowerInvariant() switch
+    {
+        // ... supported mappings ...
+        var unknown => throw new ArgumentException(
+            $"Unrecognized interval '{unknown}'. Supported values: 1m, 5m, 15m, 30m, 1h, 60m, 4h, 1d, daily.",
+            nameof(interval))
+    };
+}
 ```
 
 ### OHLC Integrity (Req 2)
@@ -192,7 +216,7 @@ All new tests go in `src/TradingResearchEngine.IntegrationTests/MarketData/Dukas
 |---|---|---|
 | `IntervalToMinutes_SupportedInterval_ReturnsCorrectMinutes` | `1m, 5m, 15m, 30m, 1h, 1H, 60m, 4h, 4H, 1d, 1D, daily, Daily` | Correct minute count |
 | `IntervalToMinutes_UnrecognizedInterval_ThrowsArgumentException` | `H1, hourly, 1 hour, "", bad` | `ArgumentException` |
-| `IntervalToMinutes_NullInterval_ThrowsException` | `null` | Any exception |
+| `IntervalToMinutes_NullInterval_ThrowsArgumentNullException` | `null` | `ArgumentNullException` |
 
 #### 2. OHLC Aggregation (Req 9.3)
 

@@ -1,0 +1,117 @@
+@* Step 5: Review & Launch — resolved config, preflight findings, launch actions *@
+
+<MudText Typo="Typo.h6" Class="mb-3">Review & Launch</MudText>
+
+@* Strategy identity summary *@
+<MudPaper Class="pa-3 mb-3" Outlined="true">
+    <MudText Typo="Typo.subtitle2">Strategy Identity</MudText>
+    <MudSimpleTable Dense="true">
+        <tbody>
+            <tr><td>Name</td><td>@Model.StrategyName</td></tr>
+            <tr><td>Type</td><td>@(Model.StrategyType ?? "—")</td></tr>
+            <tr><td>Source</td><td>@Model.SourceType</td></tr>
+            <tr><td>Hypothesis</td><td>@(Model.Hypothesis ?? "—")</td></tr>
+            @if (!string.IsNullOrWhiteSpace(Model.ExpectedFailureMode))
+            {
+                <tr><td>Expected Failure</td><td>@Model.ExpectedFailureMode</td></tr>
+            }
+        </tbody>
+    </MudSimpleTable>
+</MudPaper>
+
+@* Data & execution window summary *@
+<MudPaper Class="pa-3 mb-3" Outlined="true">
+    <MudText Typo="Typo.subtitle2">Data & Execution Window</MudText>
+    <MudSimpleTable Dense="true">
+        <tbody>
+            <tr><td>Data File</td><td>@(Model.DataFilePath ?? "—")</td></tr>
+            <tr><td>Timeframe</td><td>@Model.Timeframe (@Model.BarsPerYear bars/year)</td></tr>
+            <tr><td>IS/OOS Split</td><td>@Model.InSamplePercent% / @(100 - Model.InSamplePercent - (Model.SealedTestPercent ?? 0))%</td></tr>
+            @if (Model.SealedTestPercent.HasValue)
+            {
+                <tr><td>Sealed Test</td><td>@Model.SealedTestPercent%</td></tr>
+            }
+        </tbody>
+    </MudSimpleTable>
+</MudPaper>
+
+@* Key parameters *@
+<MudPaper Class="pa-3 mb-3" Outlined="true">
+    <MudText Typo="Typo.subtitle2">Key Parameters</MudText>
+    <MudSimpleTable Dense="true" Striped="true">
+        <tbody>
+            @foreach (var p in Model.Parameters)
+            {
+                <tr><td>@p.Key</td><td>@p.Value</td></tr>
+            }
+        </tbody>
+    </MudSimpleTable>
+</MudPaper>
+
+@* Realism & risk summary *@
+<MudPaper Class="pa-3 mb-3" Outlined="true">
+    <MudText Typo="Typo.subtitle2">Realism & Risk</MudText>
+    <MudSimpleTable Dense="true">
+        <tbody>
+            <tr><td>Preset</td><td>@(Model.PresetId ?? "None")</td></tr>
+            <tr><td>Slippage</td><td>@Model.SlippageModelType</td></tr>
+            <tr><td>Commission</td><td>@Model.CommissionModelType</td></tr>
+            <tr><td>Initial Cash</td><td>$@Model.InitialCash.ToString("N0")</td></tr>
+        </tbody>
+    </MudSimpleTable>
+</MudPaper>
+
+@* Resolved config *@
+@if (ResolvedConfig is not null)
+{
+    <MudText Typo="Typo.subtitle1" Class="mt-4 mb-2">Resolved Configuration</MudText>
+    <ResolvedConfigDisplay Config="@ResolvedConfig" />
+}
+
+@* Preflight findings *@
+<MudText Typo="Typo.subtitle1" Class="mt-4 mb-2">Preflight Validation</MudText>
+<PreflightFindingsPanel Result="@PreflightResult" />
+
+@* Launch actions *@
+<MudStack Row="true" Spacing="2" Class="mt-4" Justify="Justify.FlexEnd">
+    <MudButton Variant="Variant.Outlined" Color="Color.Default"
+               OnClick="@(() => OnAction.InvokeAsync("save-draft"))"
+               Disabled="@Saving"
+               aria-label="Save draft without running">
+        Save Draft
+    </MudButton>
+    <MudButton Variant="Variant.Outlined" Color="Color.Primary"
+               OnClick="@(() => OnAction.InvokeAsync("quick-sanity"))"
+               Disabled="@(HasErrors || Saving)"
+               aria-label="Run quick sanity test">
+        Quick Sanity Test
+    </MudButton>
+    <MudButton Variant="Variant.Filled" Color="Color.Primary"
+               OnClick="@(() => OnAction.InvokeAsync("standard-backtest"))"
+               Disabled="@(HasErrors || Saving)"
+               aria-label="Run standard backtest">
+        Run Standard Backtest
+    </MudButton>
+</MudStack>
+
+@if (HasErrors)
+{
+    <MudText Typo="Typo.caption" Color="Color.Error" Class="mt-1" aria-label="Fix errors message">
+        Fix @(PreflightResult?.ErrorCount ?? 0) error(s) before running.
+    </MudText>
+}
+
+@if (Saving)
+{
+    <MudProgressLinear Indeterminate="true" Class="mt-2" aria-label="Saving in progress" />
+}
+
+@code {
+    [Parameter] public BuilderViewModel Model { get; set; } = default!;
+    [Parameter] public ResolvedConfig? ResolvedConfig { get; set; }
+    [Parameter] public PreflightResult? PreflightResult { get; set; }
+    [Parameter] public bool Saving { get; set; }
+    [Parameter] public EventCallback<string> OnAction { get; set; }
+
+    private bool HasErrors => PreflightResult?.HasErrors ?? false;
+}

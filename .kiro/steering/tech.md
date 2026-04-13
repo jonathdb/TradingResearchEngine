@@ -20,6 +20,7 @@
 | `Microsoft.Extensions.Options` | Application, Infrastructure |
 | `Microsoft.Extensions.DependencyInjection` | Application, Infrastructure |
 | `Microsoft.Extensions.Http` | Infrastructure |
+| `Polly` | Infrastructure |
 | `Microsoft.Extensions.Logging.Abstractions` | Core, Application |
 | `Microsoft.Extensions.Logging` | Infrastructure, Cli, Api |
 

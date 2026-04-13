@@ -41,7 +41,9 @@ public sealed record BacktestResult(
     /// <summary>V4: Deflated Sharpe Ratio adjusted for multiple testing bias (Bailey &amp; López de Prado 2014).</summary>
     decimal? DeflatedSharpeRatio = null,
     /// <summary>V4: Snapshot of <c>StrategyVersion.TotalTrialsRun</c> at the time this run completed.</summary>
-    int? TrialCount = null) : IHasId
+    int? TrialCount = null,
+    /// <summary>V5: Realism warnings collected during the run (gap fills, volume warnings, session boundary fills).</summary>
+    IReadOnlyList<string>? RealismAdvisories = null) : IHasId
 {
     /// <inheritdoc/>
     public string Id => RunId.ToString();

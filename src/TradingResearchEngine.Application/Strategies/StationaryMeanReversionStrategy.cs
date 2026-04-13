@@ -41,11 +41,23 @@ public sealed class StationaryMeanReversionStrategy : IStrategy
     /// <param name="skipStationarityTest">If true, skip ADF test and use z-score only (default false).</param>
     /// <param name="adfRecheckInterval">Re-run ADF test every N bars (default 20). Reduces ADF computation by ~95%.</param>
     public StationaryMeanReversionStrategy(
+        [ParameterMeta(DisplayName = "Lookback", Description = "Rolling window for SMA, StdDev, and ADF test.",
+            SensitivityHint = SensitivityHint.High, Group = "Signal", DisplayOrder = 0, Min = 50)]
         int lookback = 500,
+        [ParameterMeta(DisplayName = "Entry Threshold", Description = "Z-score entry threshold for mean reversion.",
+            SensitivityHint = SensitivityHint.High, Group = "Entry", DisplayOrder = 1, Min = 0.5)]
         decimal entryThreshold = 1.0m,
+        [ParameterMeta(DisplayName = "Exit Threshold", Description = "Z-score exit threshold.",
+            SensitivityHint = SensitivityHint.Medium, Group = "Exit", DisplayOrder = 2)]
         decimal exitThreshold = 1.0m,
+        [ParameterMeta(DisplayName = "ADF P-Value Threshold", Description = "ADF p-value threshold for stationarity.",
+            SensitivityHint = SensitivityHint.Medium, Group = "Filters", IsAdvanced = true, DisplayOrder = 3)]
         decimal adfPValueThreshold = 0.05m,
+        [ParameterMeta(DisplayName = "Skip Stationarity Test", Description = "If true, skip ADF test and use z-score only.",
+            SensitivityHint = SensitivityHint.Low, Group = "Filters", IsAdvanced = true, DisplayOrder = 4)]
         bool skipStationarityTest = false,
+        [ParameterMeta(DisplayName = "ADF Recheck Interval", Description = "Re-run ADF test every N bars. Reduces computation.",
+            SensitivityHint = SensitivityHint.Low, Group = "Filters", IsAdvanced = true, DisplayOrder = 5, Min = 1)]
         int adfRecheckInterval = 20)
     {
         _lookback = lookback;

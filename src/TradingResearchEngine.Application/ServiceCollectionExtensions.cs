@@ -74,6 +74,11 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ResearchChecklistService>();
         services.AddScoped<FinalValidationUseCase>();
 
+        // V5: Preflight validation and resolved config
+        services.AddScoped<PreflightValidator>();
+        services.AddScoped<ResolvedConfigService>();
+        services.AddSingleton<IStrategySchemaProvider, StrategySchemaProvider>();
+
         // V4: Background study service (singleton — manages study lifecycle across navigations)
         services.AddSingleton<BackgroundStudyService>();
 

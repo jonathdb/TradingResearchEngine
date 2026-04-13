@@ -1,0 +1,38 @@
+@* Visual timeline showing IS/OOS/sealed split *@
+
+<MudPaper Class="pa-3 mb-3" Outlined="true">
+    <MudText Typo="Typo.caption" Class="mb-2" aria-label="Timeline split visualization">
+        Data Split Visualization
+    </MudText>
+    <MudStack Row="true" Spacing="0" Style="height: 32px; width: 100%; border-radius: 4px; overflow: hidden;">
+        <div style="@($"width: {InSamplePercent}%; background-color: var(--mud-palette-info); display: flex; align-items: center; justify-content: center;")"
+             aria-label="@($"In-Sample: {InSamplePercent:F0}%")">
+            <MudText Typo="Typo.caption" Style="color: white; font-size: 0.7rem;">
+                IS @InSamplePercent.ToString("F0")%
+            </MudText>
+        </div>
+        <div style="@($"width: {OosPercent}%; background-color: var(--mud-palette-warning); display: flex; align-items: center; justify-content: center;")"
+             aria-label="@($"Out-of-Sample: {OosPercent:F0}%")">
+            <MudText Typo="Typo.caption" Style="color: white; font-size: 0.7rem;">
+                OOS @OosPercent.ToString("F0")%
+            </MudText>
+        </div>
+        @if (SealedPercent > 0)
+        {
+            <div style="@($"width: {SealedPercent}%; background-color: var(--mud-palette-error); display: flex; align-items: center; justify-content: center;")"
+                 aria-label="@($"Sealed Test: {SealedPercent:F0}%")">
+                <MudText Typo="Typo.caption" Style="color: white; font-size: 0.7rem;">
+                    Sealed @SealedPercent.ToString("F0")%
+                </MudText>
+            </div>
+        }
+    </MudStack>
+</MudPaper>
+
+@code {
+    [Parameter] public decimal InSamplePercent { get; set; } = 70m;
+    [Parameter] public decimal? SealedTestPercent { get; set; }
+
+    private decimal SealedPercent => SealedTestPercent ?? 0m;
+    private decimal OosPercent => 100m - InSamplePercent - SealedPercent;
+}

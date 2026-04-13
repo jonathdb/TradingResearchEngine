@@ -145,7 +145,7 @@ else
             @if (imp.Status == MarketDataImportStatus.Failed && imp.ErrorDetail is not null)
             {
                 <MudExpansionPanels Class="mt-2">
-                    <MudExpansionPanel Text="Error Details" Dense="true" IsInitiallyExpanded="false">
+                    <MudExpansionPanel Text="Error Details" Dense="true" Expanded="false">
                         <MudText Typo="Typo.caption" Style="font-family: monospace; white-space: pre-wrap">@imp.ErrorDetail</MudText>
                     </MudExpansionPanel>
                 </MudExpansionPanels>
