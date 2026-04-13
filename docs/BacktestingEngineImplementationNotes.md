@@ -157,8 +157,9 @@ All imported data is normalized to: `Timestamp,Open,High,Low,Close,Volume` with 
 
 ### Infrastructure — DukascopyImportProvider (`Infrastructure/MarketData/`)
 
-`DukascopyImportProvider` implements `IMarketDataProvider` with `SourceName = "Dukascopy"`. It downloads minute BID candles day-by-day (sequential, not batched), aggregates to the requested timeframe via `DukascopyHelpers.Aggregate`, filters to the requested range (start inclusive, end exclusive), and writes canonical CSV via `DukascopyHelpers.SaveToCsv`.
+`DukascopyImportProvider` implements `IMarketDataProvider` with `SourceName = "Dukascopy"`. It downloads minute BID candles in parallel batches (up to 8 concurrent requests), aggregates to the requested timeframe via `DukascopyHelpers.Aggregate`, filters to the requested range (start inclusive, end exclusive), and writes canonical CSV via `DukascopyHelpers.SaveToCsv`. Constructor accepts an optional `cacheDir` override; defaults to `%LOCALAPPDATA%/TradingResearchEngine/DukascopyDayCache`.
 
+- Caches raw minute bars per (symbol, date) as individual CSV files (`{symbol}_{yyyyMMdd}_1m.csv`). On re-imports or different-timeframe imports, cached days are loaded from disk without HTTP requests. Empty days (holidays) are also cached to avoid redundant downloads. Corrupted cache files are detected and re-downloaded automatically.
 - Supports all 15 symbols from `DukascopyHelpers.PointSizes` across 7 timeframes (`1m`, `5m`, `15m`, `30m`, `1H`, `4H`, `Daily`)
 - Reports progress per day chunk via `IProgressReporter`
 - Retries transient HTTP failures up to 3 times with exponential backoff
