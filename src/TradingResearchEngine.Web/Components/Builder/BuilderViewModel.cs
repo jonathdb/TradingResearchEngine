@@ -19,6 +19,8 @@ public sealed class BuilderViewModel
 
     // Step 2 — Data & Execution Window
     public string? DataFilePath { get; set; }
+    public string Symbol { get; set; } = "";
+    public string Interval { get; set; } = "1D";
     public string Timeframe { get; set; } = "Daily";
     public DateTimeOffset? StartDate { get; set; }
     public DateTimeOffset? EndDate { get; set; }
@@ -51,6 +53,15 @@ public sealed class BuilderViewModel
         _ => 252
     };
 
+    private Dictionary<string, object> BuildDataProviderOptions()
+    {
+        var opts = new Dictionary<string, object>();
+        if (DataFilePath is not null) opts["FilePath"] = DataFilePath;
+        if (!string.IsNullOrEmpty(Symbol)) opts["Symbol"] = Symbol;
+        if (!string.IsNullOrEmpty(Interval)) opts["Interval"] = Interval;
+        return opts;
+    }
+
     /// <summary>Maps the mutable ViewModel to an immutable ConfigDraft for persistence.</summary>
     public ConfigDraft ToConfigDraft()
     {
@@ -66,7 +77,7 @@ public sealed class BuilderViewModel
             ExpectedFailureMode: ExpectedFailureMode,
             DataConfig: DataFilePath is not null
                 ? new DataConfig("csv",
-                    new Dictionary<string, object> { ["FilePath"] = DataFilePath },
+                    BuildDataProviderOptions(),
                     Timeframe, BarsPerYear)
                 : null,
             StrategyParameters: Parameters.Count > 0 ? new Dictionary<string, object>(Parameters) : null,
@@ -87,6 +98,8 @@ public sealed class BuilderViewModel
     {
         var dataOpts = new Dictionary<string, object>();
         if (DataFilePath is not null) dataOpts["FilePath"] = DataFilePath;
+        if (!string.IsNullOrEmpty(Symbol)) dataOpts["Symbol"] = Symbol;
+        if (!string.IsNullOrEmpty(Interval)) dataOpts["Interval"] = Interval;
 
         return new ScenarioConfig(
             ScenarioId: $"run-{DateTime.UtcNow:yyyyMMdd-HHmmss}",
@@ -148,6 +161,10 @@ public sealed class BuilderViewModel
             vm.Timeframe = draft.DataConfig.Timeframe ?? "Daily";
             if (draft.DataConfig.DataProviderOptions.TryGetValue("FilePath", out var fp))
                 vm.DataFilePath = fp?.ToString();
+            if (draft.DataConfig.DataProviderOptions.TryGetValue("Symbol", out var sym))
+                vm.Symbol = sym?.ToString() ?? "";
+            if (draft.DataConfig.DataProviderOptions.TryGetValue("Interval", out var intv))
+                vm.Interval = intv?.ToString() ?? "1D";
         }
 
         if (draft.StrategyParameters is not null)

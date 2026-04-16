@@ -1,0 +1,10 @@
+{
+  "StrategyId": "strategy-c7703c5c454",
+  "StrategyName": "Test strategy - period 20",
+  "StrategyType": "donchian-breakout",
+  "CreatedAt": "2026-04-12T12:03:58.8968148+00:00",
+  "Description": null,
+  "Stage": 1,
+  "Hypothesis": "15-minute range compression on EURUSD releases into sustained breakouts, especially during London/NY overlap",
+  "Id": "strategy-c7703c5c454"
+}

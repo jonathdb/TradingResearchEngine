@@ -123,6 +123,13 @@ else
     private void OnTimeframeChanged(string tf)
     {
         Model.Timeframe = tf;
+        Model.Interval = tf switch
+        {
+            "H4" => "4H",
+            "H1" => "1H",
+            "M15" => "15M",
+            _ => "1D"
+        };
         Model.IsDirty = true;
     }
     private static string NormaliseTimeframe(string tf) =>
@@ -137,6 +144,18 @@ else
     private async Task OnDataFileChanged(string path)
     {
         Model.DataFilePath = path;
+        var file = DataFiles.FirstOrDefault(f => f.FilePath == path);
+        if (file is not null)
+        {
+            Model.Symbol = file.DetectedSymbol ?? "";
+            Model.Interval = Model.Timeframe switch
+            {
+                "H4" => "4H",
+                "H1" => "1H",
+                "M15" => "15M",
+                _ => "1D"
+            };
+        }
         Model.IsDirty = true;
         await OnModelChanged.InvokeAsync();
     }

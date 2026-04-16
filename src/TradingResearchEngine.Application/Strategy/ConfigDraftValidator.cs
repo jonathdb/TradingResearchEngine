@@ -42,4 +42,47 @@ public static class ConfigDraftValidator
 
         return errors;
     }
+
+    /// <summary>
+    /// Returns advisory warnings for a <see cref="ConfigDraft"/> based on its
+    /// relationship to the matched <see cref="StrategyTemplate"/>. Unlike
+    /// <see cref="ValidateStep"/>, these are non-blocking — the user may proceed
+    /// despite warnings. Currently checks for timeframe mismatches between
+    /// <c>DataConfig.Timeframe</c> and the template's <c>RecommendedTimeframe</c>.
+    /// </summary>
+    public static IReadOnlyList<string> ValidateWarnings(ConfigDraft draft, IReadOnlyList<StrategyTemplate> templates)
+    {
+        if (draft.CurrentStep < 2)
+            return Array.Empty<string>();
+
+        if (draft.DataConfig is null)
+            return Array.Empty<string>();
+
+        if (draft.TemplateId is null)
+            return Array.Empty<string>();
+
+        var template = templates.FirstOrDefault(t =>
+            string.Equals(t.TemplateId, draft.TemplateId, StringComparison.OrdinalIgnoreCase));
+
+        if (template is null)
+            return Array.Empty<string>();
+
+        if (string.IsNullOrEmpty(draft.DataConfig.Timeframe) ||
+            string.Equals(draft.DataConfig.Timeframe, "Any", StringComparison.OrdinalIgnoreCase))
+            return Array.Empty<string>();
+
+        if (string.IsNullOrEmpty(template.RecommendedTimeframe) ||
+            string.Equals(template.RecommendedTimeframe, "Any", StringComparison.OrdinalIgnoreCase))
+            return Array.Empty<string>();
+
+        if (!string.Equals(draft.DataConfig.Timeframe, template.RecommendedTimeframe, StringComparison.OrdinalIgnoreCase))
+        {
+            return new[]
+            {
+                $"Data timeframe '{draft.DataConfig.Timeframe}' does not match the template's recommended timeframe '{template.RecommendedTimeframe}'. Results may be unexpected."
+            };
+        }
+
+        return Array.Empty<string>();
+    }
 }

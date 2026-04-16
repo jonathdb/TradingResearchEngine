@@ -73,7 +73,7 @@ public static class DefaultStrategyTemplates
             "Channel breakout trend follower using lagged Donchian bands.",
             "donchian-breakout", "Channel breakout trend following",
             new Dictionary<string, object> { ["period"] = 20 },
-            "Daily",
+            "Any",
             Descriptor: new StrategyDescriptor(
                 "donchian-breakout", "Donchian Breakout", StrategyFamily.Breakout,
                 "Channel breakout trend follower using lagged Donchian bands.",

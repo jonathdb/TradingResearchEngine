@@ -1,0 +1,89 @@
+{
+  "StrategyVersionId": "strategy-c7703c5c454-v1",
+  "StrategyId": "strategy-c7703c5c454",
+  "VersionNumber": 1,
+  "Parameters": {
+    "period": "40"
+  },
+  "BaseScenarioConfig": {
+    "ScenarioId": "run-20260412-120358",
+    "Description": " backtest",
+    "ReplayMode": 0,
+    "DataProviderType": "csv",
+    "DataProviderOptions": {
+      "FilePath": "C:\\Users\\jonat\\AppData\\Local\\TradingResearchEngine\\Data\\dukascopy_EURUSD_1H_20210412_20260412.csv"
+    },
+    "StrategyType": "donchian-breakout",
+    "StrategyParameters": {
+      "period": "40"
+    },
+    "RiskParameters": {},
+    "SlippageModelType": "FixedSpreadSlippageModel",
+    "CommissionModelType": "PerTradeCommissionModel",
+    "InitialCash": 100000,
+    "AnnualRiskFreeRate": 0.05,
+    "RandomSeed": null,
+    "ResearchWorkflowType": null,
+    "ResearchWorkflowOptions": null,
+    "PropFirmOptions": null,
+    "FillMode": 0,
+    "BarsPerYear": 6048,
+    "RealismProfile": 1,
+    "ExecutionOptions": null,
+    "SessionOptions": null,
+    "TraceOptions": null,
+    "Timeframe": "H1",
+    "Data": null,
+    "Strategy": null,
+    "Risk": null,
+    "Execution": null,
+    "Research": null,
+    "Id": "run-20260412-120358",
+    "EffectiveDataConfig": {
+      "DataProviderType": "csv",
+      "DataProviderOptions": {
+        "FilePath": "C:\\Users\\jonat\\AppData\\Local\\TradingResearchEngine\\Data\\dukascopy_EURUSD_1H_20210412_20260412.csv"
+      },
+      "Timeframe": "H1",
+      "BarsPerYear": 6048
+    },
+    "EffectiveStrategyConfig": {
+      "StrategyType": "donchian-breakout",
+      "StrategyParameters": {
+        "period": "40"
+      }
+    },
+    "EffectiveRiskConfig": {
+      "RiskParameters": {},
+      "InitialCash": 100000,
+      "AnnualRiskFreeRate": 0.05
+    },
+    "EffectiveExecutionConfig": {
+      "SlippageModelType": "FixedSpreadSlippageModel",
+      "CommissionModelType": "PerTradeCommissionModel",
+      "FillMode": 0,
+      "RealismProfile": 1,
+      "ExecutionOptions": null,
+      "SessionOptions": null
+    },
+    "EffectiveResearchConfig": {
+      "ResearchWorkflowType": null,
+      "ResearchWorkflowOptions": null,
+      "RandomSeed": null,
+      "TraceOptions": null
+    },
+    "EffectiveFillMode": 0,
+    "EnableEventTrace": false
+  },
+  "CreatedAt": "2026-04-12T12:03:58.8983085+00:00",
+  "ChangeNote": "Initial version",
+  "TotalTrialsRun": 0,
+  "SealedTestSet": null,
+  "SourceType": 0,
+  "SourceTemplateId": "tpl-donchian-breakout",
+  "SourceVersionId": null,
+  "ImportedFrom": null,
+  "Hypothesis": "15-minute range compression on EURUSD releases into sustained breakouts, especially during London/NY overlap",
+  "ExpectedFailureMode": null,
+  "Id": "strategy-c7703c5c454-v1"
+}
