@@ -149,8 +149,12 @@
 
 
 @code {
+#nullable enable
     private string? _qdmWatchDirectory;
     private bool _editingQdmPath;
+
+    private string _qdmTimezoneId = "UTC";
+    private bool _editingQdmTimezone;
 
     protected override void OnInitialized()
     {
@@ -181,5 +185,19 @@
         SettingsService.Save(updated);
         _qdmWatchDirectory = updated.QdmWatchDirectory;
         _editingQdmPath = false;
+    }
+    private void CancelEditQdmTimezone()
+    {
+        var settings = SettingsService.Load();
+        _qdmTimezoneId = settings.QdmTimezoneId ?? "UTC";
+        _editingQdmTimezone = false;
+    }
+
+    private void SaveQdmTimezone()
+    {
+        var settings = SettingsService.Load();
+        var updated = settings with { QdmTimezoneId = _qdmTimezoneId };
+        SettingsService.Save(updated);
+        _editingQdmTimezone = false;
     }
 }
