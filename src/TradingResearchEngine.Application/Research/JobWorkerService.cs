@@ -134,6 +134,27 @@ public sealed class JobWorkerService : BackgroundService
                 await _executor.MarkCompletedAsync(job.JobId, job.JobId);
                 break;
 
+            case JobType.BenchmarkComparison:
+                var benchWorkflow = services.GetRequiredService<BenchmarkComparisonWorkflow>();
+                var benchOptions = new BenchmarkOptions { InitialCash = job.Config.InitialCash };
+                await benchWorkflow.RunAsync(job.Config, benchOptions, ct);
+                await _executor.MarkCompletedAsync(job.JobId, job.JobId);
+                break;
+
+            case JobType.Variance:
+                var varWorkflow = services.GetRequiredService<VarianceTestingWorkflow>();
+                var varOptions = new VarianceOptions();
+                await varWorkflow.RunAsync(job.Config, varOptions, ct);
+                await _executor.MarkCompletedAsync(job.JobId, job.JobId);
+                break;
+
+            case JobType.RandomisedOos:
+                var oosWorkflow = services.GetRequiredService<RandomizedOosWorkflow>();
+                var oosOptions = new RandomizedOosOptions();
+                await oosWorkflow.RunAsync(job.Config, oosOptions, ct);
+                await _executor.MarkCompletedAsync(job.JobId, job.JobId);
+                break;
+
             default:
                 await _executor.MarkFailedAsync(job.JobId,
                     $"Unsupported job type: {job.JobType}", CancellationToken.None);

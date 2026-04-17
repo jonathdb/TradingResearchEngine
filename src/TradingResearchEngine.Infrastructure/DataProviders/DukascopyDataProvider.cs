@@ -28,15 +28,19 @@ public sealed class DukascopyDataProvider : IDataProvider
     private readonly HttpClient _httpClient;
     private readonly ILogger<DukascopyDataProvider> _logger;
     private readonly DukascopyPriceType _priceType;
+    private readonly string _cacheDir;
 
     public DukascopyDataProvider(
         HttpClient httpClient,
         ILogger<DukascopyDataProvider> logger,
-        DukascopyPriceType priceType = DukascopyPriceType.Bid)
+        DukascopyPriceType priceType = DukascopyPriceType.Bid,
+        string? cacheDir = null)
     {
         _httpClient = httpClient;
         _logger = logger;
         _priceType = priceType;
+        _cacheDir = cacheDir ?? Path.Combine(Directory.GetCurrentDirectory(), "data", "dukascopy-cache");
+        Directory.CreateDirectory(_cacheDir);
     }
 
     public async IAsyncEnumerable<BarRecord> GetBars(
@@ -117,7 +121,7 @@ public sealed class DukascopyDataProvider : IDataProvider
 
         foreach (var date in dates)
         {
-            var cachePath = DukascopyHelpers.GetDayCachePath(CacheDir, symbol, priceLabel, date);
+            var cachePath = DukascopyHelpers.GetDayCachePath(_cacheDir, symbol, priceLabel, date);
             if (DukascopyHelpers.IsCacheFileValid(cachePath))
             {
                 var cached = DukascopyHelpers.LoadFromCsv(cachePath, symbol, "1m");
@@ -171,7 +175,7 @@ public sealed class DukascopyDataProvider : IDataProvider
         string symbol, DateTime date, decimal pointSize, CancellationToken ct)
     {
         // Check mid cache first
-        var midCachePath = DukascopyHelpers.GetDayCachePath(CacheDir, symbol, "Mid", date);
+        var midCachePath = DukascopyHelpers.GetDayCachePath(_cacheDir, symbol, "Mid", date);
         if (DukascopyHelpers.IsCacheFileValid(midCachePath))
             return DukascopyHelpers.LoadFromCsv(midCachePath, symbol, "1m");
 
@@ -318,7 +322,7 @@ public sealed class DukascopyDataProvider : IDataProvider
         {
             try
             {
-                var cachePath = DukascopyHelpers.GetDayCachePath(CacheDir, symbol, priceLabel, date);
+                var cachePath = DukascopyHelpers.GetDayCachePath(_cacheDir, symbol, priceLabel, date);
                 DukascopyHelpers.SaveToCsv(cachePath, bars);
             }
             catch (Exception ex)
@@ -353,7 +357,7 @@ public sealed class DukascopyDataProvider : IDataProvider
             ct.ThrowIfCancellationRequested();
 
             var aggCachePath = GetAggregatedCachePath(symbol, priceLabel, date, interval);
-            var sourceCachePath = DukascopyHelpers.GetDayCachePath(CacheDir, symbol, priceLabel, date);
+            var sourceCachePath = DukascopyHelpers.GetDayCachePath(_cacheDir, symbol, priceLabel, date);
 
             // Check if aggregated cache exists and is newer than source 1m cache
             if (File.Exists(aggCachePath) && File.Exists(sourceCachePath))
@@ -397,11 +401,11 @@ public sealed class DukascopyDataProvider : IDataProvider
 
     /// <summary>
     /// Returns the cache path for aggregated data:
-    /// {CacheDir}/{symbol}/{priceType}/{year}/{month}/{day}_{interval}.csv
+    /// {_cacheDir}/{symbol}/{priceType}/{year}/{month}/{day}_{interval}.csv
     /// </summary>
-    private static string GetAggregatedCachePath(string symbol, string priceType, DateTime date, string interval)
+    private string GetAggregatedCachePath(string symbol, string priceType, DateTime date, string interval)
     {
-        var dir = Path.Combine(CacheDir, symbol, priceType,
+        var dir = Path.Combine(_cacheDir, symbol, priceType,
             date.Year.ToString("D4"), date.Month.ToString("D2"));
         if (!Directory.Exists(dir))
             Directory.CreateDirectory(dir);
@@ -461,8 +465,4 @@ public sealed class DukascopyDataProvider : IDataProvider
     }
 
     // --- Per-Day CSV Cache ---
-
-    private static readonly string CacheDir = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "TradingResearchEngine", "DukascopyCache");
 }

@@ -1,5 +1,6 @@
 @page "/research/walkforward"
 @inject TradingResearchEngine.Application.Research.WalkForwardWorkflow WfWorkflow
+@inject IStrategyRepository StrategyRepo
 @inject ISnackbar Snackbar
 
 <PageTitle>Walk-Forward — TradingResearchEngine</PageTitle>
@@ -9,7 +10,14 @@
 <MudGrid>
     <MudItem xs="12" md="6">
         <MudPaper Class="pa-4" Elevation="2">
-            <ScenarioConfigEditor @ref="_configEditor" />
+            <StrategyVersionPicker PreselectedStrategyId="@StrategyId" PreselectedVersionId="@VersionId"
+                                   OnSelectionChanged="OnVersionSelected" />
+
+            <MudExpansionPanels Class="mt-3 mb-3">
+                <MudExpansionPanel Text="Advanced / Manual Config" Expanded="false">
+                    <ScenarioConfigEditor @ref="_configEditor" />
+                </MudExpansionPanel>
+            </MudExpansionPanels>
 
             <MudDivider Class="my-4" />
             <MudText Typo="Typo.h6" Class="mb-3">Window Configuration</MudText>
@@ -56,10 +64,18 @@
 </MudGrid>
 
 @code {
+    [SupplyParameterFromQuery] public string? StrategyId { get; set; }
+    [SupplyParameterFromQuery] public string? VersionId { get; set; }
+
     private ScenarioConfigEditor? _configEditor;
     private int _isDays = 60, _oosDays = 20, _stepDays = 20;
     private bool _anchored;
     private TradingResearchEngine.Application.Research.Results.WalkForwardResult? _wfResult;
+
+    private void OnVersionSelected((StrategyIdentity Strategy, StrategyVersion Version, BacktestResult? LatestRun) selection)
+    {
+        _configEditor?.LoadFromConfig(selection.Version.BaseScenarioConfig);
+    }
 
     private async Task<TradingResearchEngine.Application.Research.Results.WalkForwardResult> Execute(CancellationToken ct)
     {

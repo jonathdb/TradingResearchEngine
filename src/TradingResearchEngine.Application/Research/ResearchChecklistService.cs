@@ -96,10 +96,10 @@ public sealed class ResearchChecklistService
 
         // Check if a final validation run exists (strategy stage = FinalTest)
         bool finalHeldOutTest = false;
-        var versions = await GetVersionAsync(strategyVersionId, ct);
-        if (versions is not null)
+        var version = await _strategyRepo.GetVersionAsync(strategyVersionId, ct);
+        if (version is not null)
         {
-            var strategy = await _strategyRepo.GetAsync(versions.StrategyId, ct);
+            var strategy = await _strategyRepo.GetAsync(version.StrategyId, ct);
             finalHeldOutTest = strategy?.Stage == DevelopmentStage.FinalTest;
         }
 
@@ -111,7 +111,7 @@ public sealed class ResearchChecklistService
             .Any(s => s.Type is StudyType.CombinatorialPurgedCV or StudyType.Cpcv);
 
         // V5: Compute trial budget status
-        int totalTrialsRun = versions?.TotalTrialsRun ?? 0;
+        int totalTrialsRun = version?.TotalTrialsRun ?? 0;
         var trialBudget = ComputeTrialBudgetStatus(totalTrialsRun, walkForwardValidation);
 
         // V5: Compute next recommended action
@@ -233,17 +233,6 @@ public sealed class ResearchChecklistService
         return null;
     }
 
-    private async Task<StrategyVersion?> GetVersionAsync(string versionId, CancellationToken ct)
-    {
-        var strategies = await _strategyRepo.ListAsync(ct);
-        foreach (var s in strategies)
-        {
-            var versions = await _strategyRepo.GetVersionsAsync(s.StrategyId, ct);
-            var match = versions.FirstOrDefault(v => v.StrategyVersionId == versionId);
-            if (match is not null) return match;
-        }
-        return null;
-    }
 }
 
 /// <summary>

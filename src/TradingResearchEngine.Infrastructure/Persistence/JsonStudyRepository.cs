@@ -57,4 +57,12 @@ public sealed class JsonStudyRepository : IStudyRepository
         if (File.Exists(path)) File.Delete(path);
         return Task.CompletedTask;
     }
+
+    /// <inheritdoc/>
+    public async Task SaveResultAsync(string studyId, string resultJson, CancellationToken ct = default)
+    {
+        var study = await GetAsync(studyId, ct);
+        if (study is null) return;
+        await SaveAsync(study with { ResultJson = resultJson }, ct);
+    }
 }

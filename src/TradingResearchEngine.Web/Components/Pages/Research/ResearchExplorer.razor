@@ -27,13 +27,15 @@ else if (_studies.Count == 0)
 }
 else
 {
-    <MudTable Items="_studies" Dense="true" Hover="true" Striped="true">
+    <MudTable Items="_studies" Dense="true" Hover="true" Striped="true" Style="cursor:pointer"
+              OnRowClick="@((TableRowClickEventArgs<StudyRow> args) => Nav.NavigateTo($"/research/study/{args.Item.Study.StudyId}"))">
         <HeaderContent>
             <MudTh>Study</MudTh>
             <MudTh>Type</MudTh>
             <MudTh>Strategy</MudTh>
             <MudTh>Status</MudTh>
             <MudTh>Created</MudTh>
+            <MudTh></MudTh>
         </HeaderContent>
         <RowTemplate>
             <MudTd>@context.Study.StudyId[..Math.Min(8, context.Study.StudyId.Length)]…</MudTd>
@@ -51,6 +53,7 @@ else
                 </MudChip>
             </MudTd>
             <MudTd>@context.Study.CreatedAt.ToString("yyyy-MM-dd HH:mm")</MudTd>
+            <MudTd><MudIconButton Icon="@Icons.Material.Filled.OpenInNew" Size="MudBlazor.Size.Small" Href="@($"/research/study/{context.Study.StudyId}")" /></MudTd>
         </RowTemplate>
     </MudTable>
 }
@@ -66,20 +69,15 @@ else
     protected override async Task OnInitializedAsync()
     {
         var allStudies = await StudyRepo.ListAsync();
-        var strategies = (await StrategyRepo.ListAsync()).ToDictionary(s => s.StrategyId);
 
         foreach (var study in allStudies)
         {
-            // Try to find strategy name from version ID
             string? stratName = null;
-            foreach (var strat in strategies.Values)
+            var version = await StrategyRepo.GetVersionAsync(study.StrategyVersionId);
+            if (version is not null)
             {
-                var versions = await StrategyRepo.GetVersionsAsync(strat.StrategyId);
-                if (versions.Any(v => v.StrategyVersionId == study.StrategyVersionId))
-                {
-                    stratName = strat.StrategyName;
-                    break;
-                }
+                var strategy = await StrategyRepo.GetAsync(version.StrategyId);
+                stratName = strategy?.StrategyName;
             }
             _studies.Add(new StudyRow(study, stratName));
         }

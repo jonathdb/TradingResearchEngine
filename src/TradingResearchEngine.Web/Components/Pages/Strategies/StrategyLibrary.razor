@@ -22,6 +22,13 @@
         <MudSelectItem Value="@("Retired")">Retired</MudSelectItem>
     </MudSelect>
     <MudSwitch T="bool" @bind-Value="_showRetired" Label="Show Retired" Color="Color.Secondary" />
+    @{
+        var retiredCount = _strategies.Count(s => s.Stage == DevelopmentStage.Retired);
+    }
+    @if (!_showRetired && retiredCount > 0)
+    {
+        <MudText Typo="Typo.caption" Class="text-muted">@retiredCount retired hidden</MudText>
+    }
     <MudButton Variant="Variant.Filled" Color="Color.Primary"
                StartIcon="@Icons.Material.Filled.Add"
                Href="/strategies/builder">New Strategy</MudButton>

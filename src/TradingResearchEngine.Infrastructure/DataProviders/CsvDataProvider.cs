@@ -27,12 +27,28 @@ public sealed class CsvDataProvider : IDataProvider
         _logger = logger;
     }
 
+    /// <summary>
+    /// Opens the CSV file for reading, throwing a descriptive error if the file does not exist.
+    /// </summary>
+    private StreamReader OpenFileOrThrow()
+    {
+        if (!File.Exists(_filePath))
+        {
+            throw new FileNotFoundException(
+                $"Data file not found: '{_filePath}'. " +
+                "Ensure the file exists in the project data directory (./data/) " +
+                "or check the DataProvider.FilePath configuration.",
+                _filePath);
+        }
+        return new StreamReader(_filePath);
+    }
+
     /// <inheritdoc/>
     public async IAsyncEnumerable<BarRecord> GetBars(
         string symbol, string interval, DateTimeOffset from, DateTimeOffset to,
         [EnumeratorCancellation] CancellationToken ct = default)
     {
-        using var reader = new StreamReader(_filePath);
+        using var reader = OpenFileOrThrow();
         using var csv = new CsvReader(reader, new CsvConfiguration(CultureInfo.InvariantCulture)
         {
             HasHeaderRecord = true,
@@ -75,7 +91,7 @@ public sealed class CsvDataProvider : IDataProvider
         string symbol, DateTimeOffset from, DateTimeOffset to,
         [EnumeratorCancellation] CancellationToken ct = default)
     {
-        using var reader = new StreamReader(_filePath);
+        using var reader = OpenFileOrThrow();
         using var csv = new CsvReader(reader, new CsvConfiguration(CultureInfo.InvariantCulture)
         {
             HasHeaderRecord = true,

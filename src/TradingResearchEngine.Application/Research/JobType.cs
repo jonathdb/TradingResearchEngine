@@ -33,5 +33,11 @@ public enum JobType
     RegimeSegmentation,
 
     /// <summary>Benchmark comparison study.</summary>
-    BenchmarkComparison
+    BenchmarkComparison,
+
+    /// <summary>V7: Variance testing study.</summary>
+    Variance,
+
+    /// <summary>V7: Randomised OOS sampling study.</summary>
+    RandomisedOos,
 }

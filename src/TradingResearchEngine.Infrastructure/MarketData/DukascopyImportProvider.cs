@@ -51,8 +51,7 @@ public sealed class DukascopyImportProvider : IMarketDataProvider
         _httpClient = httpClient;
         _logger = logger;
         _cacheDir = cacheDir ?? Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "TradingResearchEngine", "DukascopyDayCache");
+            Directory.GetCurrentDirectory(), "data", "dukascopy-day-cache");
         Directory.CreateDirectory(_cacheDir);
     }
 

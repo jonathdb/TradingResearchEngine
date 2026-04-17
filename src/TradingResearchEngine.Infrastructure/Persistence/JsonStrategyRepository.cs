@@ -85,6 +85,23 @@ public sealed class JsonStrategyRepository : IStrategyRepository
         return versions.Count > 0 ? versions[^1] : null;
     }
 
+    /// <inheritdoc/>
+    public async Task<StrategyVersion?> GetVersionAsync(string strategyVersionId, CancellationToken ct = default)
+    {
+        if (!Directory.Exists(_baseDir)) return null;
+        foreach (var strategyDir in Directory.GetDirectories(_baseDir))
+        {
+            var versionsDir = Path.Combine(strategyDir, "versions");
+            var versionFile = Path.Combine(versionsDir, $"{strategyVersionId}.json");
+            if (File.Exists(versionFile))
+            {
+                var json = await File.ReadAllTextAsync(versionFile, ct);
+                return JsonSerializer.Deserialize<StrategyVersion>(json, JsonOpts);
+            }
+        }
+        return null;
+    }
+
     private string StrategyPath(string id) => Path.Combine(_baseDir, $"{id}.json");
     private string VersionDir(string strategyId) => Path.Combine(_baseDir, strategyId, "versions");
 }

@@ -394,6 +394,12 @@ else
                                     @if (_descriptor?.SuggestedStudies?.Contains("Realism") == true)
                                     { <MudIcon Icon="@Icons.Material.Filled.Star" Size="MudBlazor.Size.Small" Class="ml-1" Style="color: var(--mud-palette-warning)" /> }
                                 </MudButton>
+                                <MudButton Variant="Variant.Outlined" Size="MudBlazor.Size.Small" Href="@($"/research/benchmark?strategyId={_strategy.StrategyId}&versionId={_selectedVersion?.StrategyVersionId}")">
+                                    Benchmark
+                                </MudButton>
+                                <MudButton Variant="Variant.Outlined" Size="MudBlazor.Size.Small" Href="@($"/research/variance?strategyId={_strategy.StrategyId}&versionId={_selectedVersion?.StrategyVersionId}")">
+                                    Variance
+                                </MudButton>
                             }
                             else
                             {
@@ -569,10 +575,10 @@ else
         <TitleContent>Edit Execution Window</TitleContent>
         <DialogContent>
             <MudSelect T="string" @bind-Value="_editTimeframe" Label="Timeframe" Variant="Variant.Outlined" Class="mb-3">
-                <MudSelectItem Value="@("Daily")">Daily</MudSelectItem>
-                <MudSelectItem Value="@("H4")">H4</MudSelectItem>
-                <MudSelectItem Value="@("H1")">H1</MudSelectItem>
-                <MudSelectItem Value="@("M15")">M15</MudSelectItem>
+                @foreach (var tf in TradingResearchEngine.Web.Components.Builder.TimeframeOptions.All)
+                {
+                    <MudSelectItem Value="@tf.Value">@tf.Label (@tf.BarsPerYear.ToString("N0") bars/year)</MudSelectItem>
+                }
             </MudSelect>
             <MudDatePicker @bind-Date="_editStartDate" Label="Start Date" Variant="Variant.Outlined" Class="mb-3" />
             <MudDatePicker @bind-Date="_editEndDate" Label="End Date" Variant="Variant.Outlined" Class="mb-3" />
@@ -621,6 +627,7 @@ else
     private StrategyDescriptor? _descriptor; // Strategy library curation
     private int _activeTabIndex; // V5: active tab index for Overview default
     private decimal? _benchmarkExcessSharpe; // V5: excess Sharpe vs buy & hold
+    private static readonly System.Text.Json.JsonSerializerOptions _jsonOpts = new();
     // V4: Execution Window
     private (string? Timeframe, DateTimeOffset? Start, DateTimeOffset? End, int? EstimatedBars) _execWindow;
     private bool _editWindowOpen;
@@ -682,21 +689,27 @@ else
         var estBars = TradingResearchEngine.Application.Engine.ExecutionWindowEditor.EstimateBarCount(tf, start, end);
         _execWindow = (tf, start, end, estBars);
 
-        // V6: Load benchmark comparison excess Sharpe from real data
+        // V7: Load benchmark comparison excess Sharpe from real persisted data
         _benchmarkExcessSharpe = null;
-        var benchmarkStudy = _versionStudies
-            .FirstOrDefault(s => s.Status == TradingResearchEngine.Application.Research.StudyStatus.Completed
-                && s.Type.ToString().Contains("Benchmark", StringComparison.OrdinalIgnoreCase));
-        if (benchmarkStudy is null)
+        var latestBenchmark = _versionStudies
+            .Where(s => s.Type == TradingResearchEngine.Application.Research.StudyType.BenchmarkComparison
+                && s.Status == TradingResearchEngine.Application.Research.StudyStatus.Completed
+                && s.ResultJson is not null)
+            .OrderByDescending(s => s.CreatedAt)
+            .FirstOrDefault();
+
+        if (latestBenchmark?.ResultJson is not null)
         {
-            // No benchmark study exists — chip will show null with tooltip
-            _benchmarkExcessSharpe = null;
-        }
-        else if (_latestRun?.SharpeRatio is not null)
-        {
-            // Benchmark study exists — use ExcessReturn (strategySharpe - benchmarkSharpe)
-            // Note: BenchmarkComparisonResult is not persisted; approximate from available data
-            _benchmarkExcessSharpe = _latestRun.SharpeRatio;
+            try
+            {
+                var benchResult = System.Text.Json.JsonSerializer.Deserialize<TradingResearchEngine.Application.Research.Results.BenchmarkComparisonResult>(
+                    latestBenchmark.ResultJson, _jsonOpts);
+                _benchmarkExcessSharpe = benchResult?.ExcessReturn;
+            }
+            catch (System.Text.Json.JsonException)
+            {
+                _benchmarkExcessSharpe = null;
+            }
         }
     }
 
@@ -878,14 +891,17 @@ else
     {
         var resultParam = _latestRun is not null ? $"?result={_latestRun.Id}" : "";
         var stratParam = $"?strategy={_strategy?.StrategyType}";
+        var versionParam = $"?strategyId={_strategy?.StrategyId}&versionId={_selectedVersion?.StrategyVersionId}";
         return studyType switch
         {
             TradingResearchEngine.Application.Research.StudyType.MonteCarlo => $"/research/montecarlo{resultParam}",
-            TradingResearchEngine.Application.Research.StudyType.WalkForward => $"/research/walkforward{stratParam}",
-            TradingResearchEngine.Application.Research.StudyType.Sensitivity => $"/research/sweep{stratParam}",
-            TradingResearchEngine.Application.Research.StudyType.ParameterSweep => $"/research/sweep{stratParam}",
+            TradingResearchEngine.Application.Research.StudyType.WalkForward => $"/research/walkforward{versionParam}",
+            TradingResearchEngine.Application.Research.StudyType.Sensitivity => $"/research/sweep{versionParam}",
+            TradingResearchEngine.Application.Research.StudyType.ParameterSweep => $"/research/sweep{versionParam}",
             TradingResearchEngine.Application.Research.StudyType.RegimeSegmentation => $"/research/perturbation{resultParam}",
             TradingResearchEngine.Application.Research.StudyType.Realism => $"/research/perturbation{resultParam}",
+            TradingResearchEngine.Application.Research.StudyType.BenchmarkComparison => $"/research/benchmark{versionParam}",
+            TradingResearchEngine.Application.Research.StudyType.Variance => $"/research/variance{versionParam}",
             _ => $"/research/montecarlo{resultParam}"
         };
     }

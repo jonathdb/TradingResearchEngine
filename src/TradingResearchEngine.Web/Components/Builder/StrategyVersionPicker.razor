@@ -1,0 +1,100 @@
+@inject IStrategyRepository StrategyRepo
+@inject TradingResearchEngine.Core.Persistence.IRepository<BacktestResult> ResultRepo
+
+<MudStack Spacing="2">
+    <MudSelect T="StrategyIdentity?" Label="Strategy" Value="_selectedStrategy" ValueChanged="OnStrategyChanged"
+               Variant="Variant.Outlined" ToStringFunc="@(s => s?.StrategyName ?? "Select a strategy...")">
+        @foreach (var s in _strategies)
+        {
+            <MudSelectItem T="StrategyIdentity?" Value="@s">@s.StrategyName (@s.StrategyType)</MudSelectItem>
+        }
+    </MudSelect>
+
+    @if (_versions.Count > 0)
+    {
+        <MudSelect T="StrategyVersion?" Label="Version" Value="_selectedVersion" ValueChanged="OnVersionChanged"
+                   Variant="Variant.Outlined" ToStringFunc="@(v => v is null ? "Select version..." : $"v{v.VersionNumber} — {v.ChangeNote ?? v.CreatedAt.ToString("yyyy-MM-dd")}")">
+            @foreach (var v in _versions)
+            {
+                <MudSelectItem T="StrategyVersion?" Value="@v">v@(v.VersionNumber) — @(v.ChangeNote ?? v.CreatedAt.ToString("yyyy-MM-dd"))</MudSelectItem>
+            }
+        </MudSelect>
+    }
+</MudStack>
+
+@code {
+    /// <summary>URL-driven strategy preselection.</summary>
+    [Parameter] public string? PreselectedStrategyId { get; set; }
+
+    /// <summary>URL-driven version preselection.</summary>
+    [Parameter] public string? PreselectedVersionId { get; set; }
+
+    /// <summary>Emitted when a version is selected, including the latest run for that version.</summary>
+    [Parameter] public EventCallback<(StrategyIdentity Strategy, StrategyVersion Version, BacktestResult? LatestRun)> OnSelectionChanged { get; set; }
+
+    private List<StrategyIdentity> _strategies = new();
+    private List<StrategyVersion> _versions = new();
+    private StrategyIdentity? _selectedStrategy;
+    private StrategyVersion? _selectedVersion;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _strategies = (await StrategyRepo.ListAsync())
+            .Where(s => s.Stage != DevelopmentStage.Retired)
+            .ToList();
+
+        if (PreselectedStrategyId is not null)
+        {
+            _selectedStrategy = _strategies.FirstOrDefault(s => s.StrategyId == PreselectedStrategyId);
+            if (_selectedStrategy is not null)
+                await LoadVersions(_selectedStrategy.StrategyId);
+        }
+
+        if (PreselectedVersionId is not null && _versions.Count > 0)
+        {
+            _selectedVersion = _versions.FirstOrDefault(v => v.StrategyVersionId == PreselectedVersionId);
+            if (_selectedVersion is not null)
+                await NotifySelection();
+        }
+    }
+
+    private async Task OnStrategyChanged(StrategyIdentity? strategy)
+    {
+        _selectedStrategy = strategy;
+        _selectedVersion = null;
+        _versions = new();
+        if (strategy is not null)
+            await LoadVersions(strategy.StrategyId);
+    }
+
+    private async Task OnVersionChanged(StrategyVersion? version)
+    {
+        _selectedVersion = version;
+        if (version is not null)
+            await NotifySelection();
+    }
+
+    private async Task LoadVersions(string strategyId)
+    {
+        _versions = (await StrategyRepo.GetVersionsAsync(strategyId)).ToList();
+        if (_versions.Count == 1)
+        {
+            _selectedVersion = _versions[0];
+            await NotifySelection();
+        }
+    }
+
+    private async Task NotifySelection()
+    {
+        if (_selectedStrategy is null || _selectedVersion is null) return;
+
+        BacktestResult? latestRun = null;
+        var allResults = await ResultRepo.ListAsync();
+        latestRun = allResults
+            .Where(r => r.StrategyVersionId == _selectedVersion.StrategyVersionId)
+            .OrderByDescending(r => r.RunId)
+            .FirstOrDefault();
+
+        await OnSelectionChanged.InvokeAsync((_selectedStrategy, _selectedVersion, latestRun));
+    }
+}

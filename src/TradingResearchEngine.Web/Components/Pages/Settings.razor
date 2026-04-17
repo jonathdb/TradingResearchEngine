@@ -5,6 +5,7 @@
 @inject Microsoft.Extensions.Options.IOptions<TradingResearchEngine.Application.Configuration.SweepOptions> SweepOpts
 @inject Microsoft.Extensions.Options.IOptions<TradingResearchEngine.Application.Configuration.RepositoryOptions> RepoOpts
 @inject TradingResearchEngine.Infrastructure.DataProviders.DataFileService DataService
+@inject TradingResearchEngine.Infrastructure.Settings.SettingsService SettingsService
 @inject StrategyRegistry Registry
 
 <PageTitle>Settings — TradingResearchEngine</PageTitle>
@@ -56,6 +57,36 @@
                 <tbody>
                     <tr><td>Repository</td><td style="word-break:break-all">@(string.IsNullOrEmpty(RepoOpts.Value.BaseDirectory) ? "(default: LocalAppData)" : RepoOpts.Value.BaseDirectory)</td></tr>
                     <tr><td>Data Directory</td><td style="word-break:break-all">@DataService.DataDirectory</td></tr>
+                    <tr>
+                        <td>QDM Watch Directory</td>
+                        <td style="word-break:break-all">
+                            @if (_editingQdmPath)
+                            {
+                                <MudTextField @bind-Value="_qdmWatchDirectory"
+                                              HelperText="Optional — path to QDM export folder"
+                                              Placeholder="(not configured)"
+                                              Variant="Variant.Outlined"
+                                              Margin="Margin.Dense" />
+                                <MudButton Variant="Variant.Filled"
+                                           Color="Color.Primary"
+                                           Size="Size.Small"
+                                           Class="mt-2 mr-2"
+                                           OnClick="SaveQdmWatchDirectory">Save</MudButton>
+                                <MudButton Variant="Variant.Text"
+                                           Size="Size.Small"
+                                           Class="mt-2"
+                                           OnClick="CancelEditQdmPath">Cancel</MudButton>
+                            }
+                            else
+                            {
+                                <span>@(string.IsNullOrEmpty(_qdmWatchDirectory) ? "(not configured)" : _qdmWatchDirectory)</span>
+                                <MudIconButton Icon="@Icons.Material.Filled.Edit"
+                                               Size="Size.Small"
+                                               Class="ml-2"
+                                               OnClick="EditQdmPath" />
+                            }
+                        </td>
+                    </tr>
                 </tbody>
             </MudSimpleTable>
 
@@ -86,3 +117,38 @@
     </MudItem>
 </MudGrid>
 
+
+@code {
+    private string? _qdmWatchDirectory;
+    private bool _editingQdmPath;
+
+    protected override void OnInitialized()
+    {
+        var settings = SettingsService.Load();
+        _qdmWatchDirectory = settings.QdmWatchDirectory;
+    }
+
+    private void EditQdmPath()
+    {
+        _editingQdmPath = true;
+    }
+
+    private void CancelEditQdmPath()
+    {
+        var settings = SettingsService.Load();
+        _qdmWatchDirectory = settings.QdmWatchDirectory;
+        _editingQdmPath = false;
+    }
+
+    private void SaveQdmWatchDirectory()
+    {
+        var settings = SettingsService.Load();
+        var updated = settings with
+        {
+            QdmWatchDirectory = string.IsNullOrWhiteSpace(_qdmWatchDirectory) ? null : _qdmWatchDirectory.Trim()
+        };
+        SettingsService.Save(updated);
+        _qdmWatchDirectory = updated.QdmWatchDirectory;
+        _editingQdmPath = false;
+    }
+}

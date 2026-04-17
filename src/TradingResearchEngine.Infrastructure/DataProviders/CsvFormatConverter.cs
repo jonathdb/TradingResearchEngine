@@ -20,6 +20,11 @@ public static class CsvFormatConverter
         TradingView,
         /// <summary>MetaTrader export: Date,Time,Open,High,Low,Close,Volume</summary>
         MetaTrader,
+        /// <summary>
+        /// QuantDataManager export: Date,Time,Open,High,Low,Close,Volume
+        /// Date format is yyyy.MM.dd and Time format is HH:mm (no seconds).
+        /// </summary>
+        QuantDataManager,
         /// <summary>Already in engine format: Timestamp,Open,High,Low,Close,Volume</summary>
         Engine
     }
@@ -34,7 +39,7 @@ public static class CsvFormatConverter
         if (lines.Length < 2) return csvContent;
 
         if (format == SourceFormat.Auto)
-            format = DetectFormat(lines[0]);
+            format = DetectFormat(lines);
 
         if (format == SourceFormat.Engine)
             return csvContent; // already correct
@@ -62,10 +67,10 @@ public static class CsvFormatConverter
         File.WriteAllText(outputPath, converted);
     }
 
-    /// <summary>Detects the source format from the header line.</summary>
-    public static SourceFormat DetectFormat(string headerLine)
+    /// <summary>Detects the source format from the header and optional data rows.</summary>
+    public static SourceFormat DetectFormat(string[] lines)
     {
-        var lower = headerLine.ToLowerInvariant().Trim();
+        var lower = lines[0].ToLowerInvariant().Trim();
 
         if (lower.StartsWith("timestamp,open,high,low,close,volume"))
             return SourceFormat.Engine;
@@ -74,10 +79,19 @@ public static class CsvFormatConverter
         if (lower.StartsWith("time,open") || lower.StartsWith("\"time\",\"open\""))
             return SourceFormat.TradingView;
         if (lower.Contains("date") && lower.Contains("time") && !lower.Contains("timestamp"))
+        {
+            // Peek at first data row to distinguish QDM (yyyy.MM.dd) from MT5 (yyyy-MM-dd)
+            if (lines.Length > 1 && lines[1].Length > 4 && lines[1][4] == '.')
+                return SourceFormat.QuantDataManager;
             return SourceFormat.MetaTrader;
+        }
 
         return SourceFormat.Engine; // assume engine format if unrecognised
     }
+
+    /// <summary>Detects the source format from the header line (backward-compatible overload).</summary>
+    public static SourceFormat DetectFormat(string headerLine)
+        => DetectFormat(new[] { headerLine });
 
     private static string? ConvertLine(string line, SourceFormat format)
     {
@@ -88,6 +102,7 @@ public static class CsvFormatConverter
                 SourceFormat.YahooFinance => ConvertYahoo(line),
                 SourceFormat.TradingView => ConvertTradingView(line),
                 SourceFormat.MetaTrader => ConvertMetaTrader(line),
+                SourceFormat.QuantDataManager => ConvertQuantDataManager(line),
                 _ => null
             };
         }
@@ -122,6 +137,19 @@ public static class CsvFormatConverter
         var p = line.Split(',');
         if (p.Length < 7) throw new FormatException();
         var ts = DateTimeOffset.Parse($"{p[0].Trim()} {p[1].Trim()}", CultureInfo.InvariantCulture);
+        return $"{ts:O},{p[2].Trim()},{p[3].Trim()},{p[4].Trim()},{p[5].Trim()},{p[6].Trim()}";
+    }
+
+    // QuantDataManager: Date,Time,Open,High,Low,Close,Volume (Date is yyyy.MM.dd, Time is HH:mm)
+    private static string ConvertQuantDataManager(string line)
+    {
+        var p = line.Split(',');
+        if (p.Length < 7) throw new FormatException();
+        var datePart = p[0].Trim().Replace('.', '-');   // 2020.01.02 → 2020-01-02
+        var timePart = p[1].Trim();                      // 00:00
+        var ts = DateTimeOffset.Parse(
+            $"{datePart}T{timePart}:00Z",
+            CultureInfo.InvariantCulture);
         return $"{ts:O},{p[2].Trim()},{p[3].Trim()},{p[4].Trim()},{p[5].Trim()},{p[6].Trim()}";
     }
 }

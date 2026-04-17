@@ -26,4 +26,7 @@ public interface IStrategyRepository
 
     /// <summary>Gets the latest version for a strategy, or null if none exist.</summary>
     Task<StrategyVersion?> GetLatestVersionAsync(string strategyId, CancellationToken ct = default);
+
+    /// <summary>Gets a strategy version by its ID directly, or null if not found.</summary>
+    Task<StrategyVersion?> GetVersionAsync(string strategyVersionId, CancellationToken ct = default);
 }

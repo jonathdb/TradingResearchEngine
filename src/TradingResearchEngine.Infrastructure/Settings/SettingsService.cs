@@ -45,6 +45,7 @@ public sealed class SettingsService
 public sealed record AppSettings(
     string DataDirectory,
     string ExportDirectory,
+    string? QdmWatchDirectory,
     ExecutionRealismProfile DefaultRealismProfile,
     decimal DefaultInitialCash,
     decimal DefaultRiskFreeRate,
@@ -54,6 +55,7 @@ public sealed record AppSettings(
     public static AppSettings Default { get; } = new(
         "data",
         "exports",
+        null,
         ExecutionRealismProfile.StandardBacktest,
         100_000m,
         0.02m,

@@ -104,7 +104,7 @@ When `DataProviderType` is `csv`, the `DataProviderFactory` resolves relative fi
 
 `DukascopyDataProvider` downloads historical minute-bar data from Dukascopy's free datafeed. It requires no API key. Data is served as LZMA-compressed binary files (`.bi5` format) and decoded into `BarRecord` instances. All decompression, parsing, aggregation, URL construction, and CSV I/O is delegated to `DukascopyHelpers`.
 
-Constructor: `DukascopyDataProvider(HttpClient, ILogger<DukascopyDataProvider>, DukascopyPriceType priceType = DukascopyPriceType.Bid)`. The `priceType` parameter controls which price series is fetched — `Bid` downloads BID candles, `Ask` downloads ASK candles, and `Mid` fetches both BID and ASK files for each day and computes `MidOHLC = (BidOHLC + AskOHLC) / 2` (volume from the BID file). If an ASK file fails but BID succeeds when computing mid-price, the day is treated as a download failure (no partial mid-price bars). Default behaviour is unchanged when `priceType` is not specified.
+Constructor: `DukascopyDataProvider(HttpClient, ILogger<DukascopyDataProvider>, DukascopyPriceType priceType = DukascopyPriceType.Bid, string? cacheDir = null)`. The `cacheDir` parameter overrides the default cache directory; when omitted, it defaults to `./data/dukascopy-cache/` relative to the current working directory. The `priceType` parameter controls which price series is fetched — `Bid` downloads BID candles, `Ask` downloads ASK candles, and `Mid` fetches both BID and ASK files for each day and computes `MidOHLC = (BidOHLC + AskOHLC) / 2` (volume from the BID file). If an ASK file fails but BID succeeds when computing mid-price, the day is treated as a download failure (no partial mid-price bars). Default behaviour is unchanged when `priceType` is not specified.
 
 > **Note:** `DukascopyDataProvider` is no longer resolvable via `DataProviderType` in `ScenarioConfig`. It was removed from the `DataProviderFactory` switch. The class still exists in Infrastructure but must be constructed manually if needed.
 
@@ -132,7 +132,7 @@ The provider delegates HTTP fetching to an internal `FetchCsvAsync` method that 
 
 ### DataFileService
 
-- Default data directory: `%LOCALAPPDATA%/TradingResearchEngine/Data` (created automatically if absent)
+- Default data directory: `./data/` relative to the current working directory (created automatically if absent)
 - Constructor accepts an optional `dataDir` override for testing or custom deployments
 - `ListFiles()` scans the data directory for `*.csv` files and also checks a `samples/data` directory relative to the working directory (walk-up resolution), deduplicating by filename
 - Returns `List<DataFileInfo>` sorted by filename
@@ -145,7 +145,7 @@ The provider delegates HTTP fetching to an internal `FetchCsvAsync` method that 
 | FullPath | string | Absolute path to the file |
 | FileSizeBytes | long | File size in bytes |
 | RowCount | int | Number of data rows (excluding header) |
-| DetectedFormat | string | Detected CSV format (e.g. Yahoo, TradingView, MetaTrader, Generic) |
+| DetectedFormat | string | Detected CSV format (e.g. Yahoo, TradingView, MetaTrader, QuantDataManager, Generic) |
 | FirstTimestamp | string? | First timestamp in the file (null if empty or unparseable) |
 | LastTimestamp | string? | Last timestamp in the file |
 | Headers | string[] | Column headers from the first row |
@@ -180,7 +180,7 @@ All imported data is normalized to: `Timestamp,Open,High,Low,Close,Volume` with 
 `DukascopyImportProvider` implements `IMarketDataProvider` with `SourceName = "Dukascopy"`. It downloads minute BID candles day-by-day (sequential, not batched), aggregates to the requested timeframe via `DukascopyHelpers.Aggregate`, filters to the requested range (start inclusive, end exclusive), and writes canonical CSV via `DukascopyHelpers.SaveToCsv`.
 
 Each day's minute data is cached locally as a CSV file. On subsequent imports the provider loads the cached file via `DukascopyHelpers.LoadFromCsv` and skips the HTTP download when the cache contains more than one bar. Single-bar (or empty) cache files are treated as stale — likely artefacts from an earlier interval bug — and are re-downloaded automatically.
-`DukascopyImportProvider` implements `IMarketDataProvider` with `SourceName = "Dukascopy"`. It downloads minute BID candles in parallel batches (up to 8 concurrent requests), aggregates to the requested timeframe via `DukascopyHelpers.Aggregate`, filters to the requested range (start inclusive, end exclusive), and writes canonical CSV via `DukascopyHelpers.SaveToCsv`. Constructor accepts an optional `cacheDir` override; defaults to `%LOCALAPPDATA%/TradingResearchEngine/DukascopyDayCache`.
+`DukascopyImportProvider` implements `IMarketDataProvider` with `SourceName = "Dukascopy"`. It downloads minute BID candles in parallel batches (up to 8 concurrent requests), aggregates to the requested timeframe via `DukascopyHelpers.Aggregate`, filters to the requested range (start inclusive, end exclusive), and writes canonical CSV via `DukascopyHelpers.SaveToCsv`. Constructor accepts an optional `cacheDir` override; defaults to `./data/dukascopy-day-cache/` relative to the current working directory.
 
 - Caches raw minute bars per (symbol, date) as individual CSV files (`{symbol}_{yyyyMMdd}_1m.csv`). On re-imports or different-timeframe imports, cached days are loaded from disk without HTTP requests. Empty days (holidays) are also cached to avoid redundant downloads. Corrupted cache files are detected and re-downloaded automatically.
 - Supports all 15 symbols from `DukascopyHelpers.PointSizes` across 7 timeframes (`1m`, `5m`, `15m`, `30m`, `1H`, `4H`, `Daily`)
@@ -551,7 +551,7 @@ V3 adds a product domain model to the Application layer. Core remains untouched.
 - `StrategyIdentity` (`Application/Strategy/`) — a user-owned, named research concept (e.g. "my EURUSD mean reversion idea"). Implements `IHasId` via `StrategyId`. Fields: `StrategyId`, `StrategyName`, `StrategyType`, `CreatedAt`, optional `Description`, `Stage` (`DevelopmentStage`, default `Exploring`), optional `Hypothesis`, optional `RetirementNote` (V6: free-text note explaining why the strategy was retired; only meaningful when `Stage == Retired`).
 - `DevelopmentStage` (`Application/Strategy/`) — V4 enum tracking the research lifecycle of a strategy. Values: `Hypothesis`, `Exploring`, `Optimizing`, `Validating`, `FinalTest`, `Retired`. Existing JSON missing this field deserializes to `Exploring` for backwards compatibility.
 - `StrategyVersion` (`Application/Strategy/`) — a specific parameter configuration of a strategy. Implements `IHasId` via `StrategyVersionId`. Fields: `StrategyVersionId`, `StrategyId` (parent), `VersionNumber`, `Parameters` dictionary, `BaseScenarioConfig` (full config snapshot), `CreatedAt`, optional `ChangeNote`, `TotalTrialsRun` (int, default 0, incremented per run or sweep), `SealedTestSet` (`DateRangeConstraint?`, default null, locked held-out date range).
-- `IStrategyRepository` (`Application/Strategy/`) — persistence interface for strategies and versions. Methods: `GetAsync`, `ListAsync`, `SaveAsync`, `DeleteAsync`, `GetVersionsAsync`, `SaveVersionAsync`, `GetLatestVersionAsync`.
+- `IStrategyRepository` (`Application/Strategy/`) — persistence interface for strategies and versions. Methods: `GetAsync`, `ListAsync`, `SaveAsync`, `DeleteAsync`, `GetVersionsAsync`, `SaveVersionAsync`, `GetLatestVersionAsync`, `GetVersionAsync` (V7: direct version lookup by ID, avoids O(n×m) full scans).
 
 ### Strategy Templates
 
@@ -563,7 +563,7 @@ V3 adds a product domain model to the Application layer. Core remains untouched.
 ### Study Records
 
 - `StudyRecord` (`Application/Research/`) — a research workflow execution linked to a strategy version. A Monte Carlo study with 1000 paths is ONE study, not 1000 runs. Implements `IHasId` via `StudyId`. Fields: `StudyId`, `StrategyVersionId`, `Type` (`StudyType` enum), `Status` (`StudyStatus` enum), `CreatedAt`, optional `SourceRunId`, optional `ErrorSummary`, `IsPartial` (bool, default false — true when cancelled before completion), `CompletedCount` (int, default 0 — completed units when partial), `TotalCount` (int, default 0 — total planned units).
-- `StudyType` enum: `MonteCarlo`, `WalkForward`, `AnchoredWalkForward` (V4), `CombinatorialPurgedCV` (V4, deferred to V4.1), `Sensitivity`, `ParameterSweep`, `Realism`, `ParameterStability`, `RegimeSegmentation` (V4).
+- `StudyType` enum: `MonteCarlo`, `WalkForward`, `AnchoredWalkForward` (V4), `CombinatorialPurgedCV` (V4, deferred to V4.1), `Sensitivity`, `ParameterSweep`, `Realism`, `ParameterStability`, `RegimeSegmentation` (V4), `BenchmarkComparison` (V7), `Variance` (V7), `RandomisedOos` (V7).
 - `StudyStatus` enum: `Running`, `Completed`, `Failed`, `Incomplete`, `Cancelled`.
 - `IStudyRepository` (`Application/Research/`) — persistence interface for study records. Methods: `GetAsync`, `ListByVersionAsync`, `ListAsync`, `SaveAsync`, `DeleteAsync`.
 

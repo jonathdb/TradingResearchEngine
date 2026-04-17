@@ -19,6 +19,12 @@ namespace TradingResearchEngine.Infrastructure;
 public static class ServiceCollectionExtensions
 {
     /// <summary>
+    /// Returns a project-relative path under <c>./data/{subfolder}</c>.
+    /// </summary>
+    private static string DataSubDir(string subfolder)
+        => Path.Combine(Directory.GetCurrentDirectory(), "data", subfolder);
+
+    /// <summary>
     /// Adds Infrastructure services: data providers, reporters, repository, and configuration bindings.
     /// </summary>
     public static IServiceCollection AddTradingResearchEngineInfrastructure(
@@ -42,7 +48,12 @@ public static class ServiceCollectionExtensions
         });
 
         services.AddSingleton<IReporter, ConsoleReporter>();
-        services.AddSingleton<DataFileService>();
+        services.AddSingleton(sp =>
+        {
+            var settingsService = sp.GetRequiredService<Settings.SettingsService>();
+            var settings = settingsService.Load();
+            return new DataFileService(settings.DataDirectory, settings.QdmWatchDirectory);
+        });
         services.AddSingleton<IRepository<BacktestResult>, JsonFileRepository<BacktestResult>>();
         // V6: SQLite-indexed backtest result repository
         services.AddSingleton<IBacktestResultRepository, SqliteIndexRepository>();
@@ -61,45 +72,31 @@ public static class ServiceCollectionExtensions
         // V3: Strategy and study repositories
         services.AddSingleton<TradingResearchEngine.Application.Strategy.IStrategyRepository>(sp =>
         {
-            var baseDir = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "TradingResearchEngine", "Strategies");
-            return new JsonStrategyRepository(baseDir);
+            return new JsonStrategyRepository(DataSubDir("strategies"));
         });
 
         services.AddSingleton<TradingResearchEngine.Application.Research.IStudyRepository>(sp =>
         {
-            var baseDir = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "TradingResearchEngine", "Studies");
-            return new JsonStudyRepository(baseDir);
+            return new JsonStudyRepository(DataSubDir("studies"));
         });
 
         // V3: Settings service
         services.AddSingleton(sp =>
         {
-            var settingsPath = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "TradingResearchEngine", "settings.json");
+            var settingsPath = Path.Combine(Directory.GetCurrentDirectory(), "data", "settings.json");
             return new Settings.SettingsService(settingsPath);
         });
 
         // V4: Data file repository
         services.AddSingleton<TradingResearchEngine.Application.DataFiles.IDataFileRepository>(sp =>
         {
-            var baseDir = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "TradingResearchEngine", "DataFiles");
-            return new JsonDataFileRepository(baseDir);
+            return new JsonDataFileRepository(DataSubDir("datafiles"));
         });
 
         // V4: Report exporter
         services.AddSingleton<TradingResearchEngine.Application.Export.IReportExporter>(sp =>
         {
-            var exportDir = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "TradingResearchEngine", "Exports");
-            return new Export.ReportExporter(exportDir);
+            return new Export.ReportExporter(DataSubDir("exports"));
         });
 
         // V4: Migration service
@@ -108,10 +105,7 @@ public static class ServiceCollectionExtensions
         // V6: Prop-firm evaluation repository
         services.AddSingleton<IPropFirmEvaluationRepository>(sp =>
         {
-            var baseDir = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "TradingResearchEngine", "PropFirmEvaluations");
-            return new JsonPropFirmEvaluationRepository(baseDir);
+            return new JsonPropFirmEvaluationRepository(DataSubDir("prop-firm-evaluations"));
         });
 
         // V6: Prop-firm pack loader
@@ -124,10 +118,7 @@ public static class ServiceCollectionExtensions
         // Market Data: import repository
         services.AddSingleton<TradingResearchEngine.Application.MarketData.IMarketDataImportRepository>(sp =>
         {
-            var baseDir = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "TradingResearchEngine", "Imports");
-            return new MarketData.JsonMarketDataImportRepository(baseDir);
+            return new MarketData.JsonMarketDataImportRepository(DataSubDir("imports"));
         });
 
         // Market Data: Dukascopy provider

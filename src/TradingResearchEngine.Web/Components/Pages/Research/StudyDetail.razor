@@ -73,6 +73,99 @@ else
         </MudText>
     </MudPaper>
 
+    @* V7: Results rendering *@
+    @if (_study.ResultJson is not null && _study.Status == TradingResearchEngine.Application.Research.StudyStatus.Completed)
+    {
+        <MudPaper Class="pa-4 mb-4" Elevation="1">
+            <MudText Typo="Typo.subtitle1" Class="mb-3">Results</MudText>
+            @if (_resultError is not null)
+            {
+                <MudAlert Severity="Severity.Error">Failed to load results: @_resultError</MudAlert>
+            }
+            else
+            {
+                @switch (_study.Type)
+                {
+                    case TradingResearchEngine.Application.Research.StudyType.MonteCarlo when _monteCarloResult is not null:
+                        <MudGrid>
+                            <MudItem xs="4"><MetricCard Label="P10 Equity" Value="@($"${_monteCarloResult.P10EndEquity:F0}")" /></MudItem>
+                            <MudItem xs="4"><MetricCard Label="P50 Equity" Value="@($"${_monteCarloResult.P50EndEquity:F0}")" /></MudItem>
+                            <MudItem xs="4"><MetricCard Label="P90 Equity" Value="@($"${_monteCarloResult.P90EndEquity:F0}")" /></MudItem>
+                            <MudItem xs="4"><MetricCard Label="Ruin Prob" Value="@($"{_monteCarloResult.RuinProbability:P1}")" /></MudItem>
+                            <MudItem xs="4"><MetricCard Label="Median Max DD" Value="@($"{_monteCarloResult.MedianMaxDrawdown:P2}")" /></MudItem>
+                        </MudGrid>
+                        @if (_monteCarloResult.PercentileBands.Count > 0)
+                        {
+                            <TradingResearchEngine.Web.Components.Charts.MonteCarloFanChart
+                                Bands="_monteCarloResult.PercentileBands"
+                                StartEquity="100_000m"
+                                RuinProbability="_monteCarloResult.RuinProbability" />
+                        }
+                        <EquityDistributionChart Data="_monteCarloResult.EndEquityDistribution" />
+                        break;
+
+                    case TradingResearchEngine.Application.Research.StudyType.WalkForward when _wfResult is not null:
+                    case TradingResearchEngine.Application.Research.StudyType.AnchoredWalkForward when _wfResult is not null:
+                        <TradingResearchEngine.Web.Components.Charts.WalkForwardCompositeChart
+                            Summary="@TradingResearchEngine.Application.Research.WalkForwardWorkflow.BuildSummary(_wfResult)" />
+                        break;
+
+                    case TradingResearchEngine.Application.Research.StudyType.ParameterSweep when _sweepResult is not null:
+                    case TradingResearchEngine.Application.Research.StudyType.Sensitivity when _sweepResult is not null:
+                        <TradingResearchEngine.Web.Components.Charts.ParameterSweepHeatmap
+                            SweepResult="_sweepResult" MetricName="Sharpe" />
+                        break;
+
+                    case TradingResearchEngine.Application.Research.StudyType.Realism when _perturbationResult is not null:
+                        <MudGrid>
+                            <MudItem xs="4"><MetricCard Label="Mean Sharpe" Value="@_perturbationResult.MeanSharpe.ToString("F2")" /></MudItem>
+                            <MudItem xs="4"><MetricCard Label="Std Dev" Value="@_perturbationResult.StdDevSharpe.ToString("F3")" /></MudItem>
+                            <MudItem xs="4"><MetricCard Label="Mean Expectancy" Value="@($"${_perturbationResult.MeanExpectancy:F2}")" /></MudItem>
+                            <MudItem xs="6"><MetricCard Label="Worst Sharpe" Value="@_perturbationResult.WorstSharpe.ToString("F2")" /></MudItem>
+                            <MudItem xs="6"><MetricCard Label="Best Sharpe" Value="@_perturbationResult.BestSharpe.ToString("F2")" /></MudItem>
+                        </MudGrid>
+                        break;
+
+                    case TradingResearchEngine.Application.Research.StudyType.BenchmarkComparison when _benchmarkResult is not null:
+                        <MudGrid>
+                            <MudItem xs="4"><MetricCard Label="Strategy Return" Value="@($"{_benchmarkResult.StrategyReturn:P2}")" /></MudItem>
+                            <MudItem xs="4"><MetricCard Label="Benchmark Return" Value="@($"{_benchmarkResult.BenchmarkReturn:P2}")" /></MudItem>
+                            <MudItem xs="4"><MetricCard Label="Alpha" Value="@($"{_benchmarkResult.Alpha:P2}")" /></MudItem>
+                            <MudItem xs="4"><MetricCard Label="Beta" Value="@(_benchmarkResult.Beta?.ToString("F3") ?? "N/A")" /></MudItem>
+                            <MudItem xs="4"><MetricCard Label="Info Ratio" Value="@(_benchmarkResult.InformationRatio?.ToString("F3") ?? "N/A")" /></MudItem>
+                            <MudItem xs="4"><MetricCard Label="Tracking Error" Value="@($"{_benchmarkResult.TrackingError:F4}")" /></MudItem>
+                        </MudGrid>
+                        break;
+
+                    case TradingResearchEngine.Application.Research.StudyType.Cpcv when _cpcvResult is not null:
+                        <MudGrid>
+                            <MudItem xs="4"><MetricCard Label="Median OOS Sharpe" Value="@_cpcvResult.MedianOosSharpe.ToString("F3")" /></MudItem>
+                            <MudItem xs="4"><MetricCard Label="P(Overfit)" Value="@($"{_cpcvResult.ProbabilityOfOverfitting:P1}")" /></MudItem>
+                            <MudItem xs="4"><MetricCard Label="Perf Degradation" Value="@($"{_cpcvResult.PerformanceDegradation:P1}")" /></MudItem>
+                        </MudGrid>
+                        break;
+
+                    case TradingResearchEngine.Application.Research.StudyType.Variance when _varianceResult is not null:
+                        <MudTable Items="_varianceResult.Variants" Dense="true" Hover="true">
+                            <HeaderContent>
+                                <MudTh>Preset</MudTh><MudTh>Sharpe</MudTh><MudTh>Max DD</MudTh>
+                                <MudTh>Win Rate</MudTh><MudTh>Trades</MudTh><MudTh>End Equity</MudTh>
+                            </HeaderContent>
+                            <RowTemplate>
+                                <MudTd><MudChip T="string" Size="MudBlazor.Size.Small">@context.PresetName</MudChip></MudTd>
+                                <MudTd>@(context.Result.SharpeRatio?.ToString("F2") ?? "N/A")</MudTd>
+                                <MudTd>@context.Result.MaxDrawdown.ToString("P2")</MudTd>
+                                <MudTd>@(context.Result.WinRate?.ToString("P1") ?? "N/A")</MudTd>
+                                <MudTd>@context.Result.TotalTrades</MudTd>
+                                <MudTd>$@context.Result.EndEquity.ToString("F2")</MudTd>
+                            </RowTemplate>
+                        </MudTable>
+                        break;
+                }
+            }
+        </MudPaper>
+    }
+
     @* Actions *@
     <MudStack Row="true" Spacing="2">
         <MudButton Variant="Variant.Outlined" Color="Color.Primary"
@@ -89,27 +182,78 @@ else
 @code {
     [Parameter] public string StudyId { get; set; } = "";
 
+    private static readonly System.Text.Json.JsonSerializerOptions _jsonOpts = new();
+
     private TradingResearchEngine.Application.Research.StudyRecord? _study;
     private string? _strategyName;
     private bool _loading = true;
+    private string? _resultError;
+
+    // V7: Deserialized result fields
+    private TradingResearchEngine.Application.Research.Results.MonteCarloResult? _monteCarloResult;
+    private TradingResearchEngine.Application.Research.Results.WalkForwardResult? _wfResult;
+    private TradingResearchEngine.Application.Research.Results.SweepResult? _sweepResult;
+    private TradingResearchEngine.Application.Research.PerturbationResult? _perturbationResult;
+    private TradingResearchEngine.Application.Research.Results.BenchmarkComparisonResult? _benchmarkResult;
+    private TradingResearchEngine.Application.Research.Results.CpcvResult? _cpcvResult;
+    private TradingResearchEngine.Application.Research.Results.VarianceResult? _varianceResult;
 
     protected override async Task OnInitializedAsync()
     {
         _study = await StudyRepo.GetAsync(StudyId);
         if (_study is not null)
         {
-            var strategies = await StrategyRepo.ListAsync();
-            foreach (var s in strategies)
+            var version = await StrategyRepo.GetVersionAsync(_study.StrategyVersionId);
+            if (version is not null)
             {
-                var versions = await StrategyRepo.GetVersionsAsync(s.StrategyId);
-                if (versions.Any(v => v.StrategyVersionId == _study.StrategyVersionId))
+                var strategy = await StrategyRepo.GetAsync(version.StrategyId);
+                _strategyName = strategy?.StrategyName;
+            }
+
+            // V7: Deserialize result JSON
+            if (_study.ResultJson is not null && _study.Status == TradingResearchEngine.Application.Research.StudyStatus.Completed)
+            {
+                try
                 {
-                    _strategyName = s.StrategyName;
-                    break;
+                    DeserializeResult(_study.Type, _study.ResultJson);
+                }
+                catch (System.Text.Json.JsonException ex)
+                {
+                    _resultError = ex.Message;
                 }
             }
         }
         _loading = false;
+    }
+
+    private void DeserializeResult(TradingResearchEngine.Application.Research.StudyType type, string json)
+    {
+        switch (type)
+        {
+            case TradingResearchEngine.Application.Research.StudyType.MonteCarlo:
+                _monteCarloResult = System.Text.Json.JsonSerializer.Deserialize<TradingResearchEngine.Application.Research.Results.MonteCarloResult>(json, _jsonOpts);
+                break;
+            case TradingResearchEngine.Application.Research.StudyType.WalkForward:
+            case TradingResearchEngine.Application.Research.StudyType.AnchoredWalkForward:
+                _wfResult = System.Text.Json.JsonSerializer.Deserialize<TradingResearchEngine.Application.Research.Results.WalkForwardResult>(json, _jsonOpts);
+                break;
+            case TradingResearchEngine.Application.Research.StudyType.ParameterSweep:
+            case TradingResearchEngine.Application.Research.StudyType.Sensitivity:
+                _sweepResult = System.Text.Json.JsonSerializer.Deserialize<TradingResearchEngine.Application.Research.Results.SweepResult>(json, _jsonOpts);
+                break;
+            case TradingResearchEngine.Application.Research.StudyType.Realism:
+                _perturbationResult = System.Text.Json.JsonSerializer.Deserialize<TradingResearchEngine.Application.Research.PerturbationResult>(json, _jsonOpts);
+                break;
+            case TradingResearchEngine.Application.Research.StudyType.BenchmarkComparison:
+                _benchmarkResult = System.Text.Json.JsonSerializer.Deserialize<TradingResearchEngine.Application.Research.Results.BenchmarkComparisonResult>(json, _jsonOpts);
+                break;
+            case TradingResearchEngine.Application.Research.StudyType.Cpcv:
+                _cpcvResult = System.Text.Json.JsonSerializer.Deserialize<TradingResearchEngine.Application.Research.Results.CpcvResult>(json, _jsonOpts);
+                break;
+            case TradingResearchEngine.Application.Research.StudyType.Variance:
+                _varianceResult = System.Text.Json.JsonSerializer.Deserialize<TradingResearchEngine.Application.Research.Results.VarianceResult>(json, _jsonOpts);
+                break;
+        }
     }
 
     private string GetInterpretation() => _study?.Type switch

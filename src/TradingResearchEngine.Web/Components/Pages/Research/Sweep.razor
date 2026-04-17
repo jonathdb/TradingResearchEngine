@@ -1,5 +1,6 @@
 @page "/research/sweep"
 @inject TradingResearchEngine.Application.Research.ParameterSweepWorkflow SweepWorkflow
+@inject IStrategyRepository StrategyRepo
 @inject ISnackbar Snackbar
 
 <PageTitle>Parameter Sweep — TradingResearchEngine</PageTitle>
@@ -9,7 +10,14 @@
 <MudGrid>
     <MudItem xs="12" md="7">
         <MudPaper Class="pa-4" Elevation="2">
-            <ScenarioConfigEditor @ref="_configEditor" />
+            <StrategyVersionPicker PreselectedStrategyId="@StrategyId" PreselectedVersionId="@VersionId"
+                                   OnSelectionChanged="OnVersionSelected" />
+
+            <MudExpansionPanels Class="mt-3 mb-3">
+                <MudExpansionPanel Text="Advanced / Manual Config" Expanded="false">
+                    <ScenarioConfigEditor @ref="_configEditor" />
+                </MudExpansionPanel>
+            </MudExpansionPanels>
 
             <MudDivider Class="my-4" />
             <MudText Typo="Typo.h6" Class="mb-3">Parameter Grid</MudText>
@@ -96,8 +104,16 @@
 </MudGrid>
 
 @code {
+    [SupplyParameterFromQuery] public string? StrategyId { get; set; }
+    [SupplyParameterFromQuery] public string? VersionId { get; set; }
+
     private ScenarioConfigEditor? _configEditor;
     private List<GridEntry> _gridEntries = new() { new() };
+
+    private void OnVersionSelected((StrategyIdentity Strategy, StrategyVersion Version, BacktestResult? LatestRun) selection)
+    {
+        _configEditor?.LoadFromConfig(selection.Version.BaseScenarioConfig);
+    }
 
     private async Task<TradingResearchEngine.Application.Research.Results.SweepResult> ExecuteSweep(CancellationToken ct)
     {

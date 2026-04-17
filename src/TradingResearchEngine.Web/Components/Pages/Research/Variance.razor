@@ -1,5 +1,7 @@
 @page "/research/variance"
 @inject TradingResearchEngine.Application.Research.VarianceTestingWorkflow VarWorkflow
+@inject TradingResearchEngine.Core.Persistence.IRepository<BacktestResult> ResultRepo
+@inject IStrategyRepository StrategyRepo
 @inject ISnackbar Snackbar
 
 <PageTitle>Variance Testing — TradingResearchEngine</PageTitle>
@@ -12,7 +14,14 @@
 <MudGrid>
     <MudItem xs="12" md="6">
         <MudPaper Class="pa-4" Elevation="2">
-            <ScenarioConfigEditor @ref="_configEditor" />
+            <StrategyVersionPicker PreselectedStrategyId="@StrategyId" PreselectedVersionId="@VersionId"
+                                   OnSelectionChanged="OnVersionSelected" />
+
+            <MudExpansionPanels Class="mt-3 mb-3">
+                <MudExpansionPanel Text="Advanced / Manual Config" Expanded="false">
+                    <ScenarioConfigEditor @ref="_configEditor" />
+                </MudExpansionPanel>
+            </MudExpansionPanels>
 
             <WorkflowRunner TResult="TradingResearchEngine.Application.Research.Results.VarianceResult"
                             ButtonText="Run Variance Test"
@@ -39,7 +48,29 @@
 </MudGrid>
 
 @code {
+    [SupplyParameterFromQuery] public string? StrategyId { get; set; }
+    [SupplyParameterFromQuery] public string? VersionId { get; set; }
+    [SupplyParameterFromQuery(Name = "result")] public string? ResultId { get; set; }
+
     private ScenarioConfigEditor? _configEditor;
+
+    private void OnVersionSelected((StrategyIdentity Strategy, StrategyVersion Version, BacktestResult? LatestRun) selection)
+    {
+        _configEditor?.LoadFromConfig(selection.Version.BaseScenarioConfig);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && ResultId is not null && _configEditor is not null)
+        {
+            var result = await ResultRepo.GetByIdAsync(ResultId);
+            if (result is not null)
+                _configEditor.LoadFromConfig(result.ScenarioConfig);
+            else
+                Snackbar.Add("Backtest result not found.", Severity.Warning);
+            StateHasChanged();
+        }
+    }
 
     private async Task<TradingResearchEngine.Application.Research.Results.VarianceResult> Execute(CancellationToken ct)
     {

@@ -20,4 +20,7 @@ public interface IStudyRepository
 
     /// <summary>Deletes a study record.</summary>
     Task DeleteAsync(string studyId, CancellationToken ct = default);
+
+    /// <summary>Saves the result JSON for a completed study.</summary>
+    Task SaveResultAsync(string studyId, string resultJson, CancellationToken ct = default);
 }

@@ -17,12 +17,12 @@ public sealed record DataFileInfo(
 public sealed class DataFileService
 {
     private readonly string _dataDir;
+    private readonly string? _qdmWatchDir;
 
-    public DataFileService(string? dataDir = null)
+    public DataFileService(string? dataDir = null, string? qdmWatchDir = null)
     {
-        _dataDir = dataDir ?? Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "TradingResearchEngine", "Data");
+        _dataDir = dataDir ?? Path.Combine(Directory.GetCurrentDirectory(), "data");
+        _qdmWatchDir = qdmWatchDir;
         if (!Directory.Exists(_dataDir)) Directory.CreateDirectory(_dataDir);
     }
 
@@ -47,6 +47,17 @@ public sealed class DataFileService
                     files.Add(AnalyzeFile(path));
             }
         }
+
+        // Scan QDM watch directory if configured and exists
+        if (!string.IsNullOrWhiteSpace(_qdmWatchDir) && Directory.Exists(_qdmWatchDir))
+        {
+            foreach (var path in Directory.GetFiles(_qdmWatchDir, "*.csv"))
+            {
+                if (!files.Any(f => f.FileName == Path.GetFileName(path)))
+                    files.Add(AnalyzeFile(path));
+            }
+        }
+
         return files.OrderBy(f => f.FileName).ToList();
     }
 
@@ -74,7 +85,11 @@ public sealed class DataFileService
             var header = reader.ReadLine();
             if (header is null) return (false, "File is empty.");
 
-            var format = CsvFormatConverter.DetectFormat(header);
+            var firstDataLine = reader.ReadLine();
+            var lines = firstDataLine is not null
+                ? new[] { header, firstDataLine }
+                : new[] { header };
+            var format = CsvFormatConverter.DetectFormat(lines);
             if (format == CsvFormatConverter.SourceFormat.Engine)
                 return (true, "Valid engine format (Timestamp,Open,High,Low,Close,Volume).");
 
@@ -120,18 +135,27 @@ public sealed class DataFileService
             if (headerLine is not null)
             {
                 headers = headerLine.Split(',');
-                format = CsvFormatConverter.DetectFormat(headerLine).ToString();
-            }
+                var firstDataLine = reader.ReadLine();
+                var lines = firstDataLine is not null
+                    ? new[] { headerLine, firstDataLine }
+                    : new[] { headerLine };
+                format = CsvFormatConverter.DetectFormat(lines).ToString();
 
-            string? line;
-            string? lastLine = null;
-            while ((line = reader.ReadLine()) is not null)
-            {
-                rowCount++;
-                if (rowCount == 1) firstTs = line.Split(',').FirstOrDefault();
-                lastLine = line;
+                // Count data rows (first data line already read)
+                if (firstDataLine is not null)
+                {
+                    rowCount = 1;
+                    firstTs = firstDataLine.Split(',').FirstOrDefault();
+                    string? line;
+                    string? lastLine = firstDataLine;
+                    while ((line = reader.ReadLine()) is not null)
+                    {
+                        rowCount++;
+                        lastLine = line;
+                    }
+                    lastTs = lastLine.Split(',').FirstOrDefault();
+                }
             }
-            if (lastLine is not null) lastTs = lastLine.Split(',').FirstOrDefault();
         }
         catch { /* best effort */ }
 

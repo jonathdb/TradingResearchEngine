@@ -158,6 +158,8 @@ public class V4ServicesTests
             .ReturnsAsync(strategy);
         strategyRepo.Setup(r => r.GetVersionsAsync("s1", It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<StrategyVersion> { version });
+        strategyRepo.Setup(r => r.GetVersionAsync("v1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(version);
 
         var evalRepo = new Mock<IPropFirmEvaluationRepository>();
         evalRepo.Setup(r => r.HasCompletedEvaluationAsync("v1", It.IsAny<CancellationToken>()))

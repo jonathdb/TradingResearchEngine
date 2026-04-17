@@ -20,7 +20,9 @@ public sealed record StudyRecord(
     /// <summary>V4: Number of completed units (paths, windows, combinations) when partial.</summary>
     int CompletedCount = 0,
     /// <summary>V4: Total planned units (paths, windows, combinations).</summary>
-    int TotalCount = 0) : IHasId
+    int TotalCount = 0,
+    /// <summary>V7: Serialized JSON of the workflow result. Null until the study completes.</summary>
+    string? ResultJson = null) : IHasId
 {
     /// <inheritdoc/>
     public string Id => StudyId;
@@ -42,7 +44,13 @@ public enum StudyType
     Realism,
     ParameterStability,
     /// <summary>V4: Post-hoc regime segmentation analysis.</summary>
-    RegimeSegmentation
+    RegimeSegmentation,
+    /// <summary>V7: Benchmark comparison against a buy-and-hold baseline.</summary>
+    BenchmarkComparison,
+    /// <summary>V7: Variance testing — stability across sub-period slices.</summary>
+    Variance,
+    /// <summary>V7: Randomised OOS sampling study.</summary>
+    RandomisedOos,
 }
 
 /// <summary>Lifecycle status of a study.</summary>
