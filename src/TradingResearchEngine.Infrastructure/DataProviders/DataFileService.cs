@@ -1,4 +1,5 @@
 using System.Globalization;
+using TradingResearchEngine.Infrastructure.Settings;
 
 namespace TradingResearchEngine.Infrastructure.DataProviders;
 
@@ -18,14 +19,17 @@ public sealed class DataFileService
 {
     private readonly string _dataDir;
     private readonly string? _qdmWatchDir;
+    private readonly SettingsService? _settingsService;
 
-    public DataFileService(string? dataDir = null, string? qdmWatchDir = null)
+    public DataFileService(string? dataDir = null, string? qdmWatchDir = null, SettingsService? settingsService = null)
     {
         _dataDir = dataDir ?? Path.Combine(Directory.GetCurrentDirectory(), "data");
         _qdmWatchDir = qdmWatchDir;
+        _settingsService = settingsService;
         if (!Directory.Exists(_dataDir)) Directory.CreateDirectory(_dataDir);
     }
 
+    
     /// <summary>Returns the base data directory path.</summary>
     public string DataDirectory => _dataDir;
 
@@ -105,7 +109,8 @@ public sealed class DataFileService
     public string ConvertToEngineFormat(string sourcePath)
     {
         var content = File.ReadAllText(sourcePath);
-        var converted = CsvFormatConverter.Convert(content);
+        var timezoneId = _settingsService?.Load().QdmTimezoneId ?? "UTC";
+        var converted = CsvFormatConverter.Convert(content, CsvFormatConverter.SourceFormat.Auto, timezoneId);
         var outputName = Path.GetFileNameWithoutExtension(sourcePath) + "_converted.csv";
         var outputPath = Path.Combine(_dataDir, outputName);
         File.WriteAllText(outputPath, converted);

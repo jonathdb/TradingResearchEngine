@@ -33,7 +33,7 @@ public static class CsvFormatConverter
     /// Converts a CSV file from a known format to the engine's standard format.
     /// Returns the converted CSV content as a string.
     /// </summary>
-    public static string Convert(string csvContent, SourceFormat format = SourceFormat.Auto)
+    public static string Convert(string csvContent, SourceFormat format = SourceFormat.Auto, string timezoneId = "UTC")
     {
         var lines = csvContent.Split('\n', StringSplitOptions.RemoveEmptyEntries);
         if (lines.Length < 2) return csvContent;
@@ -48,7 +48,7 @@ public static class CsvFormatConverter
 
         for (int i = 1; i < lines.Length; i++)
         {
-            var converted = ConvertLine(lines[i], format);
+            var converted = ConvertLine(lines[i], format, timezoneId);
             if (converted is not null)
                 output.Add(converted);
         }
@@ -57,10 +57,10 @@ public static class CsvFormatConverter
     }
 
     /// <summary>Converts a source file on disk and writes the result to the output path.</summary>
-    public static void ConvertFile(string inputPath, string outputPath, SourceFormat format = SourceFormat.Auto)
+    public static void ConvertFile(string inputPath, string outputPath, SourceFormat format = SourceFormat.Auto, string timezoneId = "UTC")
     {
         var content = File.ReadAllText(inputPath);
-        var converted = Convert(content, format);
+        var converted = Convert(content, format, timezoneId);
         var dir = Path.GetDirectoryName(outputPath);
         if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
             Directory.CreateDirectory(dir);
@@ -93,7 +93,7 @@ public static class CsvFormatConverter
     public static SourceFormat DetectFormat(string headerLine)
         => DetectFormat(new[] { headerLine });
 
-    private static string? ConvertLine(string line, SourceFormat format)
+    private static string? ConvertLine(string line, SourceFormat format, string timezoneId = "UTC")
     {
         try
         {
@@ -102,7 +102,7 @@ public static class CsvFormatConverter
                 SourceFormat.YahooFinance => ConvertYahoo(line),
                 SourceFormat.TradingView => ConvertTradingView(line),
                 SourceFormat.MetaTrader => ConvertMetaTrader(line),
-                SourceFormat.QuantDataManager => ConvertQuantDataManager(line),
+                SourceFormat.QuantDataManager => ConvertQuantDataManager(line, timezoneId),
                 _ => null
             };
         }
@@ -141,15 +141,25 @@ public static class CsvFormatConverter
     }
 
     // QuantDataManager: Date,Time,Open,High,Low,Close,Volume (Date is yyyy.MM.dd, Time is HH:mm)
-    private static string ConvertQuantDataManager(string line)
+    private static string ConvertQuantDataManager(string line, string timezoneId = "UTC")
     {
         var p = line.Split(',');
         if (p.Length < 7) throw new FormatException();
+
         var datePart = p[0].Trim().Replace('.', '-');   // 2020.01.02 → 2020-01-02
         var timePart = p[1].Trim();                      // 00:00
-        var ts = DateTimeOffset.Parse(
-            $"{datePart}T{timePart}:00Z",
-            CultureInfo.InvariantCulture);
+
+        // Parse the naive datetime, then attach the correct timezone offset
+        var naive = DateTime.ParseExact(
+            $"{datePart} {timePart}",
+            "yyyy-MM-dd HH:mm",
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.None);
+
+        var tz = TimeZoneInfo.FindSystemTimeZoneById(timezoneId);
+        var offset = tz.GetUtcOffset(naive);
+        var ts = new DateTimeOffset(naive, offset);
+
         return $"{ts:O},{p[2].Trim()},{p[3].Trim()},{p[4].Trim()},{p[5].Trim()},{p[6].Trim()}";
     }
 }

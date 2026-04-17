@@ -87,6 +87,36 @@
                             }
                         </td>
                     </tr>
+                    <tr>
+                        <td>QDM Timezone</td>
+                        <td>
+                            @if (_editingQdmTimezone)
+                            {
+                                <MudSelect T="string" @bind-Value="_qdmTimezoneId"
+                                        Variant="Variant.Outlined" Margin="Margin.Dense">
+                                    <MudSelectItem Value="@("UTC")">UTC (recommended)</MudSelectItem>
+                                    <MudSelectItem Value="@("Europe/London")">Europe/London (GMT/BST)</MudSelectItem>
+                                    <MudSelectItem Value="@("America/New_York")">America/New_York (EST/EDT)</MudSelectItem>
+                                    <MudSelectItem Value="@("America/Chicago")">America/Chicago (CST/CDT)</MudSelectItem>
+                                    <MudSelectItem Value="@("Asia/Tokyo")">Asia/Tokyo (JST)</MudSelectItem>
+                                    <MudSelectItem Value="@("Asia/Singapore")">Asia/Singapore (SGT)</MudSelectItem>
+                                    <MudSelectItem Value="@("Europe/Berlin")">Europe/Berlin (CET/CEST)</MudSelectItem>
+                                </MudSelect>
+                                <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                                        Size="Size.Small" Class="mt-2 mr-2"
+                                        OnClick="SaveQdmTimezone">Save</MudButton>
+                                <MudButton Variant="Variant.Text" Size="Size.Small"
+                                        Class="mt-2" OnClick="CancelEditQdmTimezone">Cancel</MudButton>
+                            }
+                            else
+                            {
+                                <span>@(_qdmTimezoneId ?? "UTC")</span>
+                                <MudIconButton Icon="@Icons.Material.Filled.Edit"
+                                            Size="Size.Small" Class="ml-2"
+                                            OnClick="@(() => _editingQdmTimezone = true)" />
+                            }
+                        </td>
+                    </tr>
                 </tbody>
             </MudSimpleTable>
 
@@ -126,6 +156,7 @@
     {
         var settings = SettingsService.Load();
         _qdmWatchDirectory = settings.QdmWatchDirectory;
+        _qdmTimezoneId = settings.QdmTimezoneId ?? "UTC"; 
     }
 
     private void EditQdmPath()

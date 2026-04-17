@@ -133,8 +133,9 @@ The provider delegates HTTP fetching to an internal `FetchCsvAsync` method that 
 ### DataFileService
 
 - Default data directory: `./data/` relative to the current working directory (created automatically if absent)
-- Constructor accepts an optional `dataDir` override for testing or custom deployments
-- `ListFiles()` scans the data directory for `*.csv` files and also checks a `samples/data` directory relative to the working directory (walk-up resolution), deduplicating by filename
+- Constructor accepts optional `dataDir`, `qdmWatchDir`, and `settingsService` overrides for testing or custom deployments
+- `ListFiles()` scans the data directory for `*.csv` files, checks a `samples/data` directory relative to the working directory (walk-up resolution), and scans the QDM watch directory if configured — deduplicating by filename
+- `ConvertToEngineFormat(sourcePath)` converts a CSV file to the engine's canonical format using `CsvFormatConverter`. The QDM timezone setting from `SettingsService` is used for timezone-aware conversion (e.g. QuantDataManager exports); falls back to UTC when `SettingsService` is not available.
 - Returns `List<DataFileInfo>` sorted by filename
 
 ### DataFileInfo
@@ -150,7 +151,7 @@ The provider delegates HTTP fetching to an internal `FetchCsvAsync` method that 
 | LastTimestamp | string? | Last timestamp in the file |
 | Headers | string[] | Column headers from the first row |
 
-`DataFileService` is not yet registered in DI — it will be wired when the Data Files page (UI Phase 7, task 34.1) is implemented.
+`DataFileService` is registered as a singleton in DI via `ServiceCollectionExtensions`. Settings are resolved from `SettingsService` to supply the data directory and QDM watch directory.
 
 ## Market Data Acquisition (In Progress)
 
