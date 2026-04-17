@@ -1,5 +1,5 @@
 @inject IStrategyRepository StrategyRepo
-@inject TradingResearchEngine.Core.Persistence.IRepository<BacktestResult> ResultRepo
+@inject TradingResearchEngine.Application.Research.IBacktestResultRepository ResultRepo
 
 <MudStack Spacing="2">
     <MudSelect T="StrategyIdentity?" Label="Strategy" Value="_selectedStrategy" ValueChanged="OnStrategyChanged"
@@ -88,10 +88,10 @@
     {
         if (_selectedStrategy is null || _selectedVersion is null) return;
 
-        BacktestResult? latestRun = null;
-        var allResults = await ResultRepo.ListAsync();
-        latestRun = allResults
-            .Where(r => r.StrategyVersionId == _selectedVersion.StrategyVersionId)
+        var versionResults = await ResultRepo.ListByVersionAsync(
+            _selectedVersion.StrategyVersionId);           // ← indexed lookup only
+
+        var latestRun = versionResults
             .OrderByDescending(r => r.RunId)
             .FirstOrDefault();
 

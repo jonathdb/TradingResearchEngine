@@ -1,4 +1,4 @@
-@inject TradingResearchEngine.Core.Persistence.IRepository<BacktestResult> ResultRepo
+@inject TradingResearchEngine.Application.Research.IBacktestResultRepository ResultRepo
 
 <MudSelect T="string" Label="@Label" Value="_selectedId" ValueChanged="OnSelectionChanged"
            Variant="Variant.Outlined" Class="@Class">

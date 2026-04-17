@@ -7,6 +7,7 @@ namespace TradingResearchEngine.Infrastructure.Persistence;
 /// JSON file-based strategy repository.
 /// Strategies: strategies/{strategyId}.json
 /// Versions: strategies/{strategyId}/versions/{versionId}.json
+/// Version index: strategies/_version_index/{versionId}.txt → strategyId (for O(1) lookup)
 /// </summary>
 public sealed class JsonStrategyRepository : IStrategyRepository
 {
@@ -56,7 +57,8 @@ public sealed class JsonStrategyRepository : IStrategyRepository
         return Task.CompletedTask;
     }
 
-    public async Task<IReadOnlyList<StrategyVersion>> GetVersionsAsync(string strategyId, CancellationToken ct = default)
+    public async Task<IReadOnlyList<StrategyVersion>> GetVersionsAsync(
+        string strategyId, CancellationToken ct = default)
     {
         var dir = VersionDir(strategyId);
         var results = new List<StrategyVersion>();
@@ -77,26 +79,58 @@ public sealed class JsonStrategyRepository : IStrategyRepository
         var path = Path.Combine(dir, $"{version.StrategyVersionId}.json");
         var json = JsonSerializer.Serialize(version, JsonOpts);
         await File.WriteAllTextAsync(path, json, ct);
+
+        // Write flat version index entry for O(1) GetVersionAsync lookups
+        var indexDir = Path.Combine(_baseDir, "_version_index");
+        if (!Directory.Exists(indexDir)) Directory.CreateDirectory(indexDir);
+        await File.WriteAllTextAsync(
+            Path.Combine(indexDir, $"{version.StrategyVersionId}.txt"),
+            version.StrategyId, ct);
     }
 
-    public async Task<StrategyVersion?> GetLatestVersionAsync(string strategyId, CancellationToken ct = default)
+    public async Task<StrategyVersion?> GetLatestVersionAsync(
+        string strategyId, CancellationToken ct = default)
     {
         var versions = await GetVersionsAsync(strategyId, ct);
         return versions.Count > 0 ? versions[^1] : null;
     }
 
-    /// <inheritdoc/>
-    public async Task<StrategyVersion?> GetVersionAsync(string strategyVersionId, CancellationToken ct = default)
+    public async Task<StrategyVersion?> GetVersionAsync(
+        string strategyVersionId, CancellationToken ct = default)
     {
-        if (!Directory.Exists(_baseDir)) return null;
-        foreach (var strategyDir in Directory.GetDirectories(_baseDir))
+        // Fast path: flat index gives us the strategyId directly
+        var indexFile = Path.Combine(_baseDir, "_version_index", $"{strategyVersionId}.txt");
+        if (File.Exists(indexFile))
         {
-            var versionsDir = Path.Combine(strategyDir, "versions");
-            var versionFile = Path.Combine(versionsDir, $"{strategyVersionId}.json");
+            var strategyId = await File.ReadAllTextAsync(indexFile, ct);
+            var versionFile = Path.Combine(VersionDir(strategyId), $"{strategyVersionId}.json");
             if (File.Exists(versionFile))
             {
                 var json = await File.ReadAllTextAsync(versionFile, ct);
                 return JsonSerializer.Deserialize<StrategyVersion>(json, JsonOpts);
+            }
+        }
+
+        // Fallback: directory walk for versions saved before this fix
+        if (!Directory.Exists(_baseDir)) return null;
+        foreach (var strategyDir in Directory.GetDirectories(_baseDir))
+        {
+            if (Path.GetFileName(strategyDir) == "_version_index") continue;
+            var versionFile = Path.Combine(strategyDir, "versions", $"{strategyVersionId}.json");
+            if (File.Exists(versionFile))
+            {
+                var json = await File.ReadAllTextAsync(versionFile, ct);
+                var entity = JsonSerializer.Deserialize<StrategyVersion>(json, JsonOpts);
+                // Back-fill the index so next lookup is instant
+                if (entity is not null)
+                {
+                    var idxDir = Path.Combine(_baseDir, "_version_index");
+                    if (!Directory.Exists(idxDir)) Directory.CreateDirectory(idxDir);
+                    await File.WriteAllTextAsync(
+                        Path.Combine(idxDir, $"{strategyVersionId}.txt"),
+                        entity.StrategyId, ct);
+                }
+                return entity;
             }
         }
         return null;

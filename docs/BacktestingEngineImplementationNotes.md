@@ -356,16 +356,17 @@ V6 introduces `IBacktestResultRepository` (`Application/Research/`), an extended
 - `ListByVersionAsync(string versionId, CancellationToken)` — returns results for a specific strategy version via SQLite index (O(log n) instead of full-scan O(n)).
 - `ListByStrategyAsync(string strategyId, CancellationToken)` — returns results for a specific strategy via SQLite index.
 
-The implementation is `SqliteIndexRepository<T>` (`Infrastructure/Persistence/`), an index-only SQLite layer over the existing JSON files. The primary store remains JSON — SQLite provides fast lookups without migrating data.
+The implementation is `SqliteIndexRepository` (`Infrastructure/Persistence/`), an index-only SQLite layer over the existing JSON files. The primary store remains JSON — SQLite provides fast lookups without migrating data. Unlike the generic `SqliteIndexRepository<T>` described in the design, the current implementation is a concrete non-generic class specific to `BacktestResult`.
 
 ### Design
 
 - On startup, `InitializeAsync` scans the JSON directory and builds a SQLite index in `{AppData}/TradingResearchEngine/index.db`.
 - `GetByIdAsync` reads the file path from the index and deserialises the JSON file directly (O(1)).
+- `ListAsync` queries the SQLite index for all file paths (ordered by `RunDate DESC`) and reads matching JSON files. It no longer scans the directory directly — all queries go through the index.
 - `SaveAsync` writes the JSON file first, then upserts the SQLite index row. Not atomic — if a crash occurs between steps, `InitializeAsync` rebuilds from JSON on next startup.
 - `DeleteAsync` removes both the JSON file and the index row.
 - Corrupted or missing index files trigger a full rebuild from JSON without data loss.
-- Stale index rows (pointing to deleted JSON files) return null, log a warning, and are removed.
+- Stale index rows (pointing to deleted JSON files) are skipped with a warning log during `ListAsync` and removed during `GetByIdAsync`.
 
 ### SQLite Schema
 
@@ -373,22 +374,17 @@ The implementation is `SqliteIndexRepository<T>` (`Infrastructure/Persistence/`)
 CREATE TABLE IF NOT EXISTS BacktestResultIndex (
     Id TEXT PRIMARY KEY,
     StrategyVersionId TEXT NOT NULL,
+    StrategyId TEXT NOT NULL DEFAULT '',
     RunDate TEXT,
     Status TEXT,
     FilePath TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_br_version ON BacktestResultIndex(StrategyVersionId);
+CREATE INDEX IF NOT EXISTS idx_br_strategy ON BacktestResultIndex(StrategyId);
 CREATE INDEX IF NOT EXISTS idx_br_date ON BacktestResultIndex(RunDate);
-
-CREATE TABLE IF NOT EXISTS StudyIndex (
-    Id TEXT PRIMARY KEY,
-    StrategyVersionId TEXT NOT NULL,
-    StudyType TEXT,
-    CompletedAt TEXT,
-    FilePath TEXT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_study_version ON StudyIndex(StrategyVersionId);
 ```
+
+> **Note:** The `StudyIndex` table defined in the design document is not yet implemented in `SqliteIndexRepository`. The current implementation indexes `BacktestResult` only. Study indexing may be added in a future iteration.
 
 ### Consumer Changes
 
@@ -551,7 +547,7 @@ V3 adds a product domain model to the Application layer. Core remains untouched.
 - `StrategyIdentity` (`Application/Strategy/`) — a user-owned, named research concept (e.g. "my EURUSD mean reversion idea"). Implements `IHasId` via `StrategyId`. Fields: `StrategyId`, `StrategyName`, `StrategyType`, `CreatedAt`, optional `Description`, `Stage` (`DevelopmentStage`, default `Exploring`), optional `Hypothesis`, optional `RetirementNote` (V6: free-text note explaining why the strategy was retired; only meaningful when `Stage == Retired`).
 - `DevelopmentStage` (`Application/Strategy/`) — V4 enum tracking the research lifecycle of a strategy. Values: `Hypothesis`, `Exploring`, `Optimizing`, `Validating`, `FinalTest`, `Retired`. Existing JSON missing this field deserializes to `Exploring` for backwards compatibility.
 - `StrategyVersion` (`Application/Strategy/`) — a specific parameter configuration of a strategy. Implements `IHasId` via `StrategyVersionId`. Fields: `StrategyVersionId`, `StrategyId` (parent), `VersionNumber`, `Parameters` dictionary, `BaseScenarioConfig` (full config snapshot), `CreatedAt`, optional `ChangeNote`, `TotalTrialsRun` (int, default 0, incremented per run or sweep), `SealedTestSet` (`DateRangeConstraint?`, default null, locked held-out date range).
-- `IStrategyRepository` (`Application/Strategy/`) — persistence interface for strategies and versions. Methods: `GetAsync`, `ListAsync`, `SaveAsync`, `DeleteAsync`, `GetVersionsAsync`, `SaveVersionAsync`, `GetLatestVersionAsync`, `GetVersionAsync` (V7: direct version lookup by ID, avoids O(n×m) full scans).
+- `IStrategyRepository` (`Application/Strategy/`) — persistence interface for strategies and versions. Methods: `GetAsync`, `ListAsync`, `SaveAsync`, `DeleteAsync`, `GetVersionsAsync`, `SaveVersionAsync`, `GetLatestVersionAsync`, `GetVersionAsync` (V7: direct version lookup by ID, avoids O(n×m) full scans). `JsonStrategyRepository` (Infrastructure) implements this interface using JSON files at `strategies/{strategyId}.json` with versions at `strategies/{strategyId}/versions/{versionId}.json`. `GetVersionAsync` uses a flat-file version index (`_version_index/{versionId}.txt` → `strategyId`) for O(1) lookups; on a cache miss it falls back to a directory walk and back-fills the index for subsequent calls. `SaveVersionAsync` writes both the version JSON and the index entry.
 
 ### Strategy Templates
 
@@ -623,9 +619,9 @@ The existing `AnchoredWindow` boolean is deprecated but retained for backwards c
 
 ### ResearchChecklistService
 
-`ResearchChecklistService` (`Application/Research/`) computes an 8-item research checklist for a strategy version by querying runs, studies, and evaluations. Registered as scoped in DI.
+`ResearchChecklistService` (`Application/Research/`) computes a 9-item research checklist for a strategy version by querying runs, studies, and evaluations. Registered as scoped in DI.
 
-The 8 checklist items:
+The 9 checklist items:
 1. Initial Backtest — at least one completed run exists
 2. Monte Carlo Robustness — a completed Monte Carlo study exists
 3. Walk-Forward Validation — a completed WalkForward or AnchoredWalkForward study exists
@@ -633,9 +629,10 @@ The 8 checklist items:
 5. Realism Impact — a completed Realism study exists
 6. Parameter Surface — a completed Sensitivity or ParameterSweep study exists
 7. Final Held-Out Test — strategy stage is `FinalTest`
-8. Prop Firm Evaluation — (placeholder, not yet wired)
+8. Prop Firm Evaluation — wired to `IPropFirmEvaluationRepository.HasCompletedEvaluationAsync` (V6)
+9. CPCV — a completed CombinatorialPurgedCV study exists (V6)
 
-Confidence level: HIGH (≥7 passed), MEDIUM (≥4), LOW (<4).
+Confidence level: HIGH (≥8 passed), MEDIUM (≥5), LOW (<5).
 
 ### FinalValidationUseCase
 
@@ -670,9 +667,9 @@ The concrete Web host is responsible for actually running studies on background 
 3. Snapshots the trial count into `BacktestResult.TrialCount`.
 4. Computes DSR for completed runs with a non-null Sharpe, using skewness and excess kurtosis derived from equity curve period returns.
 
-### CpcvStudyHandler (V4 Placeholder)
+### CpcvStudyHandler (V6)
 
-`CpcvStudyHandler` (`Application/Research/`) — placeholder for Combinatorial Purged Cross-Validation (CPCV). CPCV generates all combinations of training/test splits across N folds and computes the Probability of Backtest Overfitting (PBO). The `StudyType.CombinatorialPurgedCV` enum entry and PBO metric tile are scaffolded, but the full implementation is deferred to V4.1. Calling `RunAsync` throws `NotImplementedException`. The handler is registered in DI but not exposed in study creation flows in the UI.
+`CpcvStudyHandler` (`Application/Research/`) implements Combinatorial Purged Cross-Validation (CPCV, De Prado 2018). It splits the data range into N equal-length folds (default N=6), generates all C(N, k) combinations (default k=2, yielding 15 combinations), and for each combination trains on N-k folds and tests on k folds. Computes `ProbabilityOfOverfitting` (fraction of combinations where OOS Sharpe < IS Sharpe for that combination), `MedianOosSharpe`, and `PerformanceDegradation` (1 - MedianOosSharpe / MedianIsSharpe). Accepts an explicit `Seed` for deterministic output. Validates `NumPaths ≥ 3`, `TestFolds ≥ 1`, `TestFolds < NumPaths`, and throws `InvalidOperationException` if each fold has fewer than 30 bars. Returns `CpcvResult` with the full OOS and IS Sharpe distributions. Registered in DI and launchable from the Research tab via `BackgroundStudyService`.
 
 ### IProgressReporter (V4)
 
@@ -724,9 +721,14 @@ Each sub-object is a sealed record in `Core/Configuration/`. `ScenarioConfig` ex
 
 When both a sub-object and the corresponding top-level properties are present, the sub-object takes precedence.
 
-### Direction.Short and LongOnlyGuard
+### Direction.Short — V6 Full Short Execution
 
-V5 re-adds `Direction.Short` to the enum (`{ Long, Short, Flat }`) to force exhaustive switch handling across the codebase. Runtime short-selling is guarded by `LongOnlyGuard.EnsureLongOnly(Direction)` in `Core/Events/`, which throws `NotSupportedException` for `Short`. Short execution is a V6 task.
+V5 added `Direction.Short` to the enum (`{ Long, Short, Flat }`) for exhaustive switch coverage. V6 removes the `LongOnlyGuard` and enables full short-selling execution:
+
+- `SimulatedExecutionHandler` fills short orders with `fillPrice = basePrice - slippageAmount` (favorable to seller). For tick data, short fills at Bid.
+- `Portfolio` tracks short positions in a separate `_shortPositions` dictionary. Short unrealised PnL: `(entryPrice - currentPrice) × |qty|`. Short close PnL: `(entryPrice - exitPrice) × |qty|`.
+- `DefaultRiskLayer` converts `Direction.Short` signals into orders and handles `Direction.Flat` with open short positions. When `AllowReversals == false` (default) and an opposing position exists, the signal is rejected.
+- Four strategies support bidirectional signals via a `DirectionMode` parameter: `DonchianBreakoutStrategy`, `VolatilityScaledTrendStrategy`, `ZScoreMeanReversionStrategy`, `StationaryMeanReversionStrategy`. `BaselineBuyAndHoldStrategy` and `MacroRegimeRotationStrategy` remain long-only.
 
 ### ExperimentMetadata V5 Fields
 

@@ -1014,7 +1014,7 @@ Integration tests for SQLite index (`IntegrationTests/V6/`):
 
 - **Parallel Walk-Forward**: Concurrency bounded by `SemaphoreSlim(ProcessorCount - 1)` to avoid CPU saturation. Each window creates its own `EventQueue` and `Portfolio` — no lock contention on shared state.
 - **Parallel Parameter Sweep**: Same pattern. Already partially parallel in V5; V6 formalises the `SemaphoreSlim` pattern.
-- **SQLite Index**: `GetByIdAsync` is O(1) via primary key lookup. `ListByVersionAsync` is O(log n) via indexed column. Full `ListAsync` still reads all JSON files for backward compatibility.
+- **SQLite Index**: `GetByIdAsync` is O(1) via primary key lookup. `ListByVersionAsync` is O(log n) via indexed column. `ListAsync` queries the SQLite index for file paths (ordered by `RunDate DESC`) and reads matching JSON files — no directory scan.
 - **Intraday Cache**: Second-level aggregated cache eliminates redundant `DukascopyHelpers.Aggregate` calls. Cache invalidation: aggregated CSV is valid if newer than source 1m cache file.
 - **Chart Rendering**: All Plotly.Blazor charts are `InteractiveServer` — data transformation happens server-side, only the rendered chart is sent to the client. Data transformation helpers are pure static functions extracted for testability.
 

@@ -46,7 +46,7 @@ public sealed class SqliteIndexRepository : IBacktestResultRepository
     /// <summary>Scans the JSON directory and builds/rebuilds the SQLite index.</summary>
     public async Task InitializeAsync(CancellationToken ct = default)
     {
-        await using var connection = new SqliteConnection($"Data Source={_indexDbPath}");
+        await using var connection = new SqliteConnection($"Data Source={_indexDbPath};Pooling=True");
         await connection.OpenAsync(ct);
 
         await using var createCmd = connection.CreateCommand();
@@ -95,7 +95,7 @@ public sealed class SqliteIndexRepository : IBacktestResultRepository
     /// <inheritdoc/>
     public async Task<BacktestResult?> GetByIdAsync(string id, CancellationToken ct = default)
     {
-        await using var connection = new SqliteConnection($"Data Source={_indexDbPath}");
+        await using var connection = new SqliteConnection($"Data Source={_indexDbPath};Pooling=True");
         await connection.OpenAsync(ct);
 
         await using var cmd = connection.CreateCommand();
@@ -124,7 +124,7 @@ public sealed class SqliteIndexRepository : IBacktestResultRepository
         var json = JsonSerializer.Serialize(entity, JsonOptions);
         await File.WriteAllTextAsync(filePath, json, ct);
 
-        await using var connection = new SqliteConnection($"Data Source={_indexDbPath}");
+        await using var connection = new SqliteConnection($"Data Source={_indexDbPath};Pooling=True");
         await connection.OpenAsync(ct);
         await UpsertIndexRowAsync(connection, entity, filePath, ct);
     }
@@ -137,27 +137,38 @@ public sealed class SqliteIndexRepository : IBacktestResultRepository
         if (File.Exists(filePath)) File.Delete(filePath);
 
         // Remove index row
-        await using var connection = new SqliteConnection($"Data Source={_indexDbPath}");
+        await using var connection = new SqliteConnection($"Data Source={_indexDbPath};Pooling=True");
         await connection.OpenAsync(ct);
         await RemoveIndexRowAsync(connection, id, ct);
     }
 
     /// <inheritdoc/>
     public async Task<IReadOnlyList<BacktestResult>> ListAsync(CancellationToken ct = default)
-    {
-        // Backward compat: read all JSON files
-        var results = new List<BacktestResult>();
-        if (!Directory.Exists(_jsonDir)) return results;
+{
+    var results = new List<BacktestResult>();
 
-        foreach (var file in Directory.GetFiles(_jsonDir, "*.json"))
+    await using var connection = new SqliteConnection($"Data Source={_indexDbPath};Pooling=True");
+    await connection.OpenAsync(ct);
+
+    await using var cmd = connection.CreateCommand();
+    cmd.CommandText = "SELECT FilePath FROM BacktestResultIndex ORDER BY RunDate DESC";
+
+    await using var reader = await cmd.ExecuteReaderAsync(ct);
+    while (await reader.ReadAsync(ct))
+    {
+        ct.ThrowIfCancellationRequested();
+        var filePath = reader.GetString(0);
+        if (!File.Exists(filePath))
         {
-            ct.ThrowIfCancellationRequested();
-            var json = await File.ReadAllTextAsync(file, ct);
-            var entity = JsonSerializer.Deserialize<BacktestResult>(json, JsonOptions);
-            if (entity is not null) results.Add(entity);
+            _logger.LogWarning("SqliteIndex: stale index row — file {Path} not found", filePath);
+            continue;
         }
-        return results;
+        var json = await File.ReadAllTextAsync(filePath, ct);
+        var entity = JsonSerializer.Deserialize<BacktestResult>(json, JsonOptions);
+        if (entity is not null) results.Add(entity);
     }
+    return results;
+}
 
     /// <inheritdoc/>
     public async Task<IReadOnlyList<BacktestResult>> ListByVersionAsync(
@@ -178,7 +189,7 @@ public sealed class SqliteIndexRepository : IBacktestResultRepository
     {
         var results = new List<BacktestResult>();
 
-        await using var connection = new SqliteConnection($"Data Source={_indexDbPath}");
+        await using var connection = new SqliteConnection($"Data Source={_indexDbPath};Pooling=True");
         await connection.OpenAsync(ct);
 
         await using var cmd = connection.CreateCommand();
