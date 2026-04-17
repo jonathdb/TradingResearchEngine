@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Microsoft.Extensions.Options;
 using TradingResearchEngine.Application.Configuration;
 using TradingResearchEngine.Application.Engine;
@@ -36,31 +37,36 @@ public sealed class ParameterSweepWorkflow : IResearchWorkflow<SweepOptions, Swe
         if (combinations.Count == 0)
             combinations.Add(new Dictionary<string, object>());
 
-        var results = new List<BacktestResult>();
-        var maxParallelism = options.MaxDegreeOfParallelism > 0
-            ? options.MaxDegreeOfParallelism
-            : _options.Value.MaxDegreeOfParallelism;
+        var results = new ConcurrentBag<BacktestResult>();
+        // V6: Formalize SemaphoreSlim concurrency pattern — each combination creates its own EventQueue
+        var maxConcurrency = Math.Max(1, Environment.ProcessorCount - 1);
+        var semaphore = new SemaphoreSlim(maxConcurrency);
 
         await Parallel.ForEachAsync(
             combinations,
-            new ParallelOptions { MaxDegreeOfParallelism = maxParallelism, CancellationToken = ct },
+            new ParallelOptions { CancellationToken = ct },
             async (combo, token) =>
             {
-                var merged = MergeParameters(baseConfig, combo);
-                var runResult = await _runScenario.RunAsync(merged, token, autoSave: false);
-                if (runResult.IsSuccess && runResult.Result is not null)
+                await semaphore.WaitAsync(token);
+                try
                 {
-                    lock (results) { results.Add(runResult.Result); }
+                    var merged = MergeParameters(baseConfig, combo);
+                    var runResult = await _runScenario.RunAsync(merged, token, autoSave: false);
+                    if (runResult.IsSuccess && runResult.Result is not null)
+                    {
+                        results.Add(runResult.Result);
+                    }
                 }
+                finally { semaphore.Release(); }
             });
 
         var ranked = results
             .OrderByDescending(r => r.SharpeRatio ?? decimal.MinValue)
             .ToList();
 
-        var sensitivity = ComputeSensitivity(results, grid);
+        var sensitivity = ComputeSensitivity(ranked, grid);
 
-        return new SweepResult(results, ranked, sensitivity);
+        return new SweepResult(ranked.ToList(), ranked, sensitivity);
     }
 
     private static Dictionary<string, List<object>> ParseGrid(Dictionary<string, object> raw)

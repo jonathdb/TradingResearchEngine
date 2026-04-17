@@ -2,6 +2,7 @@ using Moq;
 using TradingResearchEngine.Application.DataFiles;
 using TradingResearchEngine.Application.Engine;
 using TradingResearchEngine.Application.Metrics;
+using TradingResearchEngine.Application.PropFirm;
 using TradingResearchEngine.Application.Research;
 using TradingResearchEngine.Application.Strategy;
 using TradingResearchEngine.Core.Configuration;
@@ -98,8 +99,8 @@ public class V4ServicesTests
     [Fact]
     public async Task ResearchChecklist_NoStudies_AllFalse()
     {
-        var resultRepo = new Mock<IRepository<BacktestResult>>();
-        resultRepo.Setup(r => r.ListAsync(It.IsAny<CancellationToken>()))
+        var resultRepo = new Mock<IBacktestResultRepository>();
+        resultRepo.Setup(r => r.ListByVersionAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<BacktestResult>());
 
         var studyRepo = new Mock<IStudyRepository>();
@@ -110,7 +111,11 @@ public class V4ServicesTests
         strategyRepo.Setup(r => r.ListAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<StrategyIdentity>());
 
-        var service = new ResearchChecklistService(resultRepo.Object, studyRepo.Object, strategyRepo.Object);
+        var evalRepo = new Mock<IPropFirmEvaluationRepository>();
+        evalRepo.Setup(r => r.HasCompletedEvaluationAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+
+        var service = new ResearchChecklistService(resultRepo.Object, studyRepo.Object, strategyRepo.Object, evalRepo.Object);
         var checklist = await service.ComputeAsync("v1");
 
         Assert.False(checklist.InitialBacktest);
@@ -126,8 +131,8 @@ public class V4ServicesTests
         var config = MakeConfig();
         var completedRun = MakeResult(config) with { StrategyVersionId = "v1" };
 
-        var resultRepo = new Mock<IRepository<BacktestResult>>();
-        resultRepo.Setup(r => r.ListAsync(It.IsAny<CancellationToken>()))
+        var resultRepo = new Mock<IBacktestResultRepository>();
+        resultRepo.Setup(r => r.ListByVersionAsync("v1", It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<BacktestResult> { completedRun });
 
         var studies = new List<StudyRecord>
@@ -154,7 +159,11 @@ public class V4ServicesTests
         strategyRepo.Setup(r => r.GetVersionsAsync("s1", It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<StrategyVersion> { version });
 
-        var service = new ResearchChecklistService(resultRepo.Object, studyRepo.Object, strategyRepo.Object);
+        var evalRepo = new Mock<IPropFirmEvaluationRepository>();
+        evalRepo.Setup(r => r.HasCompletedEvaluationAsync("v1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+
+        var service = new ResearchChecklistService(resultRepo.Object, studyRepo.Object, strategyRepo.Object, evalRepo.Object);
         var checklist = await service.ComputeAsync("v1");
 
         Assert.True(checklist.InitialBacktest);
@@ -164,9 +173,9 @@ public class V4ServicesTests
         Assert.True(checklist.RealismImpact);
         Assert.True(checklist.ParameterSurface);
         Assert.True(checklist.FinalHeldOutTest);
-        // PropFirmEvaluation is not yet wired, so 7 of 8
+        // V6: PropFirmEvaluation=false, CpcvDone=false → 7 of 9 = MEDIUM
         Assert.Equal(7, checklist.PassedCount);
-        Assert.Equal("HIGH", checklist.ConfidenceLevel);
+        Assert.Equal("MEDIUM", checklist.ConfidenceLevel);
     }
 
     // --- SealedTestSetViolationException ---

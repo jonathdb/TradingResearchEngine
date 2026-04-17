@@ -42,12 +42,24 @@
             </WorkflowRunner>
         </MudPaper>
     </MudItem>
+
+    @* V6: Walk-Forward Composite Chart *@
+    <MudItem xs="12" md="6">
+        @if (_wfResult is not null)
+        {
+            <MudPaper Class="pa-4" Elevation="2">
+                <TradingResearchEngine.Web.Components.Charts.WalkForwardCompositeChart
+                    Summary="@TradingResearchEngine.Application.Research.WalkForwardWorkflow.BuildSummary(_wfResult)" />
+            </MudPaper>
+        }
+    </MudItem>
 </MudGrid>
 
 @code {
     private ScenarioConfigEditor? _configEditor;
     private int _isDays = 60, _oosDays = 20, _stepDays = 20;
     private bool _anchored;
+    private TradingResearchEngine.Application.Research.Results.WalkForwardResult? _wfResult;
 
     private async Task<TradingResearchEngine.Application.Research.Results.WalkForwardResult> Execute(CancellationToken ct)
     {
@@ -59,6 +71,8 @@
             StepSize = TimeSpan.FromDays(_stepDays),
             AnchoredWindow = _anchored
         };
-        return await WfWorkflow.RunAsync(config, options, ct);
+        var result = await WfWorkflow.RunAsync(config, options, ct);
+        _wfResult = result;
+        return result;
     }
 }

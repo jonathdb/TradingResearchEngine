@@ -11,15 +11,6 @@ namespace TradingResearchEngine.Application.Engine;
 /// </summary>
 public sealed class PreflightValidator
 {
-    /// <summary>Canonical BarsPerYear values keyed by timeframe label.</summary>
-    private static readonly Dictionary<string, int> TimeframeBarsPerYear = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["Daily"] = 252,
-        ["H4"] = 1512,
-        ["H1"] = 6048,
-        ["M15"] = 24192
-    };
-
     private readonly IStrategySchemaProvider _schemaProvider;
 
     /// <summary>Creates a new <see cref="PreflightValidator"/>.</summary>
@@ -179,13 +170,25 @@ public sealed class PreflightValidator
         var data = config.EffectiveDataConfig;
         if (data.Timeframe is null) return;
 
-        if (TimeframeBarsPerYear.TryGetValue(data.Timeframe, out var expected) && data.BarsPerYear != expected)
+        var expected = BarsPerYearDefaults.ForTimeframe(data.Timeframe);
+        if (expected.HasValue && data.BarsPerYear != expected.Value)
         {
             findings.Add(new PreflightFinding(
                 "BarsPerYear",
-                $"BarsPerYear ({data.BarsPerYear}) does not match timeframe '{data.Timeframe}' (expected {expected}).",
+                $"BarsPerYear ({data.BarsPerYear}) does not match timeframe '{data.Timeframe}' (expected {expected.Value}).",
                 PreflightSeverity.Warning,
                 "TIMEFRAME_MISMATCH"));
+        }
+
+        // V6: Detect intraday timeframe with default daily BarsPerYear
+        if (data.BarsPerYear == 252 && expected.HasValue && expected.Value > 252)
+        {
+            findings.Add(new PreflightFinding(
+                "BarsPerYear",
+                $"BarsPerYear is default (252) but timeframe '{data.Timeframe}' is intraday. Suggested value: {expected.Value}. " +
+                BarsPerYearDefaults.BarsToHumanDuration(100, data.Timeframe),
+                PreflightSeverity.Warning,
+                "BARSYEAR_MISMATCH_INTRADAY"));
         }
     }
 
@@ -247,9 +250,14 @@ public sealed class PreflightValidator
 
             if (estimatedBars.HasValue && estimatedBars.Value < 100)
             {
+                // V6: Include human-readable duration when timeframe is known
+                var humanDuration = data.Timeframe is not null
+                    ? " " + BarsPerYearDefaults.BarsToHumanDuration(100, data.Timeframe)
+                    : "";
+
                 findings.Add(new PreflightFinding(
                     "DataProviderOptions",
-                    $"Estimated bar count ({estimatedBars.Value}) is below the minimum recommended (100 bars).",
+                    $"Estimated bar count ({estimatedBars.Value}) is below the minimum recommended (100 bars).{humanDuration}",
                     PreflightSeverity.Warning,
                     "INSUFFICIENT_DATA"));
             }
@@ -356,15 +364,17 @@ public sealed class PreflightValidator
             findings.Add(new PreflightFinding("BarsPerYear", "BarsPerYear must be greater than zero.", PreflightSeverity.Error, "RANGE_VIOLATION"));
 
         // Timeframe/BarsPerYear consistency
-        if (draft.DataConfig.Timeframe is not null &&
-            TimeframeBarsPerYear.TryGetValue(draft.DataConfig.Timeframe, out var expected) &&
-            draft.DataConfig.BarsPerYear != expected)
+        if (draft.DataConfig.Timeframe is not null)
         {
-            findings.Add(new PreflightFinding(
-                "BarsPerYear",
-                $"BarsPerYear ({draft.DataConfig.BarsPerYear}) does not match timeframe '{draft.DataConfig.Timeframe}' (expected {expected}).",
-                PreflightSeverity.Warning,
-                "TIMEFRAME_MISMATCH"));
+            var expected = BarsPerYearDefaults.ForTimeframe(draft.DataConfig.Timeframe);
+            if (expected.HasValue && draft.DataConfig.BarsPerYear != expected.Value)
+            {
+                findings.Add(new PreflightFinding(
+                    "BarsPerYear",
+                    $"BarsPerYear ({draft.DataConfig.BarsPerYear}) does not match timeframe '{draft.DataConfig.Timeframe}' (expected {expected.Value}).",
+                    PreflightSeverity.Warning,
+                    "TIMEFRAME_MISMATCH"));
+            }
         }
     }
 

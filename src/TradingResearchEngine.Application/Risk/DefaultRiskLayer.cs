@@ -37,17 +37,42 @@ public sealed class DefaultRiskLayer : IRiskLayer
     /// <inheritdoc/>
     public OrderEvent? ConvertSignal(SignalEvent signal, PortfolioSnapshot snapshot)
     {
-        LongOnlyGuard.EnsureLongOnly(signal.Direction);
-
-        // Flat signal = close existing position for this symbol
+        // Flat signal = close existing position for this symbol (long or short)
         if (signal.Direction == Direction.Flat)
         {
-            if (snapshot.Positions.TryGetValue(signal.Symbol, out var pos) && pos.Quantity > 0)
+            // Check for open long position
+            if (snapshot.Positions.TryGetValue(signal.Symbol, out var longPos) && longPos.Quantity > 0)
             {
                 return new OrderEvent(
-                    signal.Symbol, Direction.Flat, pos.Quantity,
+                    signal.Symbol, Direction.Flat, longPos.Quantity,
                     OrderType.Market, null, signal.Timestamp, true);
             }
+
+            // Check for open short position
+            if (snapshot.ShortPositions is not null &&
+                snapshot.ShortPositions.TryGetValue(signal.Symbol, out var shortPos) && shortPos.Quantity > 0)
+            {
+                return new OrderEvent(
+                    signal.Symbol, Direction.Flat, shortPos.Quantity,
+                    OrderType.Market, null, signal.Timestamp, true);
+            }
+
+            return null;
+        }
+
+        // Check for opposing position when AllowReversals is false
+        if (signal.Direction == Direction.Short &&
+            snapshot.Positions.TryGetValue(signal.Symbol, out var existingLong) && existingLong.Quantity > 0)
+        {
+            _logger.LogWarning("RiskRejection: Short signal for {Symbol} rejected — open long position exists and AllowReversals is false.", signal.Symbol);
+            return null;
+        }
+
+        if (signal.Direction == Direction.Long &&
+            snapshot.ShortPositions is not null &&
+            snapshot.ShortPositions.TryGetValue(signal.Symbol, out var existingShort) && existingShort.Quantity > 0)
+        {
+            _logger.LogWarning("RiskRejection: Long signal for {Symbol} rejected — open short position exists and AllowReversals is false.", signal.Symbol);
             return null;
         }
 
@@ -81,9 +106,11 @@ public sealed class DefaultRiskLayer : IRiskLayer
             return null;
         }
 
-        // Enforce MaxExposurePercent
+        // Enforce MaxExposurePercent using absolute values for both long and short
         decimal maxExposure = snapshot.TotalEquity * (_options.MaxExposurePercent / 100m);
-        decimal currentExposure = snapshot.Positions.Values.Sum(p => p.Quantity * p.AverageEntryPrice);
+        decimal currentExposure = snapshot.Positions.Values.Sum(p => Math.Abs(p.Quantity * p.AverageEntryPrice));
+        if (snapshot.ShortPositions is not null)
+            currentExposure += snapshot.ShortPositions.Values.Sum(p => Math.Abs(p.Quantity * p.AverageEntryPrice));
         decimal remainingCapacity = maxExposure - currentExposure;
 
         if (remainingCapacity <= 0m)
@@ -94,14 +121,19 @@ public sealed class DefaultRiskLayer : IRiskLayer
         }
 
         // Optional portfolio constraints
-        if (_constraints is not null && order.Direction == Direction.Long)
+        if (_constraints is not null && (order.Direction == Direction.Long || order.Direction == Direction.Short))
         {
-            if (_constraints.MaxConcurrentPositions.HasValue &&
-                snapshot.Positions.Count >= _constraints.MaxConcurrentPositions.Value)
+            if (_constraints.MaxConcurrentPositions.HasValue)
             {
-                _logger.LogWarning("RiskRejection: {Symbol} — max concurrent positions ({Max}) reached.",
-                    order.Symbol, _constraints.MaxConcurrentPositions.Value);
-                return null;
+                int totalPositions = snapshot.Positions.Count;
+                if (snapshot.ShortPositions is not null)
+                    totalPositions += snapshot.ShortPositions.Count;
+                if (totalPositions >= _constraints.MaxConcurrentPositions.Value)
+                {
+                    _logger.LogWarning("RiskRejection: {Symbol} — max concurrent positions ({Max}) reached.",
+                        order.Symbol, _constraints.MaxConcurrentPositions.Value);
+                    return null;
+                }
             }
 
             if (_constraints.MaxCapitalPerSymbolPercent.HasValue)

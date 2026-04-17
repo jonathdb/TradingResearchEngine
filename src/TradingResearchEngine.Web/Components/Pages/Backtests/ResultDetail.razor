@@ -285,6 +285,32 @@ else
         <MudTabPanel Text="Drawdown">
             <DrawdownChart Data="_result.EquityCurve" />
         </MudTabPanel>
+        <MudTabPanel Text="Charts">
+            <MudText Typo="Typo.subtitle2" Class="mb-3">Equity Curve with Drawdown</MudText>
+            <TradingResearchEngine.Web.Components.Charts.EquityCurveChart
+                Curve="_result.EquityCurve"
+                Title="Equity Curve"
+                ShowDrawdown="true" />
+
+            <MudDivider Class="my-4" />
+            <MudText Typo="Typo.subtitle2" Class="mb-3">Monthly Returns</MudText>
+            <TradingResearchEngine.Web.Components.Charts.MonthlyReturnsHeatmap
+                Curve="_result.EquityCurve" />
+
+            <MudDivider Class="my-4" />
+            <MudGrid>
+                <MudItem xs="12" md="6">
+                    <MudText Typo="Typo.subtitle2" Class="mb-3">Trade P&amp;L Distribution</MudText>
+                    <TradingResearchEngine.Web.Components.Charts.TradePnlHistogram
+                        Trades="_result.Trades" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudText Typo="Typo.subtitle2" Class="mb-3">Holding Period Distribution</MudText>
+                    <TradingResearchEngine.Web.Components.Charts.HoldingPeriodHistogram
+                        Trades="_result.Trades" />
+                </MudItem>
+            </MudGrid>
+        </MudTabPanel>
         <MudTabPanel Text="Trades">
             <MudTable Items="_result.Trades" Dense="true" Hover="true" Striped="true">
                 <HeaderContent>

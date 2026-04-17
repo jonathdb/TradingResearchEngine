@@ -10,15 +10,14 @@ namespace TradingResearchEngine.Application.Strategies;
 /// Entry: close moves above the PRIOR day's upper Donchian band (highest high over trailing N days).
 /// Exit: close falls below the PRIOR day's lower Donchian band (lowest low over trailing N days).
 /// 
-/// Long-only — breakdowns lead to flat, not short.
+/// V6: Supports bidirectional signals via DirectionMode parameter.
 /// Uses lagged (prior day) channel values to avoid same-bar lookahead bias.
-/// 
-/// Based on the classic turtle trading system and QuantConnect Donchian implementation.
 /// </summary>
 [StrategyName("donchian-breakout")]
 public sealed class DonchianBreakoutStrategy : IStrategy
 {
     private readonly int _period;
+    private readonly DirectionMode _directionMode;
     private readonly List<decimal> _highs = new();
     private readonly List<decimal> _lows = new();
     private decimal _priorUpperBand;
@@ -27,12 +26,17 @@ public sealed class DonchianBreakoutStrategy : IStrategy
     private bool _warmedUp;
 
     /// <param name="period">Donchian channel lookback period (default 20).</param>
+    /// <param name="directionMode">Signal direction mode: Long, Short, or Both (default Long).</param>
     public DonchianBreakoutStrategy(
         [ParameterMeta(DisplayName = "Period", Description = "Donchian channel lookback period.",
             SensitivityHint = SensitivityHint.High, Group = "Signal", DisplayOrder = 0, Min = 5)]
-        int period = 20)
+        int period = 20,
+        [ParameterMeta(DisplayName = "Direction", Description = "Signal direction mode.",
+            Group = "Signal", DisplayOrder = 1)]
+        DirectionMode directionMode = DirectionMode.Long)
     {
         _period = period;
+        _directionMode = directionMode;
     }
 
     /// <inheritdoc/>
@@ -46,15 +50,11 @@ public sealed class DonchianBreakoutStrategy : IStrategy
         if (_highs.Count <= _period)
             return Array.Empty<EngineEvent>();
 
-        // Compute current channel from the last N bars (excluding today)
-        // This becomes the "prior day" channel for tomorrow's decision
-        // But we USE the prior channel (computed yesterday) for today's decision
         decimal currentUpper = MaxOfRange(_highs, _highs.Count - _period - 1, _period);
         decimal currentLower = MinOfRange(_lows, _lows.Count - _period - 1, _period);
 
         if (!_warmedUp)
         {
-            // First bar after warmup — store channel, no signal yet
             _priorUpperBand = currentUpper;
             _priorLowerBand = currentLower;
             _warmedUp = true;
@@ -63,20 +63,33 @@ public sealed class DonchianBreakoutStrategy : IStrategy
 
         var signals = new List<EngineEvent>();
 
-        // Entry: close > prior day's upper band → go long
-        if (bar.Close > _priorUpperBand && _position != Direction.Long)
+        // Upper breakout → Long (when mode is Long or Both)
+        if (bar.Close > _priorUpperBand && _position != Direction.Long
+            && _directionMode is DirectionMode.Long or DirectionMode.Both)
         {
             _position = Direction.Long;
             signals.Add(new SignalEvent(bar.Symbol, Direction.Long, bar.Close, bar.Timestamp));
         }
-        // Exit: close < prior day's lower band → go flat (long-only, no short)
+        // Lower breakdown → Short (when mode is Short or Both)
+        else if (bar.Close < _priorLowerBand && _position != Direction.Short
+            && _directionMode is DirectionMode.Short or DirectionMode.Both)
+        {
+            _position = Direction.Short;
+            signals.Add(new SignalEvent(bar.Symbol, Direction.Short, bar.Close, bar.Timestamp));
+        }
+        // Exit long: close < lower band
         else if (bar.Close < _priorLowerBand && _position == Direction.Long)
         {
             _position = Direction.Flat;
             signals.Add(new SignalEvent(bar.Symbol, Direction.Flat, bar.Close, bar.Timestamp));
         }
+        // Exit short: close > upper band
+        else if (bar.Close > _priorUpperBand && _position == Direction.Short)
+        {
+            _position = Direction.Flat;
+            signals.Add(new SignalEvent(bar.Symbol, Direction.Flat, bar.Close, bar.Timestamp));
+        }
 
-        // Update prior bands for next bar's decision
         _priorUpperBand = currentUpper;
         _priorLowerBand = currentLower;
 

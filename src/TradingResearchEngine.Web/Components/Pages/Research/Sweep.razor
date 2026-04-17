@@ -84,6 +84,11 @@
                             <MudTd>$@context.EndEquity.ToString("F2")</MudTd>
                         </RowTemplate>
                     </MudTable>
+
+                    @* V6: Parameter Sweep Heatmap *@
+                    <TradingResearchEngine.Web.Components.Charts.ParameterSweepHeatmap
+                        SweepResult="result"
+                        MetricName="Sharpe" />
                 </ResultContent>
             </WorkflowRunner>
         </MudPaper>

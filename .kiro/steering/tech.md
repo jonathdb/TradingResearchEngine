@@ -23,6 +23,8 @@
 | `Polly` | Infrastructure |
 | `Microsoft.Extensions.Logging.Abstractions` | Core, Application |
 | `Microsoft.Extensions.Logging` | Infrastructure, Cli, Api |
+| `Microsoft.Data.Sqlite` | Infrastructure |
+| `Plotly.Blazor` | Web |
 
 Do not add packages outside this list without updating this file and the tasks list.
 

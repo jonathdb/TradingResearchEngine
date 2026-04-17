@@ -6,6 +6,7 @@ namespace TradingResearchEngine.Core.Events;
 /// exhaustive switch expression handling — if/else chains and default cases require
 /// this guard. Removal is a V6 task when short-selling is implemented.
 /// </summary>
+[Obsolete("V6: Short selling is now supported. This guard is no longer needed.")]
 public static class LongOnlyGuard
 {
     /// <summary>

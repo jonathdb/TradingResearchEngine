@@ -233,7 +233,6 @@ public sealed class BacktestEngine : IBacktestEngine
 
         foreach (var order in state.PendingOrders)
         {
-            LongOnlyGuard.EnsureLongOnly(order.Direction);
             var result = TryFillOrder(order, mde);
 
             if (result is not null && result.Fill is not null &&

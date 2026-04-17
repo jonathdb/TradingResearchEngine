@@ -16,4 +16,6 @@ public sealed record ExecutionConfig(
     /// <summary>Fine-grained overrides for individual realism profile defaults.</summary>
     ExecutionOptions? ExecutionOptions = null,
     /// <summary>Session filtering and calendar configuration.</summary>
-    SessionOptions? SessionOptions = null);
+    SessionOptions? SessionOptions = null,
+    /// <summary>V6: When true, a Short signal while Long (or vice versa) closes then opens. Default false.</summary>
+    bool AllowReversals = false);

@@ -89,8 +89,6 @@ public sealed class SimulatedExecutionHandler : IExecutionHandler
     /// <inheritdoc/>
     public ExecutionResult Execute(OrderEvent order, MarketDataEvent currentBar)
     {
-        LongOnlyGuard.EnsureLongOnly(order.Direction);
-
         decimal basePrice = currentBar switch
         {
             BarEvent bar => ResolveBarFillPrice(bar, order),
@@ -196,12 +194,14 @@ public sealed class SimulatedExecutionHandler : IExecutionHandler
 
     /// <summary>
     /// Returns the appropriate tick fill price based on direction.
-    /// Long fills at Ask, Flat (close) fills at Bid. Falls back to LastTrade.Price.
+    /// Long fills at Ask, Short fills at Bid, Flat (close) fills at Bid. Falls back to LastTrade.Price.
     /// </summary>
     private static decimal GetTickFillPrice(TickEvent tick, Direction direction)
     {
         if (direction == Direction.Long && tick.Ask is not null)
             return tick.Ask.Price;
+        if (direction == Direction.Short && tick.Bid is not null)
+            return tick.Bid.Price;
         if (direction == Direction.Flat && tick.Bid is not null)
             return tick.Bid.Price;
         return tick.LastTrade.Price;

@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using TradingResearchEngine.Application.Configuration;
 using TradingResearchEngine.Application.Engine;
 using TradingResearchEngine.Application.Research.Results;
@@ -42,69 +43,116 @@ public sealed class WalkForwardWorkflow : IResearchWorkflow<WalkForwardOptions, 
                 $"Data range ({dataLength}) is too short for even one window. " +
                 $"Minimum required: InSampleLength ({options.InSampleLength}) + OutOfSampleLength ({options.OutOfSampleLength}).");
 
-        var windows = new List<WalkForwardWindow>();
+        // V6: Pre-compute all window date ranges (pure date arithmetic, no I/O)
+        var windowSpecs = PrecomputeWindows(options, dataFrom, dataTo);
+
+        if (windowSpecs.Count == 0)
+            throw new InvalidOperationException(
+                $"Data range too short to form at least one complete window. " +
+                $"Minimum required: InSampleLength ({options.InSampleLength}) + OutOfSampleLength ({options.OutOfSampleLength}).");
+
+        // V6: Execute windows in parallel with bounded concurrency
+        var maxConcurrency = Math.Max(1, Environment.ProcessorCount - 1);
+        var semaphore = new SemaphoreSlim(maxConcurrency);
+        var results = new ConcurrentBag<WalkForwardWindow>();
+
+        await Parallel.ForEachAsync(windowSpecs, new ParallelOptions { CancellationToken = ct }, async (spec, token) =>
+        {
+            await semaphore.WaitAsync(token);
+            try
+            {
+                var window = await RunWindowAsync(baseConfig, spec, token);
+                if (window is not null) results.Add(window);
+            }
+            finally { semaphore.Release(); }
+        });
+
+        // V6: Sort by window index after parallel collection
+        var sorted = results.OrderBy(w => w.WindowIndex).ToList();
+
+        if (sorted.Count == 0)
+            throw new InvalidOperationException(
+                $"Data range too short to form at least one complete window. " +
+                $"Minimum required: InSampleLength ({options.InSampleLength}) + OutOfSampleLength ({options.OutOfSampleLength}).");
+
+        return new WalkForwardResult(sorted, ComputeMeanEfficiency(sorted));
+    }
+
+    /// <summary>Pre-computes all window date ranges without I/O.</summary>
+    public static List<WindowSpec> PrecomputeWindows(
+        WalkForwardOptions options, DateTimeOffset dataFrom, DateTimeOffset dataTo)
+    {
+        var specs = new List<WindowSpec>();
         int windowIndex = 0;
         var currentOffset = TimeSpan.Zero;
 
         while (true)
         {
-            ct.ThrowIfCancellationRequested();
-
             var isStart = options.EffectiveMode == WalkForwardMode.Anchored ? dataFrom : dataFrom + currentOffset;
             var isEnd = options.EffectiveMode == WalkForwardMode.Anchored
-                ? dataFrom + options.InSampleLength + currentOffset  // Anchored: start fixed, end advances (expanding window)
-                : isStart + options.InSampleLength;                  // Rolling: fixed-length window slides forward
+                ? dataFrom + options.InSampleLength + currentOffset
+                : isStart + options.InSampleLength;
             var oosStart = isEnd;
             var oosEnd = oosStart + options.OutOfSampleLength;
 
-            // Stop if out-of-sample end exceeds data range
             if (oosEnd > dataTo) break;
 
-            // Build in-sample config with restricted date range
-            var isConfig = baseConfig with
-            {
-                DataProviderOptions = WithDateRange(baseConfig.DataProviderOptions, isStart, isEnd)
-            };
-
-            // Run sweep on in-sample segment
-            var sweepOptions = new SweepOptions();
-            var sweepResult = await _sweepWorkflow.RunAsync(isConfig, sweepOptions, ct);
-
-            if (sweepResult.RankedBySharpe.Count == 0) break;
-
-            var bestResult = sweepResult.RankedBySharpe[0];
-            var bestParams = bestResult.ScenarioConfig.StrategyParameters;
-
-            // Run engine on out-of-sample with best params and restricted date range
-            var oosConfig = baseConfig with
-            {
-                StrategyParameters = new Dictionary<string, object>(bestParams),
-                DataProviderOptions = WithDateRange(baseConfig.DataProviderOptions, oosStart, oosEnd)
-            };
-            var oosRunResult = await _runScenario.RunAsync(oosConfig, ct, autoSave: false);
-
-            if (oosRunResult.IsSuccess && oosRunResult.Result is not null)
-            {
-                decimal? efficiency = (bestResult.SharpeRatio.HasValue && bestResult.SharpeRatio.Value != 0m)
-                    ? oosRunResult.Result.SharpeRatio / bestResult.SharpeRatio
-                    : null;
-
-                windows.Add(new WalkForwardWindow(
-                    windowIndex, bestResult, oosRunResult.Result,
-                    new Dictionary<string, object>(bestParams), efficiency));
-            }
-
+            specs.Add(new WindowSpec(windowIndex, isStart, isEnd, oosStart, oosEnd));
             windowIndex++;
             currentOffset += options.StepSize;
         }
 
-        if (windows.Count == 0)
-            throw new InvalidOperationException(
-                $"Data range too short to form at least one complete window. " +
-                $"Minimum required: InSampleLength ({options.InSampleLength}) + OutOfSampleLength ({options.OutOfSampleLength}).");
-
-        return new WalkForwardResult(windows, ComputeMeanEfficiency(windows));
+        return specs;
     }
+
+    /// <summary>Executes a single walk-forward window (IS sweep + OOS validation).</summary>
+    private async Task<WalkForwardWindow?> RunWindowAsync(
+        ScenarioConfig baseConfig, WindowSpec spec, CancellationToken ct)
+    {
+        // Build in-sample config with restricted date range
+        var isConfig = baseConfig with
+        {
+            DataProviderOptions = WithDateRange(baseConfig.DataProviderOptions, spec.IsStart, spec.IsEnd)
+        };
+
+        // Run sweep on in-sample segment — each creates its own EventQueue
+        var sweepOptions = new SweepOptions();
+        var sweepResult = await _sweepWorkflow.RunAsync(isConfig, sweepOptions, ct);
+
+        if (sweepResult.RankedBySharpe.Count == 0) return null;
+
+        var bestResult = sweepResult.RankedBySharpe[0];
+        var bestParams = bestResult.ScenarioConfig.StrategyParameters;
+
+        // Run engine on out-of-sample with best params — creates its own EventQueue
+        var oosConfig = baseConfig with
+        {
+            StrategyParameters = new Dictionary<string, object>(bestParams),
+            DataProviderOptions = WithDateRange(baseConfig.DataProviderOptions, spec.OosStart, spec.OosEnd)
+        };
+        var oosRunResult = await _runScenario.RunAsync(oosConfig, ct, autoSave: false);
+
+        if (oosRunResult.IsSuccess && oosRunResult.Result is not null)
+        {
+            decimal? efficiency = (bestResult.SharpeRatio.HasValue && bestResult.SharpeRatio.Value != 0m)
+                ? oosRunResult.Result.SharpeRatio / bestResult.SharpeRatio
+                : null;
+
+            return new WalkForwardWindow(
+                spec.WindowIndex, bestResult, oosRunResult.Result,
+                new Dictionary<string, object>(bestParams), efficiency);
+        }
+
+        return null;
+    }
+
+    /// <summary>V6: Describes a pre-computed walk-forward window's date boundaries.</summary>
+    public sealed record WindowSpec(
+        int WindowIndex,
+        DateTimeOffset IsStart,
+        DateTimeOffset IsEnd,
+        DateTimeOffset OosStart,
+        DateTimeOffset OosEnd);
 
     private static Dictionary<string, object> WithDateRange(
         Dictionary<string, object> original, DateTimeOffset from, DateTimeOffset to)

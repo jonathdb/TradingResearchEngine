@@ -66,6 +66,9 @@ public static class ServiceCollectionExtensions
         // Benchmark comparison
         services.AddScoped<BenchmarkComparisonWorkflow>();
 
+        // V6: CPCV study handler
+        services.AddScoped<CpcvStudyHandler>();
+
         // Prop-firm module
         services.AddScoped<PropFirmEvaluator>();
         services.AddScoped<PropFirmVarianceWorkflow>();

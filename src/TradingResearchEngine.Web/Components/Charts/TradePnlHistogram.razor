@@ -1,0 +1,60 @@
+@rendermode InteractiveServer
+@using Plotly.Blazor
+@using Plotly.Blazor.Traces
+@using TradingResearchEngine.Application.Helpers
+
+@if (Trades is not null && Trades.Count > 0)
+{
+    <PlotlyChart @ref="_chart" Config="_config" Layout="_layout" Data="_data"
+                 style="width:100%; height:320px;" />
+}
+
+@code {
+    /// <summary>The closed trades to bin into a PnL histogram.</summary>
+    [Parameter] public IReadOnlyList<ClosedTrade>? Trades { get; set; }
+
+    private PlotlyChart? _chart;
+    private Config _config = new() { Responsive = true, DisplayModeBar = Plotly.Blazor.ConfigLib.DisplayModeBarEnum.Hover };
+    private Layout _layout = new();
+    private IList<ITrace> _data = new List<ITrace>();
+
+    protected override void OnParametersSet()
+    {
+        if (Trades is null || Trades.Count == 0) return;
+
+        var bins = ChartComputationHelpers.BinTradePnl(Trades, 20);
+        if (bins.Count == 0) return;
+
+        var labels = bins.Select(b => (object)$"${b.LowerBound:F0}–${b.UpperBound:F0}").ToList();
+        var counts = bins.Select(b => (object)b.Count).ToList();
+        var colors = bins.Select(b => b.LowerBound + (b.UpperBound - b.LowerBound) / 2 >= 0
+            ? "rgba(102,187,106,0.7)" : "rgba(239,83,80,0.7)").Cast<object>().ToList();
+
+        _data = new List<ITrace>
+        {
+            new Bar
+            {
+                X = labels,
+                Y = counts,
+                Name = "Trade Count",
+                Marker = new Plotly.Blazor.Traces.BarLib.Marker { Color = colors as IList<object> },
+                HoverTemplate = "%{x}<br>Count: %{y}<extra></extra>"
+            }
+        };
+
+        _layout = new Layout
+        {
+            Title = new Plotly.Blazor.LayoutLib.Title { Text = "Trade P&L Distribution" },
+            Margin = new Plotly.Blazor.LayoutLib.Margin { L = 50, R = 20, T = 40, B = 80 },
+            XAxis = new[] { new Plotly.Blazor.LayoutLib.XAxis
+            {
+                Title = new Plotly.Blazor.LayoutLib.XAxisLib.Title { Text = "Net P&L Range" },
+                TickAngle = -45m
+            } }.ToList(),
+            YAxis = new[] { new Plotly.Blazor.LayoutLib.YAxis
+            {
+                Title = new Plotly.Blazor.LayoutLib.YAxisLib.Title { Text = "Count" }
+            } }.ToList()
+        };
+    }
+}

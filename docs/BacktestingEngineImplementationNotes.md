@@ -349,6 +349,53 @@ All three are registered as singletons, consistent with the existing repository 
 
 The directory is created automatically if it does not exist. This means the repository works out of the box with zero configuration — useful for first-run and local development scenarios where no `appsettings.json` is present.
 
+## V6 Persistence — IBacktestResultRepository and SqliteIndexRepository
+
+V6 introduces `IBacktestResultRepository` (`Application/Research/`), an extended persistence interface for backtest results that adds indexed query methods on top of the base `IRepository<BacktestResult>`:
+
+- `ListByVersionAsync(string versionId, CancellationToken)` — returns results for a specific strategy version via SQLite index (O(log n) instead of full-scan O(n)).
+- `ListByStrategyAsync(string strategyId, CancellationToken)` — returns results for a specific strategy via SQLite index.
+
+The implementation is `SqliteIndexRepository<T>` (`Infrastructure/Persistence/`), an index-only SQLite layer over the existing JSON files. The primary store remains JSON — SQLite provides fast lookups without migrating data.
+
+### Design
+
+- On startup, `InitializeAsync` scans the JSON directory and builds a SQLite index in `{AppData}/TradingResearchEngine/index.db`.
+- `GetByIdAsync` reads the file path from the index and deserialises the JSON file directly (O(1)).
+- `SaveAsync` writes the JSON file first, then upserts the SQLite index row. Not atomic — if a crash occurs between steps, `InitializeAsync` rebuilds from JSON on next startup.
+- `DeleteAsync` removes both the JSON file and the index row.
+- Corrupted or missing index files trigger a full rebuild from JSON without data loss.
+- Stale index rows (pointing to deleted JSON files) return null, log a warning, and are removed.
+
+### SQLite Schema
+
+```sql
+CREATE TABLE IF NOT EXISTS BacktestResultIndex (
+    Id TEXT PRIMARY KEY,
+    StrategyVersionId TEXT NOT NULL,
+    RunDate TEXT,
+    Status TEXT,
+    FilePath TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_br_version ON BacktestResultIndex(StrategyVersionId);
+CREATE INDEX IF NOT EXISTS idx_br_date ON BacktestResultIndex(RunDate);
+
+CREATE TABLE IF NOT EXISTS StudyIndex (
+    Id TEXT PRIMARY KEY,
+    StrategyVersionId TEXT NOT NULL,
+    StudyType TEXT,
+    CompletedAt TEXT,
+    FilePath TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_study_version ON StudyIndex(StrategyVersionId);
+```
+
+### Consumer Changes
+
+`ResearchChecklistService.GetVersionAsync` uses `IBacktestResultRepository.ListByVersionAsync` instead of the previous O(n×m) full-scan loop. `StrategyDetail.razor` also uses the indexed query for loading version-specific results.
+
+Uses `Microsoft.Data.Sqlite` NuGet package (Infrastructure project only).
+
 ## Monte Carlo Workflow
 
 `MonteCarloWorkflow` bootstrap-resamples the closed-trade return sequence to produce a distribution of outcomes. It implements `IResearchWorkflow<MonteCarloOptions, MonteCarloResult>`.
@@ -402,7 +449,7 @@ The directory is created automatically if it does not exist. This means the repo
 - `FillMode` (default `NextBarOpen`) — determines when risk-approved orders are filled relative to the bar that generated the signal.
   - `NextBarOpen`: orders queue as pending and fill at the next bar's Open price. This is the correct default that eliminates look-ahead bias.
   - `SameBarClose`: V1 legacy mode — orders fill immediately at the same bar's Close price. Introduces look-ahead bias; use only for backward-compatible test fixtures.
-- `BarsPerYear` (default `252`) — the canonical annualisation constant used by Sharpe, Sortino, and any other metric that converts per-bar returns to annual figures. Must be positive.
+- `BarsPerYear` (default `252`) — the canonical annualisation constant used by Sharpe, Sortino, and any other metric that converts per-bar returns to annual figures. Must be positive. V6 adds `BarsPerYearDefaults` (`Core/Configuration/BarsPerYearDefaults.cs`) with named constants for all eight intraday timeframes (M1 through Daily). `BarsPerYearDefaults.ForTimeframe(string)` resolves the correct constant from a timeframe string, and `BarsToHumanDuration(int, string)` converts bar counts to human-readable durations.
 
 Both values are defined in `Core/Configuration/` (`FillMode.cs` enum and the `ScenarioConfig` record). `RunScenarioUseCase` rejects `BarsPerYear <= 0` during validation.
 
@@ -501,7 +548,7 @@ V3 adds a product domain model to the Application layer. Core remains untouched.
 
 ### Strategy Identity and Versioning
 
-- `StrategyIdentity` (`Application/Strategy/`) — a user-owned, named research concept (e.g. "my EURUSD mean reversion idea"). Implements `IHasId` via `StrategyId`. Fields: `StrategyId`, `StrategyName`, `StrategyType`, `CreatedAt`, optional `Description`, `Stage` (`DevelopmentStage`, default `Exploring`), optional `Hypothesis`.
+- `StrategyIdentity` (`Application/Strategy/`) — a user-owned, named research concept (e.g. "my EURUSD mean reversion idea"). Implements `IHasId` via `StrategyId`. Fields: `StrategyId`, `StrategyName`, `StrategyType`, `CreatedAt`, optional `Description`, `Stage` (`DevelopmentStage`, default `Exploring`), optional `Hypothesis`, optional `RetirementNote` (V6: free-text note explaining why the strategy was retired; only meaningful when `Stage == Retired`).
 - `DevelopmentStage` (`Application/Strategy/`) — V4 enum tracking the research lifecycle of a strategy. Values: `Hypothesis`, `Exploring`, `Optimizing`, `Validating`, `FinalTest`, `Retired`. Existing JSON missing this field deserializes to `Exploring` for backwards compatibility.
 - `StrategyVersion` (`Application/Strategy/`) — a specific parameter configuration of a strategy. Implements `IHasId` via `StrategyVersionId`. Fields: `StrategyVersionId`, `StrategyId` (parent), `VersionNumber`, `Parameters` dictionary, `BaseScenarioConfig` (full config snapshot), `CreatedAt`, optional `ChangeNote`, `TotalTrialsRun` (int, default 0, incremented per run or sweep), `SealedTestSet` (`DateRangeConstraint?`, default null, locked held-out date range).
 - `IStrategyRepository` (`Application/Strategy/`) — persistence interface for strategies and versions. Methods: `GetAsync`, `ListAsync`, `SaveAsync`, `DeleteAsync`, `GetVersionsAsync`, `SaveVersionAsync`, `GetLatestVersionAsync`.

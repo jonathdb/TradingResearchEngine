@@ -35,6 +35,8 @@ public enum StudyType
     AnchoredWalkForward,
     /// <summary>V4: Combinatorial Purged Cross-Validation with PBO metric. Deferred to V4.1.</summary>
     CombinatorialPurgedCV,
+    /// <summary>V6: Alias for CombinatorialPurgedCV — short name used by BackgroundStudyService.</summary>
+    Cpcv = CombinatorialPurgedCV,
     Sensitivity,
     ParameterSweep,
     Realism,

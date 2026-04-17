@@ -1,0 +1,100 @@
+@rendermode InteractiveServer
+@using Plotly.Blazor
+@using Plotly.Blazor.Traces
+@using Plotly.Blazor.Traces.ScatterLib
+@using Plotly.Blazor.LayoutLib
+@using Plotly.Blazor.LayoutLib.YAxisLib
+
+@if (Curve is not null && Curve.Count > 0)
+{
+    <PlotlyChart @ref="_chart" Config="_config" Layout="_layout" Data="_data"
+                 style="width:100%; height:320px;" />
+}
+
+@code {
+    /// <summary>The equity curve data points to render.</summary>
+    [Parameter] public IReadOnlyList<EquityCurvePoint>? Curve { get; set; }
+
+    /// <summary>Chart title.</summary>
+    [Parameter] public string Title { get; set; } = "Equity Curve";
+
+    /// <summary>Whether to show the drawdown overlay on a secondary Y-axis.</summary>
+    [Parameter] public bool ShowDrawdown { get; set; }
+
+    private PlotlyChart? _chart;
+    private Config _config = new() { Responsive = true, DisplayModeBar = Plotly.Blazor.ConfigLib.DisplayModeBarEnum.Hover };
+    private Layout _layout = new();
+    private IList<ITrace> _data = new List<ITrace>();
+
+    protected override void OnParametersSet()
+    {
+        if (Curve is null || Curve.Count == 0) return;
+
+        var timestamps = Curve.Select(p => (object)p.Timestamp.DateTime).ToList();
+        var equities = Curve.Select(p => (object)p.TotalEquity).ToList();
+
+        _data = new List<ITrace>
+        {
+            new Scatter
+            {
+                X = timestamps,
+                Y = equities,
+                Name = "Total Equity",
+                Mode = ModeFlag.Lines,
+                Line = new Line { Color = "#42A5F5", Width = 2m },
+                HoverTemplate = "Date: %{x}<br>Equity: $%{y:,.0f}<extra></extra>"
+            }
+        };
+
+        _layout = new Layout
+        {
+            Title = new Plotly.Blazor.LayoutLib.Title { Text = Title },
+            Margin = new Plotly.Blazor.LayoutLib.Margin { L = 60, R = 60, T = 40, B = 40 },
+            HoverMode = Plotly.Blazor.LayoutLib.HoverModeEnum.XUnified,
+            ShowLegend = true,
+            Legend = new List<Plotly.Blazor.LayoutLib.Legend> { new() { Orientation = Plotly.Blazor.LayoutLib.LegendLib.OrientationEnum.H, Y = -0.15m } },
+            XAxis = new[] { new Plotly.Blazor.LayoutLib.XAxis { Title = new Plotly.Blazor.LayoutLib.XAxisLib.Title { Text = "" } } }.ToList(),
+            YAxis = new[] { new YAxis { Title = new Plotly.Blazor.LayoutLib.YAxisLib.Title { Text = "Equity ($)" } } }.ToList()
+        };
+
+        if (ShowDrawdown)
+        {
+            var drawdowns = ComputeDrawdownPercent(Curve);
+            var ddValues = drawdowns.Select(d => (object)d).ToList();
+
+            _data.Add(new Scatter
+            {
+                X = timestamps,
+                Y = ddValues,
+                Name = "Drawdown %",
+                Mode = ModeFlag.Lines,
+                Fill = FillEnum.ToZeroY,
+                Line = new Line { Color = "rgba(244,67,54,0.6)", Width = 1m },
+                FillColor = "rgba(244,67,54,0.15)",
+                YAxis = "y2",
+                HoverTemplate = "Drawdown: %{y:.1f}%<extra></extra>"
+            });
+
+            _layout.YAxis.Add(new YAxis
+            {
+                Title = new Plotly.Blazor.LayoutLib.YAxisLib.Title { Text = "Drawdown %" },
+                Overlaying = "y",
+                Side = Plotly.Blazor.LayoutLib.YAxisLib.SideEnum.Right,
+                ShowGrid = false
+            });
+        }
+    }
+
+    private static List<decimal> ComputeDrawdownPercent(IReadOnlyList<EquityCurvePoint> curve)
+    {
+        var result = new List<decimal>(curve.Count);
+        decimal peak = curve[0].TotalEquity;
+        foreach (var p in curve)
+        {
+            if (p.TotalEquity > peak) peak = p.TotalEquity;
+            var dd = peak > 0 ? (p.TotalEquity - peak) / peak * 100m : 0m;
+            result.Add(dd);
+        }
+        return result;
+    }
+}

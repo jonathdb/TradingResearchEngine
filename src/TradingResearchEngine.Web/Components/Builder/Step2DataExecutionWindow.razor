@@ -1,5 +1,6 @@
 @* Step 2: Data & Execution Window *@
 @using TradingResearchEngine.Application.DataFiles
+@using TradingResearchEngine.Core.Configuration
 
 <MudText Typo="Typo.h6" Class="mb-3">Data & Execution Window</MudText>
 
@@ -27,13 +28,13 @@ else
     </MudStack>
 }
 
-@* Timeframe selector *@
+@* Timeframe selector — driven from TimeframeOptions *@
 <MudSelect T="string" Value="@Model.Timeframe" ValueChanged="OnTimeframeChanged" Label="Timeframe" Class="mb-3"
            aria-label="Select timeframe">
-    <MudSelectItem Value="@("Daily")">Daily (252 bars/year)</MudSelectItem>
-    <MudSelectItem Value="@("H4")">H4 (1,512 bars/year)</MudSelectItem>
-    <MudSelectItem Value="@("H1")">H1 (6,048 bars/year)</MudSelectItem>
-    <MudSelectItem Value="@("M15")">M15 (24,192 bars/year)</MudSelectItem>
+    @foreach (var tf in TimeframeOptions.All)
+    {
+        <MudSelectItem Value="@tf.Value">@tf.Label (@tf.BarsPerYear.ToString("N0") bars/year)</MudSelectItem>
+    }
 </MudSelect>
 
 <MudAlert Severity="Severity.Info" Dense="true" Class="mb-3" aria-label="Bars per year info">
@@ -123,11 +124,18 @@ else
     private void OnTimeframeChanged(string tf)
     {
         Model.Timeframe = tf;
+
+        // BarsPerYear is auto-computed from Timeframe in BuilderViewModel
+
         Model.Interval = tf switch
         {
             "H4" => "4H",
+            "H2" => "2H",
             "H1" => "1H",
+            "M30" => "30M",
             "M15" => "15M",
+            "M5" => "5M",
+            "M1" => "1M",
             _ => "1D"
         };
         Model.IsDirty = true;
@@ -135,10 +143,14 @@ else
     private static string NormaliseTimeframe(string tf) =>
     tf.ToUpperInvariant() switch
     {
-        "H1" or "1H" => "1H",
-        "H4" or "4H" => "4H",
+        "M1" or "1M" => "1m",
+        "M5" or "5M" => "5m",
         "M15" or "15M" => "15m",
-        "D"  or "DAILY" or "D1" => "Daily",
+        "M30" or "30M" => "30m",
+        "H1" or "1H" => "1H",
+        "H2" or "2H" => "2H",
+        "H4" or "4H" => "4H",
+        "D" or "D1" or "DAILY" or "1D" => "Daily",
         _ => tf
     };
     private async Task OnDataFileChanged(string path)
@@ -151,8 +163,12 @@ else
             Model.Interval = Model.Timeframe switch
             {
                 "H4" => "4H",
+                "H2" => "2H",
                 "H1" => "1H",
+                "M30" => "30M",
                 "M15" => "15M",
+                "M5" => "5M",
+                "M1" => "1M",
                 _ => "1D"
             };
         }

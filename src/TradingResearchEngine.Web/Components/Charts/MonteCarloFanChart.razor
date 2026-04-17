@@ -1,0 +1,123 @@
+@rendermode InteractiveServer
+@using Plotly.Blazor
+@using Plotly.Blazor.Traces
+@using Plotly.Blazor.Traces.ScatterLib
+@using TradingResearchEngine.Application.Research.Results
+
+@if (Bands is not null && Bands.Count > 0)
+{
+    <PlotlyChart @ref="_chart" Config="_config" Layout="_layout" Data="_data"
+                 style="width:100%; height:360px;" />
+}
+
+@code {
+    /// <summary>The percentile bands from Monte Carlo simulation.</summary>
+    [Parameter] public IReadOnlyList<MonteCarloPercentileBand>? Bands { get; set; }
+
+    /// <summary>Starting equity for the reference line.</summary>
+    [Parameter] public decimal StartEquity { get; set; }
+
+    /// <summary>Optional ruin probability to display as subtitle.</summary>
+    [Parameter] public decimal? RuinProbability { get; set; }
+
+    private PlotlyChart? _chart;
+    private Config _config = new() { Responsive = true, DisplayModeBar = Plotly.Blazor.ConfigLib.DisplayModeBarEnum.Hover };
+    private Layout _layout = new();
+    private IList<ITrace> _data = new List<ITrace>();
+
+    protected override void OnParametersSet()
+    {
+        if (Bands is null || Bands.Count == 0) return;
+
+        var steps = Bands.Select(b => (object)b.Step).ToList();
+        var p10 = Bands.Select(b => (object)b.P10).ToList();
+        var p50 = Bands.Select(b => (object)b.P50).ToList();
+        var p90 = Bands.Select(b => (object)b.P90).ToList();
+
+        _data = new List<ITrace>
+        {
+            // P10 lower bound (fill to P90)
+            new Scatter
+            {
+                X = steps,
+                Y = p10,
+                Name = "P10",
+                Mode = ModeFlag.Lines,
+                Line = new Line { Color = "#EF5350", Dash = "dash", Width = 1.5m },
+                HoverTemplate = "Step %{x}<br>P10: $%{y:,.0f}<extra></extra>"
+            },
+            // P90 upper bound with fill down to P10
+            new Scatter
+            {
+                X = steps,
+                Y = p90,
+                Name = "P90",
+                Mode = ModeFlag.Lines,
+                Line = new Line { Color = "#66BB6A", Dash = "dash", Width = 1.5m },
+                Fill = FillEnum.ToNextY,
+                FillColor = "rgba(66,165,245,0.12)",
+                HoverTemplate = "Step %{x}<br>P90: $%{y:,.0f}<extra></extra>"
+            },
+            // P50 median
+            new Scatter
+            {
+                X = steps,
+                Y = p50,
+                Name = "P50 (Median)",
+                Mode = ModeFlag.Lines,
+                Line = new Line { Color = "#42A5F5", Width = 2.5m },
+                HoverTemplate = "Step %{x}<br>P50: $%{y:,.0f}<extra></extra>"
+            }
+        };
+
+        var subtitle = RuinProbability.HasValue
+            ? $"Monte Carlo Fan Chart — Ruin probability: {RuinProbability.Value:P1}"
+            : "Monte Carlo Fan Chart";
+
+        _layout = new Layout
+        {
+            Title = new Plotly.Blazor.LayoutLib.Title { Text = subtitle },
+            Margin = new Plotly.Blazor.LayoutLib.Margin { L = 70, R = 30, T = 50, B = 50 },
+            HoverMode = Plotly.Blazor.LayoutLib.HoverModeEnum.XUnified,
+            ShowLegend = true,
+            Legend = new List<Plotly.Blazor.LayoutLib.Legend> { new() { Orientation = Plotly.Blazor.LayoutLib.LegendLib.OrientationEnum.H, Y = -0.15m } },
+            XAxis = new[] { new Plotly.Blazor.LayoutLib.XAxis
+            {
+                Title = new Plotly.Blazor.LayoutLib.XAxisLib.Title { Text = "Trade Number" }
+            } }.ToList(),
+            YAxis = new[] { new Plotly.Blazor.LayoutLib.YAxis
+            {
+                Title = new Plotly.Blazor.LayoutLib.YAxisLib.Title { Text = "Equity ($)" }
+            } }.ToList(),
+            Shapes = new List<Plotly.Blazor.LayoutLib.Shape>
+            {
+                new()
+                {
+                    Type = Plotly.Blazor.LayoutLib.ShapeLib.TypeEnum.Line,
+                    X0 = (object)0,
+                    X1 = (object)(Bands.Count - 1),
+                    Y0 = (object)StartEquity,
+                    Y1 = (object)StartEquity,
+                    Line = new Plotly.Blazor.LayoutLib.ShapeLib.Line
+                    {
+                        Color = "rgba(255,255,255,0.5)",
+                        Dash = "dot",
+                        Width = 1m
+                    }
+                }
+            },
+            Annotations = new List<Plotly.Blazor.LayoutLib.Annotation>
+            {
+                new()
+                {
+                    X = (object)0,
+                    Y = (object)StartEquity,
+                    Text = "Start",
+                    ShowArrow = false,
+                    Font = new Plotly.Blazor.LayoutLib.AnnotationLib.Font { Size = 10m, Color = "rgba(255,255,255,0.7)" },
+                    XAnchor = Plotly.Blazor.LayoutLib.AnnotationLib.XAnchorEnum.Left
+                }
+            }
+        };
+    }
+}

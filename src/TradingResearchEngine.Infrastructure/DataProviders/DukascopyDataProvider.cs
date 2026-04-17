@@ -89,7 +89,16 @@ public sealed class DukascopyDataProvider : IDataProvider
         _logger.LogInformation("Dukascopy: {Count} minute bars, aggregating to {Interval}",
             allMinuteBars.Count, interval);
 
-        var aggregated = DukascopyHelpers.Aggregate(allMinuteBars, interval, symbol);
+        // V6: Second-level aggregated cache — skip redundant aggregation for repeated runs
+        List<BarRecord> aggregated;
+        if (intervalMins > 1)
+        {
+            aggregated = await AggregateWithCacheAsync(allMinuteBars, interval, symbol, dates, ct);
+        }
+        else
+        {
+            aggregated = allMinuteBars;
+        }
 
         foreach (var bar in aggregated)
         {
@@ -319,6 +328,84 @@ public sealed class DukascopyDataProvider : IDataProvider
         }
 
         return bars;
+    }
+
+    // --- V6: Second-Level Aggregated Cache ---
+
+    /// <summary>
+    /// Aggregates 1-minute bars to the target interval, using per-day aggregated cache
+    /// to skip redundant computation on repeated runs at the same timeframe.
+    /// </summary>
+    private Task<List<BarRecord>> AggregateWithCacheAsync(
+        List<BarRecord> allMinuteBars, string interval, string symbol,
+        List<DateTime> dates, CancellationToken ct)
+    {
+        var priceLabel = _priceType.ToString();
+        var result = new List<BarRecord>();
+
+        // Group minute bars by date
+        var barsByDate = allMinuteBars
+            .GroupBy(b => b.Timestamp.UtcDateTime.Date)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        foreach (var date in dates)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            var aggCachePath = GetAggregatedCachePath(symbol, priceLabel, date, interval);
+            var sourceCachePath = DukascopyHelpers.GetDayCachePath(CacheDir, symbol, priceLabel, date);
+
+            // Check if aggregated cache exists and is newer than source 1m cache
+            if (File.Exists(aggCachePath) && File.Exists(sourceCachePath))
+            {
+                var aggTime = File.GetLastWriteTimeUtc(aggCachePath);
+                var srcTime = File.GetLastWriteTimeUtc(sourceCachePath);
+                if (aggTime >= srcTime)
+                {
+                    _logger.LogDebug("Dukascopy: aggregated cache HIT for {Symbol} {Date:yyyy-MM-dd} {Interval}",
+                        symbol, date, interval);
+                    var cached = DukascopyHelpers.LoadFromCsv(aggCachePath, symbol, interval);
+                    result.AddRange(cached);
+                    continue;
+                }
+            }
+
+            _logger.LogDebug("Dukascopy: aggregated cache MISS for {Symbol} {Date:yyyy-MM-dd} {Interval}",
+                symbol, date, interval);
+
+            // Aggregate from 1m bars for this day
+            if (barsByDate.TryGetValue(date, out var dayBars) && dayBars.Count > 0)
+            {
+                var dayAggregated = DukascopyHelpers.Aggregate(dayBars, interval, symbol);
+                result.AddRange(dayAggregated);
+
+                // Write aggregated result to cache
+                if (dayAggregated.Count > 0)
+                {
+                    try { DukascopyHelpers.SaveToCsv(aggCachePath, dayAggregated); }
+                    catch (Exception ex)
+                    {
+                        _logger.LogDebug(ex, "Failed to cache aggregated bars for {Symbol} {Date:yyyy-MM-dd} {Interval}",
+                            symbol, date, interval);
+                    }
+                }
+            }
+        }
+
+        return Task.FromResult(result);
+    }
+
+    /// <summary>
+    /// Returns the cache path for aggregated data:
+    /// {CacheDir}/{symbol}/{priceType}/{year}/{month}/{day}_{interval}.csv
+    /// </summary>
+    private static string GetAggregatedCachePath(string symbol, string priceType, DateTime date, string interval)
+    {
+        var dir = Path.Combine(CacheDir, symbol, priceType,
+            date.Year.ToString("D4"), date.Month.ToString("D2"));
+        if (!Directory.Exists(dir))
+            Directory.CreateDirectory(dir);
+        return Path.Combine(dir, $"{date.Day:D2}_{interval}.csv");
     }
 
     // --- HTTP Retry ---

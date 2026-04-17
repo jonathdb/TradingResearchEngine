@@ -108,3 +108,22 @@ V3 transforms the engine into a user-facing research product. Single-user, local
 - Database persistence (JSON files only)
 - Live or paper trading
 - Short-selling
+
+## V6 Scope — Engine Upgrades
+
+V6 delivers four tracks of improvements:
+
+- Full long/short execution replacing the V5 `LongOnlyGuard` — bidirectional strategies, short position tracking, signed quantity sizing
+- SQLite index persistence over JSON files for O(log n) lookups; parallel walk-forward and parameter sweep execution via `Parallel.ForEachAsync` with `SemaphoreSlim` concurrency control
+- Plotly.Blazor interactive charting: equity curve, monthly returns heatmap, trade PnL histogram, holding period histogram, Monte Carlo fan chart, walk-forward composite chart, parameter sweep heatmap
+- Quant depth: CPCV (Combinatorial Purged Cross-Validation) implementation, prop-firm evaluation persistence wiring, IPropFirmPackLoader DI service, benchmark excess Sharpe wiring, timeframe-aware MinBTL recommendations, 9-item research checklist with updated confidence thresholds
+- BarsPerYearDefaults covers all 8 intraday timeframes (M1 through D1) with human-readable duration conversion
+- Strategy retirement with "Show Retired" toggle and optional retirement notes
+- Intraday data caching for aggregated timeframes in DukascopyDataProvider
+
+## Out of Scope for V6
+
+- Multi-user / authentication / team features
+- Live or paper trading
+- Plugin-based strategy loading via AssemblyLoadContext
+- Multi-currency portfolio tracking

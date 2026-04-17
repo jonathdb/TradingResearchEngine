@@ -1,0 +1,71 @@
+@rendermode InteractiveServer
+@using Plotly.Blazor
+@using Plotly.Blazor.Traces
+@using TradingResearchEngine.Application.Helpers
+
+@if (Curve is not null && Curve.Count > 0)
+{
+    <PlotlyChart @ref="_chart" Config="_config" Layout="_layout" Data="_data"
+                 style="width:100%; height:320px;" />
+}
+
+@code {
+    /// <summary>The equity curve to compute monthly returns from.</summary>
+    [Parameter] public IReadOnlyList<EquityCurvePoint>? Curve { get; set; }
+
+    private PlotlyChart? _chart;
+    private Config _config = new() { Responsive = true, DisplayModeBar = Plotly.Blazor.ConfigLib.DisplayModeBarEnum.Hover };
+    private Layout _layout = new();
+    private IList<ITrace> _data = new List<ITrace>();
+
+    private static readonly string[] MonthLabels = { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
+
+    protected override void OnParametersSet()
+    {
+        if (Curve is null || Curve.Count == 0) return;
+
+        var monthly = ChartComputationHelpers.ComputeMonthlyReturns(Curve);
+        if (monthly.Count == 0) return;
+
+        var years = monthly.Select(m => m.Year).Distinct().OrderBy(y => y).ToList();
+        var yLabels = years.Select(y => (object)y.ToString()).ToList();
+        var xLabels = MonthLabels.Select(m => (object)m).ToList();
+
+        // Build Z matrix: rows = years, columns = months
+        var z = new List<object>();
+        foreach (var year in years)
+        {
+            var row = new List<object>();
+            for (int m = 1; m <= 12; m++)
+            {
+                var entry = monthly.FirstOrDefault(r => r.Year == year && r.Month == m);
+                row.Add(entry is not null ? (object)Math.Round(entry.ReturnPercent, 2) : (object?)null!);
+            }
+            z.Add(row);
+        }
+
+        _data = new List<ITrace>
+        {
+            new HeatMap
+            {
+                X = xLabels,
+                Y = yLabels,
+                Z = z as IList<object>,
+                ColorScale = new object[]
+                {
+                    new object[] { 0, "#EF5350" },
+                    new object[] { 0.5, "#FFFFFF" },
+                    new object[] { 1, "#66BB6A" }
+                } as IList<object>,
+                ZMid = 0m,
+                HoverTemplate = "%{y} %{x}: %{z:.2f}%<extra></extra>"
+            }
+        };
+
+        _layout = new Layout
+        {
+            Title = new Plotly.Blazor.LayoutLib.Title { Text = "Monthly Returns (%)" },
+            Margin = new Plotly.Blazor.LayoutLib.Margin { L = 60, R = 40, T = 40, B = 40 }
+        };
+    }
+}

@@ -1,5 +1,5 @@
+using TradingResearchEngine.Application.PropFirm;
 using TradingResearchEngine.Application.Strategy;
-using TradingResearchEngine.Core.Persistence;
 using TradingResearchEngine.Core.Results;
 
 namespace TradingResearchEngine.Application.Research;
@@ -44,19 +44,22 @@ public sealed record NextRecommendedAction(
 /// </summary>
 public sealed class ResearchChecklistService
 {
-    private readonly IRepository<BacktestResult> _resultRepo;
+    private readonly IBacktestResultRepository _resultRepo;
     private readonly IStudyRepository _studyRepo;
     private readonly IStrategyRepository _strategyRepo;
+    private readonly IPropFirmEvaluationRepository _evalRepo;
 
     /// <inheritdoc cref="ResearchChecklistService"/>
     public ResearchChecklistService(
-        IRepository<BacktestResult> resultRepo,
+        IBacktestResultRepository resultRepo,
         IStudyRepository studyRepo,
-        IStrategyRepository strategyRepo)
+        IStrategyRepository strategyRepo,
+        IPropFirmEvaluationRepository evalRepo)
     {
         _resultRepo = resultRepo;
         _studyRepo = studyRepo;
         _strategyRepo = strategyRepo;
+        _evalRepo = evalRepo;
     }
 
     /// <summary>
@@ -66,10 +69,7 @@ public sealed class ResearchChecklistService
         string strategyVersionId,
         CancellationToken ct = default)
     {
-        var allResults = await _resultRepo.ListAsync(ct);
-        var versionResults = allResults
-            .Where(r => r.StrategyVersionId == strategyVersionId)
-            .ToList();
+        var versionResults = await _resultRepo.ListByVersionAsync(strategyVersionId, ct);
 
         var studies = await _studyRepo.ListByVersionAsync(strategyVersionId, ct);
         var completedStudies = studies
@@ -103,8 +103,12 @@ public sealed class ResearchChecklistService
             finalHeldOutTest = strategy?.Stage == DevelopmentStage.FinalTest;
         }
 
-        // Prop firm evaluation: check if any completed run has been evaluated
-        bool propFirmEvaluation = false; // TODO: wire to prop firm evaluation persistence
+        // Prop firm evaluation: check if any completed evaluation exists
+        bool propFirmEvaluation = await _evalRepo.HasCompletedEvaluationAsync(strategyVersionId, ct);
+
+        // V6: CPCV study completion check (9th checklist item)
+        bool cpcvDone = completedStudies
+            .Any(s => s.Type is StudyType.CombinatorialPurgedCV or StudyType.Cpcv);
 
         // V5: Compute trial budget status
         int totalTrialsRun = versions?.TotalTrialsRun ?? 0;
@@ -120,7 +124,7 @@ public sealed class ResearchChecklistService
         return new ResearchChecklist(
             initialBacktest, monteCarloRobustness, walkForwardValidation,
             regimeSensitivity, realismImpact, parameterSurface,
-            finalHeldOutTest, propFirmEvaluation, trialBudget, nextAction);
+            finalHeldOutTest, propFirmEvaluation, cpcvDone, trialBudget, nextAction);
     }
 
     /// <summary>
@@ -243,8 +247,9 @@ public sealed class ResearchChecklistService
 }
 
 /// <summary>
-/// The 8-item research checklist with a computed Confidence Level.
+/// The 9-item research checklist with a computed Confidence Level.
 /// V5: Extended with TrialBudget and NextAction fields.
+/// V6: Added CpcvDone as 9th item; updated thresholds: HIGH ≥ 8, MEDIUM ≥ 5, LOW &lt; 5.
 /// </summary>
 public sealed record ResearchChecklist(
     bool InitialBacktest,
@@ -255,6 +260,8 @@ public sealed record ResearchChecklist(
     bool ParameterSurface,
     bool FinalHeldOutTest,
     bool PropFirmEvaluation,
+    /// <summary>V6: Whether a CPCV study has been completed.</summary>
+    bool CpcvDone,
     /// <summary>V5: Trial budget status.</summary>
     TrialBudgetStatus TrialBudget = TrialBudgetStatus.Green,
     /// <summary>V5: Computed next recommended action.</summary>
@@ -265,17 +272,17 @@ public sealed record ResearchChecklist(
     {
         InitialBacktest, MonteCarloRobustness, WalkForwardValidation,
         RegimeSensitivity, RealismImpact, ParameterSurface,
-        FinalHeldOutTest, PropFirmEvaluation
+        FinalHeldOutTest, PropFirmEvaluation, CpcvDone
     }.Count(x => x);
 
     /// <summary>Total number of checks.</summary>
-    public int TotalChecks => 8;
+    public int TotalChecks => 9;
 
-    /// <summary>Confidence level based on passed checks.</summary>
+    /// <summary>Confidence level based on passed checks. V6: HIGH ≥ 8, MEDIUM ≥ 5, LOW &lt; 5.</summary>
     public string ConfidenceLevel => PassedCount switch
     {
-        >= 7 => "HIGH",
-        >= 4 => "MEDIUM",
+        >= 8 => "HIGH",
+        >= 5 => "MEDIUM",
         _ => "LOW"
     };
 }

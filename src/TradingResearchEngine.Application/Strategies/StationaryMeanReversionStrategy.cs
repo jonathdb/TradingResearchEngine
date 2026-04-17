@@ -124,8 +124,28 @@ public sealed class StationaryMeanReversionStrategy : IStrategy
             };
         }
 
-        // Exit: z-score > +threshold → sell (reversion complete)
+        // V6: Short entry: z-score > +threshold → short (abnormally positive, expect reversion down)
+        if (zScore > _entryThreshold && _position != Direction.Short)
+        {
+            _position = Direction.Short;
+            return new EngineEvent[]
+            {
+                new SignalEvent(bar.Symbol, Direction.Short, bar.Close, bar.Timestamp)
+            };
+        }
+
+        // Exit long: z-score > +threshold → sell (reversion complete)
         if (zScore > _exitThreshold && _position == Direction.Long)
+        {
+            _position = Direction.Flat;
+            return new EngineEvent[]
+            {
+                new SignalEvent(bar.Symbol, Direction.Flat, bar.Close, bar.Timestamp)
+            };
+        }
+
+        // Exit short: z-score < -exitThreshold → cover (reversion complete)
+        if (zScore < -_exitThreshold && _position == Direction.Short)
         {
             _position = Direction.Flat;
             return new EngineEvent[]

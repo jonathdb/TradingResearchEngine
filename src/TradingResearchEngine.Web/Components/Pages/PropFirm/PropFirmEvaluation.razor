@@ -2,6 +2,7 @@
 @using TradingResearchEngine.Application.PropFirm
 @using TradingResearchEngine.Application.PropFirm.Results
 @inject PropFirmEvaluator Evaluator
+@inject IPropFirmPackLoader PropFirmPackLoader
 @inject ISnackbar Snackbar
 
 <PageTitle>Prop Firm Evaluation — TradingResearchEngine</PageTitle>
@@ -111,10 +112,10 @@
 
     private List<PropFirmRulePack> _packs = new();
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
-        // Load built-in packs from JSON files
-        _packs = LoadBuiltInPacks();
+        // Load built-in packs via DI-injected loader
+        _packs = (await PropFirmPackLoader.LoadAllPacksAsync()).ToList();
     }
 
     private void Evaluate()
@@ -140,23 +141,5 @@
         _ => ""
     };
 
-    private static List<PropFirmRulePack> LoadBuiltInPacks()
-    {
-        var packs = new List<PropFirmRulePack>();
-        var firmsDir = Path.Combine(Directory.GetCurrentDirectory(), "data", "firms");
-        if (!Directory.Exists(firmsDir)) return packs;
-
-        foreach (var file in Directory.GetFiles(firmsDir, "*.json"))
-        {
-            try
-            {
-                var json = File.ReadAllText(file);
-                var pack = System.Text.Json.JsonSerializer.Deserialize<PropFirmRulePack>(json,
-                    new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-                if (pack is not null) packs.Add(pack);
-            }
-            catch { /* skip invalid files */ }
-        }
-        return packs.OrderBy(p => p.FirmName).ThenBy(p => p.ChallengeName).ToList();
-    }
+    // V6: LoadBuiltInPacks replaced by IPropFirmPackLoader injected via DI
 }

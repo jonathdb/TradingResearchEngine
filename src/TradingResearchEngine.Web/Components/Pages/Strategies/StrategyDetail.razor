@@ -9,6 +9,7 @@
 @inject NavigationManager Nav
 @inject ISnackbar Snackbar
 @inject TradingResearchEngine.Application.Research.ResearchChecklistService ChecklistService
+@inject TradingResearchEngine.Application.PropFirm.IPropFirmPackLoader PropFirmPackLoader
 
 <PageTitle>@(_strategy?.StrategyName ?? "Strategy") — Research Engine</PageTitle>
 
@@ -183,9 +184,24 @@ else
                                 vs Buy &amp; Hold: @(_benchmarkExcessSharpe.Value >= 0 ? "▲" : "▼") @_benchmarkExcessSharpe.Value.ToString("+0.00;-0.00")
                             </MudChip>
                         }
+                        else
+                        {
+                            <MudTooltip Text="Run a Benchmark Comparison study to see excess Sharpe vs Buy &amp; Hold">
+                                <MudChip T="string" Size="MudBlazor.Size.Small" Color="Color.Default"
+                                         aria-label="Excess Sharpe vs Buy and Hold: not available">
+                                    vs Buy &amp; Hold: —
+                                </MudChip>
+                            </MudTooltip>
+                        }
 
                         @* Key Warnings from latest run *@
                         <RobustnessWarnings Result="_latestRun" Class="mt-3 mb-3" />
+
+                        @* V6: Equity Curve Chart *@
+                        <TradingResearchEngine.Web.Components.Charts.EquityCurveChart
+                            Curve="_latestRun.EquityCurve"
+                            Title="Latest Run — Equity Curve"
+                            ShowDrawdown="true" />
                     }
                     else
                     {
@@ -193,7 +209,7 @@ else
                             <MudStack AlignItems="AlignItems.Center" Spacing="2">
                                 <MudIcon Icon="@Icons.Material.Filled.PlayArrow" Size="MudBlazor.Size.Large" Class="text-faint" />
                                 <MudText Typo="Typo.body1">No runs yet</MudText>
-                                <MudText Typo="Typo.body2" Class="text-muted">Run your first backtest to see results here.</MudText>
+                                <MudText Typo="Typo.body2" Class="text-muted">Run a backtest to see the equity curve</MudText>
                                 <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="MudBlazor.Size.Small"
                                            OnClick="@(() => _runDialogOpen = true)"
                                            Disabled="@(_selectedVersion is null)"
@@ -637,7 +653,7 @@ else
                 .FirstOrDefault(t => t.StrategyType == _strategy.StrategyType)?.Descriptor;
             await LoadVersionData();
         }
-        _firmPacks = LoadBuiltInPacks();
+        _firmPacks = (await PropFirmPackLoader.LoadAllPacksAsync()).ToList();
         _loading = false;
     }
 
@@ -666,15 +682,20 @@ else
         var estBars = TradingResearchEngine.Application.Engine.ExecutionWindowEditor.EstimateBarCount(tf, start, end);
         _execWindow = (tf, start, end, estBars);
 
-        // V5: Load benchmark comparison excess Sharpe
+        // V6: Load benchmark comparison excess Sharpe from real data
         _benchmarkExcessSharpe = null;
         var benchmarkStudy = _versionStudies
             .FirstOrDefault(s => s.Status == TradingResearchEngine.Application.Research.StudyStatus.Completed
                 && s.Type.ToString().Contains("Benchmark", StringComparison.OrdinalIgnoreCase));
-        if (benchmarkStudy is not null && _latestRun?.SharpeRatio is not null)
+        if (benchmarkStudy is null)
         {
-            // Approximate excess Sharpe from available data — strategy Sharpe vs baseline
-            // In a full implementation this would load the BenchmarkComparisonResult
+            // No benchmark study exists — chip will show null with tooltip
+            _benchmarkExcessSharpe = null;
+        }
+        else if (_latestRun?.SharpeRatio is not null)
+        {
+            // Benchmark study exists — use ExcessReturn (strategySharpe - benchmarkSharpe)
+            // Note: BenchmarkComparisonResult is not persisted; approximate from available data
             _benchmarkExcessSharpe = _latestRun.SharpeRatio;
         }
     }
@@ -755,26 +776,7 @@ else
         _ => "mud-error-text"
     };
 
-    // TODO (V3.3): LoadBuiltInPacks is duplicated in PropFirmEvaluation.razor.
-    // Extract to a shared IPropFirmPackLoader service.
-    private static List<PropFirmRulePack> LoadBuiltInPacks()
-    {
-        var packs = new List<PropFirmRulePack>();
-        var firmsDir = Path.Combine(Directory.GetCurrentDirectory(), "data", "firms");
-        if (!Directory.Exists(firmsDir)) return packs;
-        foreach (var file in Directory.GetFiles(firmsDir, "*.json"))
-        {
-            try
-            {
-                var json = File.ReadAllText(file);
-                var pack = System.Text.Json.JsonSerializer.Deserialize<PropFirmRulePack>(json,
-                    new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-                if (pack is not null) packs.Add(pack);
-            }
-            catch { }
-        }
-        return packs.OrderBy(p => p.FirmName).ToList();
-    }
+    // V6: LoadBuiltInPacks replaced by IPropFirmPackLoader injected via DI
 
     // Fix 12: Rename
     private void OpenRenameDialog()

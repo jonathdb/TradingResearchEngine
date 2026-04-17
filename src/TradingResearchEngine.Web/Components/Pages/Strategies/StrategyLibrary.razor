@@ -19,7 +19,9 @@
         <MudSelectItem Value="@("Active")">Active</MudSelectItem>
         <MudSelectItem Value="@("Stale")" Disabled="true">Stale (coming soon)</MudSelectItem>
         <MudSelectItem Value="@("Untested")">Untested</MudSelectItem>
+        <MudSelectItem Value="@("Retired")">Retired</MudSelectItem>
     </MudSelect>
+    <MudSwitch T="bool" @bind-Value="_showRetired" Label="Show Retired" Color="Color.Secondary" />
     <MudButton Variant="Variant.Filled" Color="Color.Primary"
                StartIcon="@Icons.Material.Filled.Add"
                Href="/strategies/builder">New Strategy</MudButton>
@@ -46,15 +48,27 @@ else
             var lastRun = _lastRunMap.GetValueOrDefault(s.StrategyType);
             var status = GetStatus(s, lastRun);
             var vCount = _versionCounts.GetValueOrDefault(s.StrategyId, 0);
+            var isRetired = s.Stage == DevelopmentStage.Retired;
 
             <MudItem xs="12" sm="6" md="4">
-                <MudCard Outlined="true" Style="position:relative">
+                <MudCard Outlined="true" Style="@(isRetired ? "position:relative;opacity:0.6" : "position:relative")">
                     @* Status badge *@
-                    <MudChip T="string" Size="MudBlazor.Size.Small"
-                             Color="@GetStatusColor(status)"
-                             Style="position:absolute;top:12px;right:12px">
-                        @status
-                    </MudChip>
+                    @if (isRetired)
+                    {
+                        <MudChip T="string" Size="MudBlazor.Size.Small"
+                                 Color="Color.Default"
+                                 Style="position:absolute;top:12px;right:12px;background:#9e9e9e;color:white">
+                            RETIRED
+                        </MudChip>
+                    }
+                    else
+                    {
+                        <MudChip T="string" Size="MudBlazor.Size.Small"
+                                 Color="@GetStatusColor(status)"
+                                 Style="position:absolute;top:12px;right:12px">
+                            @status
+                        </MudChip>
+                    }
 
                     <MudCardContent>
                         <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-1">
@@ -65,6 +79,11 @@ else
                         {
                             <MudChip T="string" Size="MudBlazor.Size.Small" Color="Color.Warning"
                                      Icon="@Icons.Material.Filled.Warning" Class="mb-2">Robustness flags</MudChip>
+                        }
+
+                        @if (isRetired && !string.IsNullOrWhiteSpace(s.RetirementNote))
+                        {
+                            <MudText Typo="Typo.caption" Class="text-muted mb-1">Note: @s.RetirementNote</MudText>
                         }
 
                         <MudText Typo="Typo.body2" Class="text-muted mb-1">@vCount version(s)</MudText>
@@ -95,10 +114,20 @@ else
                     <MudCardActions>
                         <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Filled" Color="Color.Primary"
                                    Href="@($"/strategies/{s.StrategyId}")">Open Hub</MudButton>
-                        <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Text"
-                                   Href="@($"/strategies/builder?fromStrategyId={s.StrategyId}&asVersion=true")">New Version</MudButton>
-                        <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Text"
-                                   Href="@($"/strategies/builder?fromStrategyId={s.StrategyId}")">Clone</MudButton>
+                        @if (!isRetired)
+                        {
+                            <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Text"
+                                       Href="@($"/strategies/builder?fromStrategyId={s.StrategyId}&asVersion=true")">New Version</MudButton>
+                            <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Text"
+                                       Href="@($"/strategies/builder?fromStrategyId={s.StrategyId}")">Clone</MudButton>
+                            <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Text" Color="Color.Warning"
+                                       OnClick="@(() => StartRetire(s))">Retire</MudButton>
+                        }
+                        else
+                        {
+                            <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Text" Color="Color.Success"
+                                       OnClick="@(() => UnRetire(s))">Un-Retire</MudButton>
+                        }
                     </MudCardActions>
                 </MudCard>
             </MudItem>
@@ -106,18 +135,40 @@ else
     </MudGrid>
 }
 
+@* V6: Retirement note prompt *@
+@if (_retireTarget is not null)
+{
+    <MudOverlay Visible="true" DarkBackground="true" AutoClose="false">
+        <MudCard Style="max-width:400px;margin:auto;margin-top:20vh">
+            <MudCardContent>
+                <MudText Typo="Typo.h6" Class="mb-2">Retire "@_retireTarget.StrategyName"?</MudText>
+                <MudTextField @bind-Value="_retirementNote" Label="Why are you retiring this strategy? (optional)"
+                              Variant="Variant.Outlined" Lines="3" />
+            </MudCardContent>
+            <MudCardActions>
+                <MudButton Variant="Variant.Text" OnClick="CancelRetire">Cancel</MudButton>
+                <MudButton Variant="Variant.Filled" Color="Color.Warning" OnClick="ConfirmRetire">Retire</MudButton>
+            </MudCardActions>
+        </MudCard>
+    </MudOverlay>
+}
+
 @code {
     private List<StrategyIdentity> _strategies = new();
     private Dictionary<string, BacktestResult> _lastRunMap = new();
     private Dictionary<string, int> _versionCounts = new();
-    private HashSet<string> _strategiesWithWarnings = new(); // Fix 10
+    private HashSet<string> _strategiesWithWarnings = new();
     private List<string> _allTypes = new();
     private string _search = "";
     private string? _typeFilter;
     private string? _statusFilter;
     private bool _loading = true;
+    private bool _showRetired;
+    private StrategyIdentity? _retireTarget;
+    private string? _retirementNote;
 
     private List<StrategyIdentity> FilteredStrategies => _strategies
+        .Where(s => _showRetired || s.Stage != DevelopmentStage.Retired)
         .Where(s => string.IsNullOrWhiteSpace(_search) || s.StrategyName.Contains(_search, StringComparison.OrdinalIgnoreCase))
         .Where(s => _typeFilter is null || s.StrategyType == _typeFilter)
         .Where(s => _statusFilter is null || GetStatus(s, _lastRunMap.GetValueOrDefault(s.StrategyType)) == _statusFilter)
@@ -128,8 +179,6 @@ else
         _strategies = (await StrategyRepo.ListAsync()).ToList();
         var allRuns = (await ResultRepo.ListAsync()).OrderByDescending(r => r.RunId).ToList();
 
-        // NOTE: _lastRunMap is keyed on StrategyType, not StrategyId.
-        // TODO (V3.3): Re-key on StrategyId via StrategyVersionId once reliably populated.
         _lastRunMap = allRuns
             .GroupBy(r => r.ScenarioConfig.StrategyType)
             .ToDictionary(g => g.Key, g => g.First());
@@ -140,7 +189,6 @@ else
             _versionCounts[s.StrategyId] = versions.Count;
         }
 
-        // Fix 10: Compute robustness warnings per strategy type
         foreach (var (type, run) in _lastRunMap)
         {
             bool hasWarning = (run.SharpeRatio > 3.0m) || (run.TotalTrades < 30) ||
@@ -154,8 +202,8 @@ else
 
     private static string GetStatus(StrategyIdentity s, BacktestResult? lastRun)
     {
+        if (s.Stage == DevelopmentStage.Retired) return "Retired";
         if (lastRun is null) return "Untested";
-        // TODO (V3.3): Add Stale detection once BacktestResult.RunDate or CreatedAt is available.
         return "Active";
     }
 
@@ -163,6 +211,7 @@ else
     {
         "Active" => Color.Success,
         "Stale" => Color.Warning,
+        "Retired" => Color.Default,
         _ => Color.Default
     };
 
@@ -181,5 +230,44 @@ else
             System.Globalization.DateTimeStyles.None, out var dt))
             return dt;
         return null;
+    }
+
+    private void StartRetire(StrategyIdentity strategy)
+    {
+        _retireTarget = strategy;
+        _retirementNote = null;
+    }
+
+    private void CancelRetire()
+    {
+        _retireTarget = null;
+        _retirementNote = null;
+    }
+
+    private async Task ConfirmRetire()
+    {
+        if (_retireTarget is null) return;
+
+        var updated = _retireTarget with
+        {
+            Stage = DevelopmentStage.Retired,
+            RetirementNote = string.IsNullOrWhiteSpace(_retirementNote) ? null : _retirementNote.Trim()
+        };
+        await StrategyRepo.SaveAsync(updated);
+
+        var idx = _strategies.FindIndex(s => s.StrategyId == updated.StrategyId);
+        if (idx >= 0) _strategies[idx] = updated;
+
+        _retireTarget = null;
+        _retirementNote = null;
+    }
+
+    private async Task UnRetire(StrategyIdentity strategy)
+    {
+        var updated = strategy with { Stage = DevelopmentStage.Hypothesis };
+        await StrategyRepo.SaveAsync(updated);
+
+        var idx = _strategies.FindIndex(s => s.StrategyId == updated.StrategyId);
+        if (idx >= 0) _strategies[idx] = updated;
     }
 }

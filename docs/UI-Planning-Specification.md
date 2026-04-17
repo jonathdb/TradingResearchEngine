@@ -666,6 +666,8 @@ Do not lock to a specific library yet. Evaluate these at the start of Phase 2:
 
 Recommendation for V1: Start with ApexCharts.Blazor for most charts (line, bar, area, histogram, pie, heatmap, radar). Evaluate Plotly.Blazor for 3D surface plots in Phase 6. Consider TradingView Lightweight Charts for equity curve rendering if ApexCharts doesn't feel right for financial time series.
 
+> **V6 Update:** Plotly.Blazor (`Plotly.Blazor` NuGet package, MIT license) has been adopted for V6 interactive charting: equity curve with drawdown overlay, monthly returns heatmap, trade PnL histogram, holding period histogram, Monte Carlo fan chart (P10/P50/P90), walk-forward composite chart, and parameter sweep heatmap. ApexCharts.Blazor remains in the project for existing chart components. Both libraries coexist in the Web project.
+
 For the overall component library (layout, forms, tables, buttons), evaluate:
 - MudBlazor (most popular, good defaults, MIT license)
 - Radzen (free, comprehensive, slightly heavier)
@@ -730,7 +732,8 @@ Recommendation: MudBlazor for V1. It covers layout, navigation, forms, tables, d
 ### Recommended V1 tech stack
 - Blazor Server (.NET 8)
 - MudBlazor for layout, forms, tables, navigation
-- ApexCharts.Blazor for charting
+- ApexCharts.Blazor for charting (V1–V5)
+- Plotly.Blazor for V6 interactive charts (equity curve, fan charts, heatmaps, histograms)
 - Existing Application + Infrastructure layers unchanged
 
 ### Implementation order

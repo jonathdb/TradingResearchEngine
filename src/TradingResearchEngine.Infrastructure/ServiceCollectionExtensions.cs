@@ -10,6 +10,8 @@ using TradingResearchEngine.Core.Results;
 using TradingResearchEngine.Infrastructure.DataProviders;
 using TradingResearchEngine.Infrastructure.Persistence;
 using TradingResearchEngine.Infrastructure.Reporting;
+using TradingResearchEngine.Application.PropFirm;
+using TradingResearchEngine.Application.Research;
 
 namespace TradingResearchEngine.Infrastructure;
 
@@ -42,6 +44,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IReporter, ConsoleReporter>();
         services.AddSingleton<DataFileService>();
         services.AddSingleton<IRepository<BacktestResult>, JsonFileRepository<BacktestResult>>();
+        // V6: SQLite-indexed backtest result repository
+        services.AddSingleton<IBacktestResultRepository, SqliteIndexRepository>();
         services.AddSingleton<IRepository<ScenarioConfig>, JsonFileRepository<ScenarioConfig>>();
         services.AddSingleton<IRepository<TradingResearchEngine.Application.PropFirm.FirmRuleSet>,
             JsonFileRepository<TradingResearchEngine.Application.PropFirm.FirmRuleSet>>();
@@ -100,6 +104,22 @@ public static class ServiceCollectionExtensions
 
         // V4: Migration service
         services.AddSingleton<MigrationService>();
+
+        // V6: Prop-firm evaluation repository
+        services.AddSingleton<IPropFirmEvaluationRepository>(sp =>
+        {
+            var baseDir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "TradingResearchEngine", "PropFirmEvaluations");
+            return new JsonPropFirmEvaluationRepository(baseDir);
+        });
+
+        // V6: Prop-firm pack loader
+        services.AddSingleton<IPropFirmPackLoader>(sp =>
+        {
+            var firmsDir = Path.Combine(Directory.GetCurrentDirectory(), "data", "firms");
+            return new PropFirm.JsonPropFirmPackLoader(firmsDir);
+        });
 
         // Market Data: import repository
         services.AddSingleton<TradingResearchEngine.Application.MarketData.IMarketDataImportRepository>(sp =>

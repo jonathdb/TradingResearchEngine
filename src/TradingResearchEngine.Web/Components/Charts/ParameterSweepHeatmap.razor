@@ -1,0 +1,183 @@
+@rendermode InteractiveServer
+@using Plotly.Blazor
+@using Plotly.Blazor.Traces
+@using TradingResearchEngine.Application.Research.Results
+
+@if (_canRender)
+{
+    <MudStack Row="true" Spacing="2" Class="mb-3">
+        @if (_paramNames.Count > 2)
+        {
+            <MudSelect T="string" @bind-Value="_xParam" Label="X-Axis Parameter" Variant="Variant.Outlined" Style="max-width:200px">
+                @foreach (var p in _paramNames)
+                {
+                    <MudSelectItem Value="@p">@p</MudSelectItem>
+                }
+            </MudSelect>
+            <MudSelect T="string" @bind-Value="_yParam" Label="Y-Axis Parameter" Variant="Variant.Outlined" Style="max-width:200px">
+                @foreach (var p in _paramNames.Where(n => n != _xParam))
+                {
+                    <MudSelectItem Value="@p">@p</MudSelectItem>
+                }
+            </MudSelect>
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="RebuildChart">Update</MudButton>
+        }
+    </MudStack>
+
+    <PlotlyChart @ref="_chart" Config="_config" Layout="_layout" Data="_data"
+                 style="width:100%; height:400px;" />
+}
+else if (SweepResult is not null)
+{
+    <MudText Typo="Typo.body2" Class="text-muted">
+        Heatmap requires at least 2 numeric parameters with 4+ unique values each.
+    </MudText>
+}
+
+@code {
+    /// <summary>The sweep result containing ranked backtest results.</summary>
+    [Parameter] public SweepResult? SweepResult { get; set; }
+
+    /// <summary>Initial X-axis parameter name.</summary>
+    [Parameter] public string XParam { get; set; } = "";
+
+    /// <summary>Initial Y-axis parameter name.</summary>
+    [Parameter] public string YParam { get; set; } = "";
+
+    /// <summary>Metric to display (default: Sharpe).</summary>
+    [Parameter] public string MetricName { get; set; } = "Sharpe";
+
+    private PlotlyChart? _chart;
+    private Config _config = new() { Responsive = true, DisplayModeBar = Plotly.Blazor.ConfigLib.DisplayModeBarEnum.Hover };
+    private Layout _layout = new();
+    private IList<ITrace> _data = new List<ITrace>();
+    private bool _canRender;
+    private List<string> _paramNames = new();
+    private string _xParam = "";
+    private string _yParam = "";
+
+    protected override void OnParametersSet()
+    {
+        if (SweepResult is null || SweepResult.RankedBySharpe.Count == 0) return;
+
+        // Discover numeric parameters with ≥4 unique values
+        _paramNames = DiscoverNumericParams(SweepResult.RankedBySharpe);
+        _canRender = _paramNames.Count >= 2;
+
+        if (!_canRender) return;
+
+        _xParam = !string.IsNullOrEmpty(XParam) && _paramNames.Contains(XParam) ? XParam : _paramNames[0];
+        _yParam = !string.IsNullOrEmpty(YParam) && _paramNames.Contains(YParam) ? YParam : _paramNames[1];
+
+        RebuildChart();
+    }
+
+    private void RebuildChart()
+    {
+        if (SweepResult is null || !_canRender) return;
+
+        var results = SweepResult.RankedBySharpe;
+
+        // Extract parameter values from ScenarioConfig.StrategyParameters
+        var xValues = results
+            .Select(r => GetParamValue(r, _xParam))
+            .Where(v => v.HasValue)
+            .Select(v => v!.Value)
+            .Distinct().OrderBy(v => v).ToList();
+
+        var yValues = results
+            .Select(r => GetParamValue(r, _yParam))
+            .Where(v => v.HasValue)
+            .Select(v => v!.Value)
+            .Distinct().OrderBy(v => v).ToList();
+
+        if (xValues.Count < 2 || yValues.Count < 2) return;
+
+        var xLabels = xValues.Select(v => (object)v.ToString("G")).ToList();
+        var yLabels = yValues.Select(v => (object)v.ToString("G")).ToList();
+
+        // Build Z matrix
+        var z = new List<object>();
+        foreach (var yVal in yValues)
+        {
+            var row = new List<object>();
+            foreach (var xVal in xValues)
+            {
+                var match = results.FirstOrDefault(r =>
+                    GetParamValue(r, _xParam) == xVal && GetParamValue(r, _yParam) == yVal);
+                row.Add(match?.SharpeRatio is not null ? (object)Math.Round(match.SharpeRatio.Value, 3) : (object?)null!);
+            }
+            z.Add(row);
+        }
+
+        _data = new List<ITrace>
+        {
+            new HeatMap
+            {
+                X = xLabels,
+                Y = yLabels,
+                Z = z as IList<object>,
+                ColorScale = new object[]
+                {
+                    new object[] { 0, "#EF5350" },
+                    new object[] { 0.5, "#FFFFFF" },
+                    new object[] { 1, "#66BB6A" }
+                } as IList<object>,
+                ZMid = 0m,
+                HoverTemplate = $"{_xParam}: %{{x}}<br>{_yParam}: %{{y}}<br>Sharpe: %{{z:.3f}}<extra></extra>"
+            }
+        };
+
+        _layout = new Layout
+        {
+            Title = new Plotly.Blazor.LayoutLib.Title { Text = $"Parameter Sweep — {MetricName}" },
+            Margin = new Plotly.Blazor.LayoutLib.Margin { L = 80, R = 40, T = 50, B = 60 },
+            XAxis = new[] { new Plotly.Blazor.LayoutLib.XAxis
+            {
+                Title = new Plotly.Blazor.LayoutLib.XAxisLib.Title { Text = _xParam }
+            } }.ToList(),
+            YAxis = new[] { new Plotly.Blazor.LayoutLib.YAxis
+            {
+                Title = new Plotly.Blazor.LayoutLib.YAxisLib.Title { Text = _yParam }
+            } }.ToList()
+        };
+    }
+
+    private static List<string> DiscoverNumericParams(IReadOnlyList<BacktestResult> results)
+    {
+        if (results.Count == 0) return new();
+
+        // Look at StrategyParameters from ScenarioConfig
+        var allParams = results
+            .SelectMany(r => r.ScenarioConfig.StrategyParameters?.Keys ?? Enumerable.Empty<string>())
+            .Distinct()
+            .ToList();
+
+        return allParams.Where(p =>
+        {
+            var values = results
+                .Select(r => GetParamValue(r, p))
+                .Where(v => v.HasValue)
+                .Select(v => v!.Value)
+                .Distinct()
+                .ToList();
+            return values.Count >= 4;
+        }).ToList();
+    }
+
+    private static decimal? GetParamValue(BacktestResult result, string paramName)
+    {
+        if (result.ScenarioConfig.StrategyParameters is null) return null;
+        if (!result.ScenarioConfig.StrategyParameters.TryGetValue(paramName, out var val)) return null;
+        return val switch
+        {
+            decimal d => d,
+            double dbl => (decimal)dbl,
+            int i => i,
+            long l => l,
+            float f => (decimal)f,
+            string s when decimal.TryParse(s, out var parsed) => parsed,
+            _ => null
+        };
+    }
+}

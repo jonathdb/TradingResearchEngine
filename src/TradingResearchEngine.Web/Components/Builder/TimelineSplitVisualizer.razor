@@ -1,4 +1,4 @@
-@* Visual timeline showing IS/OOS/sealed split *@
+@* Visual timeline showing IS/OOS/sealed split with bar-count density *@
 
 <MudPaper Class="pa-3 mb-3" Outlined="true">
     <MudText Typo="Typo.caption" Class="mb-2" aria-label="Timeline split visualization">
@@ -19,7 +19,7 @@
         </div>
         @if (SealedPercent > 0)
         {
-            <div style="@($"width: {SealedPercent}%; background-color: var(--mud-palette-error); display: flex; align-items: center; justify-content: center;")"
+            <div style="@($"width: {SealedPercent}%; background-color: var(--mud-palette-error); display: flex; align-items: center; justify-content: center; background-image: repeating-linear-gradient(45deg, transparent, transparent 3px, rgba(0,0,0,0.15) 3px, rgba(0,0,0,0.15) 6px);")"
                  aria-label="@($"Sealed Test: {SealedPercent:F0}%")">
                 <MudText Typo="Typo.caption" Style="color: white; font-size: 0.7rem;">
                     Sealed @SealedPercent.ToString("F0")%
@@ -27,12 +27,59 @@
             </div>
         }
     </MudStack>
+
+    @* V6: Bar count density labels *@
+    @if (BarsPerYear > 0 && TotalYears > 0)
+    {
+        <MudStack Row="true" Spacing="0" Class="mt-1" Style="width: 100%;">
+            <div style="@($"width: {InSamplePercent}%; text-align: center;")">
+                <MudStack Row="true" Spacing="1" Justify="Justify.Center" AlignItems="AlignItems.Center">
+                    @if (IsBarsWarning)
+                    {
+                        <MudIcon Icon="@Icons.Material.Filled.Warning" Color="Color.Warning" Size="MudBlazor.Size.Small"
+                                 aria-label="In-sample segment has fewer bars than MinBTL" />
+                    }
+                    <MudText Typo="Typo.caption" Class="text-muted" Style="font-size: 0.65rem;">
+                        ~@IsBars.ToString("N0") bars
+                    </MudText>
+                </MudStack>
+            </div>
+            <div style="@($"width: {OosPercent}%; text-align: center;")">
+                <MudText Typo="Typo.caption" Class="text-muted" Style="font-size: 0.65rem;">
+                    ~@OosBars.ToString("N0") bars
+                </MudText>
+            </div>
+            @if (SealedPercent > 0)
+            {
+                <div style="@($"width: {SealedPercent}%; text-align: center;")">
+                    <MudText Typo="Typo.caption" Class="text-muted" Style="font-size: 0.65rem;">
+                        ~@SealedBars.ToString("N0") bars
+                    </MudText>
+                </div>
+            }
+        </MudStack>
+    }
 </MudPaper>
 
 @code {
     [Parameter] public decimal InSamplePercent { get; set; } = 70m;
     [Parameter] public decimal? SealedTestPercent { get; set; }
 
+    /// <summary>V6: BarsPerYear for the selected timeframe (0 to hide bar counts).</summary>
+    [Parameter] public int BarsPerYear { get; set; }
+
+    /// <summary>V6: Total duration of the data range in years.</summary>
+    [Parameter] public decimal TotalYears { get; set; }
+
+    /// <summary>V6: Minimum backtest length in bars. Warning shown if IS bars are below this.</summary>
+    [Parameter] public int MinBtlBars { get; set; }
+
     private decimal SealedPercent => SealedTestPercent ?? 0m;
     private decimal OosPercent => 100m - InSamplePercent - SealedPercent;
+
+    private int IsBars => (int)(BarsPerYear * TotalYears * InSamplePercent / 100m);
+    private int OosBars => (int)(BarsPerYear * TotalYears * OosPercent / 100m);
+    private int SealedBars => (int)(BarsPerYear * TotalYears * SealedPercent / 100m);
+
+    private bool IsBarsWarning => MinBtlBars > 0 && IsBars < MinBtlBars;
 }

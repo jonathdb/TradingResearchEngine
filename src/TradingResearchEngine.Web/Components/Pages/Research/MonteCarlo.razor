@@ -50,6 +50,17 @@
                                  StartEquity="@(_selectedResult?.StartEquity ?? 100_000m)" />
             </MudPaper>
 
+            @* V6: Plotly Monte Carlo Fan Chart *@
+            @if (_mcResult.PercentileBands.Count > 0)
+            {
+                <MudPaper Class="pa-4 mb-4" Elevation="2">
+                    <TradingResearchEngine.Web.Components.Charts.MonteCarloFanChart
+                        Bands="_mcResult.PercentileBands"
+                        StartEquity="@(_selectedResult?.StartEquity ?? 100_000m)"
+                        RuinProbability="_mcResult.RuinProbability" />
+                </MudPaper>
+            }
+
             <MudPaper Class="pa-4" Elevation="2">
                 <MudText Typo="Typo.h6" Class="mb-2">End Equity Distribution</MudText>
                 <EquityDistributionChart Data="_mcResult.EndEquityDistribution" />

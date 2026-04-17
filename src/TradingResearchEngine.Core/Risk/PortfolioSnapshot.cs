@@ -6,4 +6,6 @@ namespace TradingResearchEngine.Core.Risk;
 public sealed record PortfolioSnapshot(
     IReadOnlyDictionary<string, Position> Positions,
     decimal CashBalance,
-    decimal TotalEquity);
+    decimal TotalEquity,
+    /// <summary>V6: Open short positions keyed by symbol.</summary>
+    IReadOnlyDictionary<string, Position>? ShortPositions = null);

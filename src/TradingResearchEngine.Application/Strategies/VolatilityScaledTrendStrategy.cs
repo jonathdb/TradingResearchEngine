@@ -19,6 +19,7 @@ public sealed class VolatilityScaledTrendStrategy : IStrategy
     private readonly int _fastPeriod;
     private readonly int _slowPeriod;
     private readonly int _atrPeriod;
+    private readonly DirectionMode _directionMode;
     private readonly List<decimal> _closes = new();
     private decimal _fastSum;
     private decimal _slowSum;
@@ -33,6 +34,7 @@ public sealed class VolatilityScaledTrendStrategy : IStrategy
     /// <param name="fastPeriod">Fast SMA lookback period (default 10).</param>
     /// <param name="slowPeriod">Slow SMA lookback period (default 50).</param>
     /// <param name="atrPeriod">ATR lookback period for Wilder smoothing (default 14).</param>
+    /// <param name="directionMode">Signal direction mode: Long, Short, or Both (default Long).</param>
     public VolatilityScaledTrendStrategy(
         [ParameterMeta(DisplayName = "Fast Period", Description = "Fast SMA lookback period.",
             SensitivityHint = SensitivityHint.High, Group = "Signal", DisplayOrder = 0, Min = 2)]
@@ -42,11 +44,15 @@ public sealed class VolatilityScaledTrendStrategy : IStrategy
         int slowPeriod = 50,
         [ParameterMeta(DisplayName = "ATR Period", Description = "ATR lookback period for Wilder smoothing.",
             SensitivityHint = SensitivityHint.Medium, Group = "Risk", DisplayOrder = 2, Min = 2)]
-        int atrPeriod = 14)
+        int atrPeriod = 14,
+        [ParameterMeta(DisplayName = "Direction", Description = "Signal direction mode.",
+            Group = "Signal", DisplayOrder = 3)]
+        DirectionMode directionMode = DirectionMode.Long)
     {
         _fastPeriod = fastPeriod;
         _slowPeriod = slowPeriod;
         _atrPeriod = atrPeriod;
+        _directionMode = directionMode;
     }
 
     /// <inheritdoc/>
@@ -95,7 +101,8 @@ public sealed class VolatilityScaledTrendStrategy : IStrategy
         decimal fastSma = _fastSum / _fastPeriod;
         decimal slowSma = _slowSum / _slowPeriod;
 
-        if (fastSma > slowSma && _position != Direction.Long)
+        if (fastSma > slowSma && _position != Direction.Long
+            && _directionMode is DirectionMode.Long or DirectionMode.Both)
         {
             _position = Direction.Long;
             return new EngineEvent[]
@@ -105,6 +112,27 @@ public sealed class VolatilityScaledTrendStrategy : IStrategy
         }
 
         if (fastSma <= slowSma && _position == Direction.Long)
+        {
+            _position = Direction.Flat;
+            return new EngineEvent[]
+            {
+                new SignalEvent(bar.Symbol, Direction.Flat, bar.Close, bar.Timestamp)
+            };
+        }
+
+        // V6: Short signal when fast < slow (when mode is Short or Both)
+        if (fastSma < slowSma && _position != Direction.Short
+            && _directionMode is DirectionMode.Short or DirectionMode.Both)
+        {
+            _position = Direction.Short;
+            return new EngineEvent[]
+            {
+                new SignalEvent(bar.Symbol, Direction.Short, bar.Close, bar.Timestamp)
+            };
+        }
+
+        // Exit short: fast crosses above slow
+        if (fastSma >= slowSma && _position == Direction.Short)
         {
             _position = Direction.Flat;
             return new EngineEvent[]

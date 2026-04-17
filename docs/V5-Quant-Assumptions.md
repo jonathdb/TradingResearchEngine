@@ -99,16 +99,24 @@ The default `FillMode.NextBarOpen` fills orders at the next bar's Open price, el
 
 ### BarsPerYear and Annualization
 
-`ScenarioConfig.BarsPerYear` is the canonical source for Sharpe/Sortino annualization. Defaults by timeframe:
+`ScenarioConfig.BarsPerYear` is the canonical source for Sharpe/Sortino annualization. V6 introduces `BarsPerYearDefaults` (`Core/Configuration/BarsPerYearDefaults.cs`), a static class providing named constants for all eight supported timeframes (Forex: 24h × 252 trading days):
 
-| Timeframe | BarsPerYear |
-|-----------|-------------|
-| Daily | 252 |
-| H4 | 1,512 |
-| H1 | 6,048 |
-| M15 | 24,192 |
+| Timeframe | BarsPerYear | Calculation |
+|-----------|-------------|-------------|
+| M1 | 362,880 | 252 × 1,440 |
+| M5 | 72,576 | 252 × 288 |
+| M15 | 24,192 | 252 × 96 |
+| M30 | 12,096 | 252 × 48 |
+| H1 | 6,048 | 252 × 24 |
+| H2 | 3,024 | 252 × 12 |
+| H4 | 1,512 | 252 × 6 |
+| Daily | 252 | 252 × 1 |
 
-Mismatches between declared `Timeframe` and `BarsPerYear` produce a `TIMEFRAME_MISMATCH` preflight warning.
+`BarsPerYearDefaults.ForTimeframe(string)` returns the matching constant (case-insensitive, accepts aliases like `"1m"`, `"5m"`, `"1H"`, `"4H"`, `"Daily"`) or `null` for unknown timeframes.
+
+`BarsPerYearDefaults.BarsToHumanDuration(int bars, string timeframe)` converts a bar count into a human-readable string (e.g. `500` bars at `M15` → `"~52 trading days of 15-minute data required"`). Unknown timeframes fall back to `"{bars} bars"`.
+
+Mismatches between declared `Timeframe` and `BarsPerYear` produce a `TIMEFRAME_MISMATCH` preflight warning. V6 adds a `BARSYEAR_MISMATCH_INTRADAY` warning when `BarsPerYear` is the default (252) but the resolved timeframe is intraday, with the suggested value from `BarsPerYearDefaults`.
 
 ### No Sub-Bar Execution Simulation
 
