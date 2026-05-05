@@ -1,12 +1,15 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using TradingResearchEngine.Application.AI;
 using TradingResearchEngine.Application.Configuration;
 using TradingResearchEngine.Core.Configuration;
 using TradingResearchEngine.Core.DataHandling;
 using TradingResearchEngine.Core.Persistence;
 using TradingResearchEngine.Core.Reporting;
 using TradingResearchEngine.Core.Results;
+using TradingResearchEngine.Infrastructure.AI;
 using TradingResearchEngine.Infrastructure.DataProviders;
 using TradingResearchEngine.Infrastructure.Persistence;
 using TradingResearchEngine.Infrastructure.Reporting;
@@ -102,6 +105,43 @@ public static class ServiceCollectionExtensions
         // V4: Migration service
         services.AddSingleton<MigrationService>();
 
+        // V7: Prompt loader — reads .md files from Prompts/ directory at startup
+        services.AddSingleton<IPromptLoader>(sp =>
+        {
+            var promptsDir = Path.Combine(Directory.GetCurrentDirectory(), "Prompts");
+            return new PromptLoader(promptsDir);
+        });
+
+        // V7: LLM provider configuration
+        services.Configure<LlmProviderOptions>(configuration.GetSection("LlmProvider"));
+
+        // V7: Individual LLM provider translators (keyed for fallback chain assembly)
+        services.AddSingleton<GoogleAiStudioTranslator>();
+        services.AddSingleton<GroqTranslator>();
+        services.AddSingleton<OllamaTranslator>();
+
+        // V7: Fallback strategy idea translator — registered as IStrategyIdeaTranslator
+        services.AddSingleton<IStrategyIdeaTranslator>(sp =>
+        {
+            var options = sp.GetRequiredService<IOptions<LlmProviderOptions>>();
+            var logger = sp.GetRequiredService<ILogger<FallbackStrategyIdeaTranslator>>();
+            var config = options.Value;
+
+            // Build provider chain based on configuration order
+            var providers = new List<IStrategyIdeaTranslator>();
+
+            // Add primary provider first
+            AddProviderByName(sp, providers, config.Provider);
+
+            // Add fallback providers in configured order
+            foreach (var fallback in config.FallbackProviders)
+            {
+                AddProviderByName(sp, providers, fallback);
+            }
+
+            return new FallbackStrategyIdeaTranslator(providers, options, logger);
+        });
+
         // V6: Prop-firm evaluation repository
         services.AddSingleton<IPropFirmEvaluationRepository>(sp =>
         {
@@ -146,5 +186,27 @@ public static class ServiceCollectionExtensions
             TradingResearchEngine.Application.Strategy.DefaultStrategyTemplates.All);
 
         return services;
+    }
+
+    /// <summary>
+    /// Resolves an LLM provider by name and adds it to the provider chain.
+    /// </summary>
+    private static void AddProviderByName(
+        IServiceProvider sp,
+        List<IStrategyIdeaTranslator> providers,
+        string providerName)
+    {
+        IStrategyIdeaTranslator? provider = providerName switch
+        {
+            "GoogleAIStudio" => sp.GetRequiredService<GoogleAiStudioTranslator>(),
+            "Groq" => sp.GetRequiredService<GroqTranslator>(),
+            "Ollama" => sp.GetRequiredService<OllamaTranslator>(),
+            _ => null
+        };
+
+        if (provider is not null)
+        {
+            providers.Add(provider);
+        }
     }
 }

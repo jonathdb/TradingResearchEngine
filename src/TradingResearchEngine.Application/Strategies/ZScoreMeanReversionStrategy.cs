@@ -1,11 +1,12 @@
 using TradingResearchEngine.Application.Strategy;
 using TradingResearchEngine.Core.Events;
+using TradingResearchEngine.Core.Indicators;
 using TradingResearchEngine.Core.Strategy;
 
 namespace TradingResearchEngine.Application.Strategies;
 
 /// <summary>
-/// Z-score mean reversion strategy using O(1) rolling sum accumulators.
+/// Z-score mean reversion strategy using <see cref="RollingZScore"/> from the indicator library.
 ///
 /// Computes a rolling z-score of close price: z = (Close - SMA) / StdDev.
 /// Buys when z drops below -entryThreshold (price is abnormally low),
@@ -17,12 +18,9 @@ namespace TradingResearchEngine.Application.Strategies;
 [StrategyName("zscore-mean-reversion")]
 public sealed class ZScoreMeanReversionStrategy : IStrategy
 {
-    private readonly int _lookback;
     private readonly decimal _entryThreshold;
     private readonly decimal _exitThreshold;
-    private readonly List<decimal> _closes = new();
-    private decimal _sum;
-    private decimal _sumSq;
+    private readonly RollingZScore _zScore;
     private Direction _position = Direction.Flat;
 
     /// <summary>Creates a z-score mean reversion strategy.</summary>
@@ -40,9 +38,9 @@ public sealed class ZScoreMeanReversionStrategy : IStrategy
             SensitivityHint = SensitivityHint.Medium, Group = "Exit", DisplayOrder = 2)]
         decimal exitThreshold = 0.0m)
     {
-        _lookback = lookback;
         _entryThreshold = entryThreshold;
         _exitThreshold = exitThreshold;
+        _zScore = new RollingZScore(lookback);
     }
 
     /// <inheritdoc/>
@@ -50,34 +48,14 @@ public sealed class ZScoreMeanReversionStrategy : IStrategy
     {
         if (evt is not BarEvent bar) return Array.Empty<EngineEvent>();
 
-        _closes.Add(bar.Close);
-        int count = _closes.Count;
+        _zScore.Update(bar.Close);
 
-        // O(1) rolling sum accumulators
-        if (count <= _lookback)
-        {
-            _sum += bar.Close;
-            _sumSq += bar.Close * bar.Close;
-        }
-        else
-        {
-            decimal departed = _closes[count - _lookback - 1];
-            _sum += bar.Close - departed;
-            _sumSq += bar.Close * bar.Close - departed * departed;
-        }
+        if (!_zScore.IsReady) return Array.Empty<EngineEvent>();
 
-        if (count < _lookback) return Array.Empty<EngineEvent>();
-
-        decimal sma = _sum / _lookback;
-        // Population variance: E[X²] - (E[X])²
-        decimal variance = _sumSq / _lookback - sma * sma;
-        if (variance <= 0m) return Array.Empty<EngineEvent>();
-        decimal stdDev = (decimal)Math.Sqrt((double)variance);
-
-        decimal zScore = (bar.Close - sma) / stdDev;
+        decimal zScoreValue = _zScore.Value!.Value;
 
         // Entry: z < -entryThreshold → buy (price abnormally low, expect reversion up)
-        if (zScore < -_entryThreshold && _position != Direction.Long)
+        if (zScoreValue < -_entryThreshold && _position != Direction.Long)
         {
             _position = Direction.Long;
             return new EngineEvent[]
@@ -87,7 +65,7 @@ public sealed class ZScoreMeanReversionStrategy : IStrategy
         }
 
         // V6: Short entry: z > +entryThreshold → short (price abnormally high, expect reversion down)
-        if (zScore > _entryThreshold && _position != Direction.Short)
+        if (zScoreValue > _entryThreshold && _position != Direction.Short)
         {
             _position = Direction.Short;
             return new EngineEvent[]
@@ -97,7 +75,7 @@ public sealed class ZScoreMeanReversionStrategy : IStrategy
         }
 
         // Exit long: z > exitThreshold → sell (reversion complete)
-        if (zScore > _exitThreshold && _position == Direction.Long)
+        if (zScoreValue > _exitThreshold && _position == Direction.Long)
         {
             _position = Direction.Flat;
             return new EngineEvent[]
@@ -107,7 +85,7 @@ public sealed class ZScoreMeanReversionStrategy : IStrategy
         }
 
         // Exit short: z < -exitThreshold → cover (reversion complete)
-        if (zScore < -_exitThreshold && _position == Direction.Short)
+        if (zScoreValue < -_exitThreshold && _position == Direction.Short)
         {
             _position = Direction.Flat;
             return new EngineEvent[]

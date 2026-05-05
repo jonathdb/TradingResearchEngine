@@ -1,10 +1,21 @@
 @* Step 4: Realism & Risk Profile — preset cards + advanced overrides *@
+@using TradingResearchEngine.Application.Strategy
 
 <MudText Typo="Typo.h6" Class="mb-3">Realism & Risk Profile</MudText>
 
 <MudText Typo="Typo.body2" Class="text-muted mb-3">
     Choose a preset to configure execution realism and risk settings. You can fine-tune individual settings below.
 </MudText>
+
+@if (_validationErrors.Count > 0)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-3" aria-label="Risk profile validation errors">
+        @foreach (var error in _validationErrors)
+        {
+            <MudText Typo="Typo.body2">@error.Message</MudText>
+        }
+    </MudAlert>
+}
 
 <PresetCards Presets="@Presets"
              SelectedPresetId="@Model.PresetId"
@@ -31,11 +42,18 @@
 
     private ConfigPreset? _activePreset;
     private bool _hasOverrides;
+    private IReadOnlyList<ValidationError> _validationErrors = Array.Empty<ValidationError>();
 
     protected override void OnParametersSet()
     {
         _activePreset = Presets.FirstOrDefault(p => p.PresetId == Model.PresetId);
         UpdateOverrideStatus();
+        RunValidation();
+    }
+
+    private void RunValidation()
+    {
+        _validationErrors = SchemaValidator.ValidateRiskProfile(Model.PresetOverrides, Model.StopLoss);
     }
 
     private async Task OnPresetSelected(ConfigPreset preset)
@@ -59,6 +77,7 @@
     {
         Model.IsDirty = true;
         UpdateOverrideStatus();
+        RunValidation();
         await OnModelChanged.InvokeAsync();
     }
 

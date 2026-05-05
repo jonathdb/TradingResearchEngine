@@ -29,4 +29,21 @@ public interface IStrategyRepository
 
     /// <summary>Gets a strategy version by its ID directly, or null if not found.</summary>
     Task<StrategyVersion?> GetVersionAsync(string strategyVersionId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Returns the number of versions for each specified strategy in a single I/O operation.
+    /// Strategies with zero versions are included in the result with a count of 0.
+    /// </summary>
+    /// <param name="strategyIds">The strategy IDs to retrieve version counts for.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>A dictionary mapping each strategy ID to its version count.</returns>
+    Task<IReadOnlyDictionary<string, int>> GetVersionCountsAsync(IEnumerable<string> strategyIds, CancellationToken ct = default);
+
+    /// <summary>
+    /// Returns all versions across all strategies in a single I/O operation.
+    /// Used for batch lookups where per-strategy calls would cause N+1 query patterns.
+    /// </summary>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>All strategy versions ordered by strategy ID then version number.</returns>
+    Task<IReadOnlyList<StrategyVersion>> ListAllVersionsAsync(CancellationToken ct = default);
 }

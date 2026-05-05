@@ -1,4 +1,5 @@
 @page "/research/explorer"
+@implements IDisposable
 @inject TradingResearchEngine.Application.Research.IStudyRepository StudyRepo
 @inject IStrategyRepository StrategyRepo
 @inject NavigationManager Nav
@@ -15,11 +16,31 @@
     </MudText>
 }
 
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3" Spacing="2">
+    <MudMenu Label="New Study" StartIcon="@Icons.Material.Filled.Add"
+             Variant="Variant.Filled" Color="Color.Primary">
+        <MudMenuItem OnClick="@(() => LaunchStudy("sweep"))">Parameter Sweep</MudMenuItem>
+        <MudMenuItem OnClick="@(() => LaunchStudy("montecarlo"))">Monte Carlo</MudMenuItem>
+        <MudMenuItem OnClick="@(() => LaunchStudy("walkforward"))">Walk-Forward</MudMenuItem>
+        <MudMenuItem OnClick="@(() => LaunchStudy("perturbation"))">Perturbation</MudMenuItem>
+        <MudMenuItem OnClick="@(() => LaunchStudy("variance"))">Variance</MudMenuItem>
+        <MudMenuItem OnClick="@(() => LaunchStudy("benchmark"))">Benchmark</MudMenuItem>
+    </MudMenu>
+    <MudSelect T="string" Value="_strategyFilter" ValueChanged="OnStrategyFilterChanged"
+               Label="Filter by Strategy" Clearable="true" Variant="Variant.Outlined"
+               Style="min-width:200px">
+        @foreach (var s in _allStrategies)
+        {
+            <MudSelectItem Value="@s.StrategyId">@s.StrategyName</MudSelectItem>
+        }
+    </MudSelect>
+</MudStack>
+
 @if (_loading)
 {
     <MudProgressCircular Indeterminate="true" />
 }
-else if (_studies.Count == 0)
+else if (FilteredStudies.Count == 0)
 {
     <MudAlert Severity="Severity.Info">
         No studies yet. Run a backtest first, then launch a study from the result page or strategy detail.
@@ -27,7 +48,8 @@ else if (_studies.Count == 0)
 }
 else
 {
-    <MudTable Items="_studies" Dense="true" Hover="true" Striped="true" Style="cursor:pointer"
+    <MudTable Items="FilteredStudies" Dense="true" Hover="true" Striped="true" Style="cursor:pointer"
+              @bind-SelectedItem="_selectedRow"
               OnRowClick="@((TableRowClickEventArgs<StudyRow> args) => Nav.NavigateTo($"/research/study/{args.Item.Study.StudyId}"))">
         <HeaderContent>
             <MudTh>Study</MudTh>
@@ -61,27 +83,88 @@ else
 @code {
     [SupplyParameterFromQuery] public string? StrategyId { get; set; }
 
-    private record StudyRow(TradingResearchEngine.Application.Research.StudyRecord Study, string? StrategyName);
+    private readonly CancellationTokenSource _cts = new();
+
+    private record StudyRow(TradingResearchEngine.Application.Research.StudyRecord Study, string? StrategyName, string? StrategyId);
 
     private List<StudyRow> _studies = new();
+    private IReadOnlyList<StrategyIdentity> _allStrategies = [];
     private bool _loading = true;
+    private string? _strategyFilter;
+    private StudyRow? _selectedRow;
+
+    private List<StudyRow> FilteredStudies => string.IsNullOrEmpty(_strategyFilter)
+        ? _studies
+        : _studies.Where(s => s.StrategyId == _strategyFilter).ToList();
 
     protected override async Task OnInitializedAsync()
     {
-        var allStudies = await StudyRepo.ListAsync();
-
-        foreach (var study in allStudies)
+        try
         {
-            string? stratName = null;
-            var version = await StrategyRepo.GetVersionAsync(study.StrategyVersionId);
-            if (version is not null)
+            // Batch load: O(1) repository calls regardless of row count
+            var allStudies = await StudyRepo.ListAsync(_cts.Token);
+            _allStrategies = await StrategyRepo.ListAsync(_cts.Token);
+            var allVersions = await StrategyRepo.ListAllVersionsAsync(_cts.Token);
+
+            // Build lookups: StrategyVersionId → StrategyId, then StrategyId → StrategyName
+            var versionToStrategyId = allVersions.ToDictionary(v => v.StrategyVersionId, v => v.StrategyId);
+            var strategyNameById = _allStrategies.ToDictionary(s => s.StrategyId, s => s.StrategyName);
+
+            foreach (var study in allStudies)
             {
-                var strategy = await StrategyRepo.GetAsync(version.StrategyId);
-                stratName = strategy?.StrategyName;
+                string? stratName = null;
+                string? stratId = null;
+                if (versionToStrategyId.TryGetValue(study.StrategyVersionId, out var resolvedStrategyId))
+                {
+                    stratId = resolvedStrategyId;
+                    strategyNameById.TryGetValue(resolvedStrategyId, out stratName);
+                }
+                _studies.Add(new StudyRow(study, stratName, stratId));
             }
-            _studies.Add(new StudyRow(study, stratName));
+
+            // If a StrategyId query parameter was provided, pre-set the filter
+            if (!string.IsNullOrEmpty(StrategyId))
+            {
+                _strategyFilter = StrategyId;
+            }
+
+            _loading = false;
         }
-        _loading = false;
+        catch (OperationCanceledException)
+        {
+            // Component was disposed during loading — do not update state
+        }
+    }
+
+    public void Dispose()
+    {
+        _cts.Cancel();
+        _cts.Dispose();
+    }
+
+    private void OnStrategyFilterChanged(string? value)
+    {
+        _strategyFilter = value;
+        if (!string.IsNullOrEmpty(value))
+        {
+            Nav.NavigateTo($"/research/explorer?StrategyId={value}", replace: true);
+        }
+        else
+        {
+            Nav.NavigateTo("/research/explorer", replace: true);
+        }
+    }
+
+    private void LaunchStudy(string type)
+    {
+        var url = $"/research/{type}";
+        // Pre-seed StrategyId from the selected table row if available
+        var selectedStrategyId = _selectedRow?.StrategyId;
+        if (!string.IsNullOrEmpty(selectedStrategyId))
+        {
+            url += $"?StrategyId={selectedStrategyId}";
+        }
+        Nav.NavigateTo(url);
     }
 
     private static Color GetStudyTypeColor(TradingResearchEngine.Application.Research.StudyType type) => type switch

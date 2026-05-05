@@ -1,21 +1,78 @@
-﻿<MudNavMenu Dense="true">
-    <MudText Typo="Typo.overline" Class="px-4 pt-3 pb-1 text-faint">STRATEGIES</MudText>
+﻿@inject IJSRuntime JS
+
+<MudNavMenu Dense="true">
+    <MudText Typo="Typo.overline" Class="px-4 pt-3 pb-1 text-faint">DASHBOARD</MudText>
     <MudNavLink Href="/" Match="NavLinkMatch.All"
                 Icon="@Icons.Material.Filled.Dashboard">Dashboard</MudNavLink>
-    <MudNavLink Href="/strategies/library"
-                Icon="@Icons.Material.Filled.Psychology">My Strategies</MudNavLink>
 
-    <MudText Typo="Typo.overline" Class="px-4 pt-3 pb-1 text-faint">TOOLS</MudText>
-    <MudNavLink Href="/research/explorer"
-                Icon="@Icons.Material.Filled.Science">Research Explorer</MudNavLink>
+    <MudNavGroup Title="STRATEGIES" @bind-Expanded="_strategiesExpanded"
+                 Icon="@Icons.Material.Filled.Psychology">
+        <MudNavLink Href="/strategies/library"
+                    Icon="@Icons.Material.Filled.LibraryBooks">My Strategies</MudNavLink>
+        <MudNavLink Href="/strategies/builder"
+                    Icon="@Icons.Material.Filled.Add">New Strategy</MudNavLink>
+    </MudNavGroup>
+
+    <MudNavGroup Title="RESEARCH" @bind-Expanded="_researchExpanded"
+                 Icon="@Icons.Material.Filled.Science">
+        <MudNavLink Href="/research/explorer"
+                    Icon="@Icons.Material.Filled.Explore">Explorer</MudNavLink>
+        <MudNavLink Href="/research/sweep"
+                    Icon="@Icons.Material.Filled.GridOn">Parameter Sweep</MudNavLink>
+        <MudNavLink Href="/research/montecarlo"
+                    Icon="@Icons.Material.Filled.Casino">Monte Carlo</MudNavLink>
+        <MudNavLink Href="/research/walkforward"
+                    Icon="@Icons.Material.Filled.DirectionsWalk">Walk-Forward</MudNavLink>
+        <MudNavLink Href="/research/perturbation"
+                    Icon="@Icons.Material.Filled.Tune">Perturbation</MudNavLink>
+        <MudNavLink Href="/research/variance"
+                    Icon="@Icons.Material.Filled.BarChart">Variance</MudNavLink>
+        <MudNavLink Href="/research/benchmark"
+                    Icon="@Icons.Material.Filled.CompareArrows">Benchmark</MudNavLink>
+    </MudNavGroup>
+
+    <MudText Typo="Typo.overline" Class="px-4 pt-3 pb-1 text-faint">BACKTESTS</MudText>
+    <MudNavLink Href="/backtests"
+                Icon="@Icons.Material.Filled.History">Backtests</MudNavLink>
+
+    <MudText Typo="Typo.overline" Class="px-4 pt-3 pb-1 text-faint">PROP FIRM LAB</MudText>
     <MudNavLink Href="/propfirm/evaluate"
                 Icon="@Icons.Material.Filled.AccountBalance">Prop Firm Lab</MudNavLink>
 
+    <MudNavGroup Title="DATA" @bind-Expanded="_dataExpanded"
+                 Icon="@Icons.Material.Filled.Storage">
+        <MudNavLink Href="/market-data"
+                    Icon="@Icons.Material.Filled.CloudDownload">Market Data</MudNavLink>
+        <MudNavLink Href="/data"
+                    Icon="@Icons.Material.Filled.FolderOpen">Data Files</MudNavLink>
+    </MudNavGroup>
+
     <MudText Typo="Typo.overline" Class="px-4 pt-3 pb-1 text-faint">SETTINGS</MudText>
-    <MudNavLink Href="/market-data"
-                Icon="@Icons.Material.Filled.CloudDownload">Market Data</MudNavLink>
-    <MudNavLink Href="/data"
-                Icon="@Icons.Material.Filled.Storage">Data Files</MudNavLink>
     <MudNavLink Href="/settings"
                 Icon="@Icons.Material.Filled.Settings">Settings</MudNavLink>
 </MudNavMenu>
+
+@code {
+    private bool _strategiesExpanded = true;
+    private bool _researchExpanded = true;
+    private bool _dataExpanded = true;
+    private bool _initialized;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _strategiesExpanded = await JS.InvokeAsync<bool>("navMenuState.get", "strategies");
+            _researchExpanded = await JS.InvokeAsync<bool>("navMenuState.get", "research");
+            _dataExpanded = await JS.InvokeAsync<bool>("navMenuState.get", "data");
+            _initialized = true;
+            StateHasChanged();
+        }
+        else if (_initialized)
+        {
+            await JS.InvokeVoidAsync("navMenuState.set", "strategies", _strategiesExpanded);
+            await JS.InvokeVoidAsync("navMenuState.set", "research", _researchExpanded);
+            await JS.InvokeVoidAsync("navMenuState.set", "data", _dataExpanded);
+        }
+    }
+}

@@ -1,4 +1,5 @@
 @* Grouped parameter editor with label, input, default indicator, help text, sensitivity badge, provenance, reset *@
+@using TradingResearchEngine.Application.Strategy
 
 <MudExpansionPanels MultiExpansion="true">
     @foreach (var group in GroupedParameters)
@@ -46,7 +47,9 @@
                                       ValueChanged="@((string v) => SetParameter(paramKey, v))"
                                       Style="max-width: 200px;"
                                       id="@($"param-{paramKey}")"
-                                      aria-label="@schema.DisplayName" />
+                                      aria-label="@schema.DisplayName"
+                                      Error="@HasFieldError(paramKey)"
+                                      ErrorText="@GetFieldError(paramKey)" />
                     }
 
                     @* Default indicator *@
@@ -100,6 +103,7 @@
     [Parameter] public Dictionary<string, object>? PresetParameters { get; set; }
     [Parameter] public bool AdvancedMode { get; set; }
     [Parameter] public EventCallback<(string Key, object Value)> OnParameterChanged { get; set; }
+    [Parameter] public IReadOnlyList<ValidationError>? ValidationErrors { get; set; }
 
     private IEnumerable<IGrouping<string, StrategyParameterSchema>> GroupedParameters =>
         Schemas.OrderBy(s => s.DisplayOrder).GroupBy(s => s.Group);
@@ -138,4 +142,10 @@
         SensitivityHint.High => Color.Error,
         _ => Color.Default
     };
+
+    private bool HasFieldError(string fieldName) =>
+        ValidationErrors?.Any(e => e.FieldName == fieldName) ?? false;
+
+    private string GetFieldError(string fieldName) =>
+        ValidationErrors?.FirstOrDefault(e => e.FieldName == fieldName)?.Message ?? "";
 }

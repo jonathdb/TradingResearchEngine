@@ -50,6 +50,19 @@ public class SqliteIndexSyncProperties
         public Task<IReadOnlyList<BacktestResult>> ListByStrategyAsync(string strategyId, CancellationToken ct = default)
             => Task.FromResult<IReadOnlyList<BacktestResult>>(
                 _store.Values.Where(r => r.ScenarioConfig.StrategyType == strategyId).ToList());
+
+        public Task<IReadOnlyList<BacktestResult>> GetRecentRunsAsync(int limit, CancellationToken ct = default)
+            => Task.FromResult<IReadOnlyList<BacktestResult>>(
+                _store.Values.OrderByDescending(r => r.Id).Take(limit).ToList());
+
+        public Task<IReadOnlyDictionary<string, BacktestResult>> GetLastRunPerStrategyAsync(CancellationToken ct = default)
+            => Task.FromResult<IReadOnlyDictionary<string, BacktestResult>>(
+                _store.Values
+                    .GroupBy(r => r.ScenarioConfig.StrategyType ?? "")
+                    .ToDictionary(g => g.Key, g => g.Last()));
+
+        public Task<IReadOnlyList<BacktestResult>> GetRunSummariesByStrategyAsync(string strategyId, CancellationToken ct = default)
+            => ListByStrategyAsync(strategyId, ct);
     }
 
     private static BacktestResult MakeResult(string versionId)

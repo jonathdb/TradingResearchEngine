@@ -256,8 +256,7 @@ public static class MetricsCalculator
     /// Recovery factor: net profit / (max drawdown * start equity).
     /// Returns null when max drawdown is zero.
     /// </summary>
-    public static decimal? ComputeRecoveryFactor(
-        IReadOnlyList<EquityCurvePoint> curve, decimal startEquity, decimal endEquity)
+    public static decimal? ComputeRecoveryFactor(IReadOnlyList<EquityCurvePoint> curve, decimal startEquity, decimal endEquity)
     {
         if (curve.Count < 2 || startEquity == 0m) return null;
         decimal maxDd = ComputeMaxDrawdown(curve);
@@ -265,13 +264,54 @@ public static class MetricsCalculator
         decimal netProfit = endEquity - startEquity;
         return netProfit / (maxDd * startEquity);
     }
+    /// <summary>Historical Value at Risk at the given confidence level (e.g. 0.95).</summary>
+    public static decimal? ComputeHistoricalVaR(IReadOnlyList<EquityCurvePoint> curve, decimal confidence)
+    {
+            if (curve.Count < 2) return null;
+            var returns = GetPeriodReturns(curve).OrderBy(r => r).ToList();
+            int idx = (int)Math.Floor((1 - confidence) * returns.Count);
+            return -returns[Math.Max(0, idx)]; // positive number = loss
+    }
+
+    /// <summary>Historical CVaR (Expected Shortfall) at the given confidence level.</summary>
+    public static decimal? ComputeHistoricalCVaR(IReadOnlyList<EquityCurvePoint> curve, decimal confidence)
+    {
+        if (curve.Count < 2) return null;
+        var returns = GetPeriodReturns(curve).OrderBy(r => r).ToList();
+        int cutoff = (int)Math.Floor((1 - confidence) * returns.Count);
+        var tail = returns.Take(Math.Max(1, cutoff)).ToList();
+        return -tail.Average();
+    }
+    /// <summary>Omega Ratio relative to threshold θ (default 0).</summary>
+    public static decimal? ComputeOmegaRatio(
+        IReadOnlyList<EquityCurvePoint> curve, decimal threshold = 0m)
+    {
+        var returns = GetPeriodReturns(curve);
+        decimal gains = returns.Where(r => r > threshold).Sum(r => r - threshold);
+        decimal losses = returns.Where(r => r <= threshold).Sum(r => threshold - r);
+        return losses == 0m ? null : gains / losses;
+    }
+
+    /// <summary>Ulcer Index: RMS of percentage drawdown depth over the curve.</summary>
+    public static decimal? ComputeUlcerIndex(IReadOnlyList<EquityCurvePoint> curve)
+    {
+        if (curve.Count < 2) return null;
+        decimal peak = curve[0].TotalEquity;
+        decimal sumSq = 0m;
+        foreach (var p in curve)
+        {
+            if (p.TotalEquity > peak) peak = p.TotalEquity;
+            decimal pctDown = peak > 0m ? (peak - p.TotalEquity) / peak * 100m : 0m;
+            sumSq += pctDown * pctDown;
+        }
+        return (decimal)Math.Sqrt((double)(sumSq / curve.Count));
+    }
 
     /// <summary>
     /// Longest flat period: maximum number of bars between consecutive trades.
     /// Returns 0 when there are fewer than 2 trades.
     /// </summary>
-    public static int ComputeLongestFlatPeriod(
-        IReadOnlyList<ClosedTrade> trades, IReadOnlyList<EquityCurvePoint> curve)
+    public static int ComputeLongestFlatPeriod(IReadOnlyList<ClosedTrade> trades, IReadOnlyList<EquityCurvePoint> curve)
     {
         if (trades.Count < 2 || curve.Count == 0) return 0;
 

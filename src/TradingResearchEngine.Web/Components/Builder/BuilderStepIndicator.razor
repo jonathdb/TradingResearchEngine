@@ -1,16 +1,16 @@
-@* 5-step progress bar for the strategy builder *@
+@* 5-step progress bar for the strategy builder with three visual states *@
 
 <MudStack Row="true" Spacing="1" Class="mb-4" AlignItems="AlignItems.Center" role="navigation" aria-label="Builder steps">
     @foreach (var (title, idx) in Steps)
     {
         var stepNum = idx + 1;
-        var state = stepNum < CurrentStep ? "completed" : stepNum == CurrentStep ? "active" : "upcoming";
+        var state = GetStepState(stepNum);
         <MudChip T="string"
                  Size="MudBlazor.Size.Small"
                  Color="@GetStepColor(state)"
-                 Variant="@(state != "upcoming" ? Variant.Filled : Variant.Outlined)"
-                 Disabled="@(state == "upcoming")"
-                 Icon="@(state == "completed" ? Icons.Material.Filled.Check : null)"
+                 Variant="@GetStepVariant(state)"
+                 Disabled="@(state == "not-reached")"
+                 Icon="@(state == "visited" ? Icons.Material.Filled.Check : null)"
                  aria-label="@($"Step {stepNum}: {title} — {state}")"
                  OnClick="@(() => OnStepClicked(stepNum))"
                  tabindex="0">
@@ -25,6 +25,7 @@
 
 @code {
     [Parameter] public int CurrentStep { get; set; } = 1;
+    [Parameter] public int MaxVisitedStep { get; set; } = 1;
     [Parameter] public EventCallback<int> OnStepSelected { get; set; }
 
     private static readonly (string Title, int Index)[] Steps = new[]
@@ -36,16 +37,30 @@
         ("Review & Launch", 4)
     };
 
+    private string GetStepState(int stepNum)
+    {
+        if (stepNum == CurrentStep) return "current";
+        if (stepNum <= MaxVisitedStep) return "visited";
+        return "not-reached";
+    }
+
     private static Color GetStepColor(string state) => state switch
     {
-        "completed" => Color.Success,
-        "active" => Color.Primary,
+        "current" => Color.Primary,
+        "visited" => Color.Primary,
         _ => Color.Default
+    };
+
+    private static Variant GetStepVariant(string state) => state switch
+    {
+        "current" => Variant.Filled,
+        "visited" => Variant.Outlined,
+        _ => Variant.Outlined
     };
 
     private async Task OnStepClicked(int step)
     {
-        if (step < CurrentStep)
+        if (step <= MaxVisitedStep)
             await OnStepSelected.InvokeAsync(step);
     }
 }

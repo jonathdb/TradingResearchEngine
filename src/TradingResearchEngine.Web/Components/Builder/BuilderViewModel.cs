@@ -38,9 +38,11 @@ public sealed class BuilderViewModel
     public string CommissionModelType { get; set; } = "ZeroCommissionModel";
     public decimal InitialCash { get; set; } = 100_000m;
     public decimal AnnualRiskFreeRate { get; set; } = 0.05m;
+    public decimal StopLoss { get; set; } = 2.0m;
 
     // Navigation
     public int CurrentStep { get; set; } = 1;
+    public int MaxVisitedStep { get; set; } = 1;
     public bool IsDirty { get; set; }
     public string DraftId { get; set; } = Guid.NewGuid().ToString();
 
@@ -147,6 +149,7 @@ public sealed class BuilderViewModel
         {
             DraftId = draft.DraftId,
             CurrentStep = draft.CurrentStep,
+            MaxVisitedStep = draft.CurrentStep,
             StrategyName = draft.StrategyName ?? "",
             StrategyType = draft.StrategyType,
             TemplateId = draft.TemplateId,

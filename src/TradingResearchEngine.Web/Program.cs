@@ -1,5 +1,6 @@
 using MudBlazor.Services;
 using TradingResearchEngine.Application;
+using TradingResearchEngine.Application.Configuration;
 using TradingResearchEngine.Application.Strategies;
 using TradingResearchEngine.Infrastructure;
 using TradingResearchEngine.Web.Components;
@@ -13,6 +14,15 @@ builder.WebHost.UseStaticWebAssets();
 builder.Services.AddTradingResearchEngine(builder.Configuration);
 builder.Services.AddTradingResearchEngineInfrastructure(builder.Configuration);
 builder.Services.AddStrategyAssembly(typeof(DonchianBreakoutStrategy).Assembly);
+
+// V7: Staleness configuration
+builder.Services.Configure<StalenessOptions>(builder.Configuration.GetSection("Staleness"));
+
+// V7: Robustness advisory service — centralised threshold checks
+builder.Services.Configure<TradingResearchEngine.Application.Research.RobustnessThresholds>(
+    builder.Configuration.GetSection("RobustnessThresholds"));
+builder.Services.AddSingleton<TradingResearchEngine.Application.Research.IRobustnessAdvisoryService,
+    TradingResearchEngine.Application.Research.RobustnessAdvisoryService>();
 
 // V5: Register JobExecutor as singleton for async job lifecycle management
 builder.Services.AddSingleton<TradingResearchEngine.Application.Research.JobExecutor>();

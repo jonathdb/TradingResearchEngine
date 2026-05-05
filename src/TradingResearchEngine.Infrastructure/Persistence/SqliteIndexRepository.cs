@@ -184,6 +184,67 @@ public sealed class SqliteIndexRepository : IBacktestResultRepository
         return await QueryByColumnAsync("StrategyId", strategyId, ct);
     }
 
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<BacktestResult>> GetRecentRunsAsync(int limit, CancellationToken ct = default)
+    {
+        var results = new List<BacktestResult>();
+
+        await using var connection = new SqliteConnection($"Data Source={_indexDbPath};Pooling=True");
+        await connection.OpenAsync(ct);
+
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = "SELECT FilePath FROM BacktestResultIndex ORDER BY RunDate DESC LIMIT @limit";
+        cmd.Parameters.AddWithValue("@limit", limit);
+
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            var filePath = reader.GetString(0);
+            if (!File.Exists(filePath)) continue;
+            var json = await File.ReadAllTextAsync(filePath, ct);
+            var entity = JsonSerializer.Deserialize<BacktestResult>(json, JsonOptions);
+            if (entity is not null) results.Add(entity);
+        }
+
+        return results;
+    }
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyDictionary<string, BacktestResult>> GetLastRunPerStrategyAsync(CancellationToken ct = default)
+    {
+        var results = new Dictionary<string, BacktestResult>();
+
+        await using var connection = new SqliteConnection($"Data Source={_indexDbPath};Pooling=True");
+        await connection.OpenAsync(ct);
+
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+            SELECT FilePath, StrategyId FROM BacktestResultIndex
+            WHERE rowid IN (
+                SELECT MAX(rowid) FROM BacktestResultIndex GROUP BY StrategyId
+            )
+            """;
+
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            var filePath = reader.GetString(0);
+            var strategyId = reader.GetString(1);
+            if (!File.Exists(filePath)) continue;
+            var json = await File.ReadAllTextAsync(filePath, ct);
+            var entity = JsonSerializer.Deserialize<BacktestResult>(json, JsonOptions);
+            if (entity is not null) results[strategyId] = entity;
+        }
+
+        return results;
+    }
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<BacktestResult>> GetRunSummariesByStrategyAsync(string strategyId, CancellationToken ct = default)
+    {
+        return await QueryByColumnAsync("StrategyId", strategyId, ct);
+    }
+
     private async Task<IReadOnlyList<BacktestResult>> QueryByColumnAsync(
         string column, string value, CancellationToken ct)
     {

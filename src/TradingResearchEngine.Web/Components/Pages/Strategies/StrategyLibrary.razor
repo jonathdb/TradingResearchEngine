@@ -1,7 +1,10 @@
 @page "/strategies/library"
+@implements IDisposable
 @inject IStrategyRepository StrategyRepo
 @inject TradingResearchEngine.Core.Persistence.IRepository<BacktestResult> ResultRepo
+@inject TradingResearchEngine.Application.Research.IRobustnessAdvisoryService RobustnessService
 @inject NavigationManager Nav
+@inject Microsoft.Extensions.Options.IOptions<TradingResearchEngine.Application.Configuration.StalenessOptions> StalenessOptions
 
 <PageTitle>My Strategies — Research Engine</PageTitle>
 
@@ -17,7 +20,7 @@
     <MudSelect T="string" @bind-Value="_statusFilter" Label="Status" Variant="Variant.Outlined"
                Style="min-width:140px" Clearable="true">
         <MudSelectItem Value="@("Active")">Active</MudSelectItem>
-        <MudSelectItem Value="@("Stale")" Disabled="true">Stale (coming soon)</MudSelectItem>
+        <MudSelectItem Value="@("Stale")">Stale</MudSelectItem>
         <MudSelectItem Value="@("Untested")">Untested</MudSelectItem>
         <MudSelectItem Value="@("Retired")">Retired</MudSelectItem>
     </MudSelect>
@@ -87,6 +90,11 @@ else
                             <MudChip T="string" Size="MudBlazor.Size.Small" Color="Color.Warning"
                                      Icon="@Icons.Material.Filled.Warning" Class="mb-2">Robustness flags</MudChip>
                         }
+                        @if (IsStale(s, lastRun))
+                        {
+                            <MudChip T="string" Size="MudBlazor.Size.Small" Color="Color.Warning"
+                                     Class="mb-2">STALE</MudChip>
+                        }
 
                         @if (isRetired && !string.IsNullOrWhiteSpace(s.RetirementNote))
                         {
@@ -110,7 +118,7 @@ else
                                 </MudStack>
                             </MudStack>
                             <MudText Typo="Typo.caption" Class="text-muted mt-2">
-                                Last run: @(TryParseRunDate(lastRun.Id)?.ToString("yyyy-MM-dd") ?? lastRun.Id[..Math.Min(8, lastRun.Id.Length)])
+                                Last run: @(TryParseRunDate(lastRun.ScenarioConfig.ScenarioId)?.ToString("yyyy-MM-dd") ?? lastRun.Id[..Math.Min(8, lastRun.Id.Length)])
                             </MudText>
                         }
                         else
@@ -161,6 +169,8 @@ else
 }
 
 @code {
+    private readonly CancellationTokenSource _cts = new();
+
     private List<StrategyIdentity> _strategies = new();
     private Dictionary<string, BacktestResult> _lastRunMap = new();
     private Dictionary<string, int> _versionCounts = new();
@@ -183,34 +193,46 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        _strategies = (await StrategyRepo.ListAsync()).ToList();
-        var allRuns = (await ResultRepo.ListAsync()).OrderByDescending(r => r.RunId).ToList();
-
-        _lastRunMap = allRuns
-            .GroupBy(r => r.ScenarioConfig.StrategyType)
-            .ToDictionary(g => g.Key, g => g.First());
-
-        foreach (var s in _strategies)
+        try
         {
-            var versions = await StrategyRepo.GetVersionsAsync(s.StrategyId);
-            _versionCounts[s.StrategyId] = versions.Count;
-        }
+            _strategies = (await StrategyRepo.ListAsync(_cts.Token)).ToList();
+            var allRuns = (await ResultRepo.ListAsync(_cts.Token)).OrderByDescending(r => r.RunId).ToList();
 
-        foreach (var (type, run) in _lastRunMap)
+            _lastRunMap = allRuns
+                .GroupBy(r => r.ScenarioConfig.StrategyType)
+                .ToDictionary(g => g.Key, g => g.First());
+
+            // Single batch call for version counts instead of per-strategy GetVersionsAsync loop
+            var strategyIds = _strategies.Select(s => s.StrategyId);
+            _versionCounts = (await StrategyRepo.GetVersionCountsAsync(strategyIds, _cts.Token))
+                .ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+
+            foreach (var (type, run) in _lastRunMap)
+            {
+                if (RobustnessService.GetWarnings(run).Count > 0)
+                    _strategiesWithWarnings.Add(type);
+            }
+
+            _allTypes = _strategies.Select(s => s.StrategyType).Distinct().OrderBy(t => t).ToList();
+            _loading = false;
+        }
+        catch (OperationCanceledException)
         {
-            bool hasWarning = (run.SharpeRatio > 3.0m) || (run.TotalTrades < 30) ||
-                              (run.EquityCurveSmoothness < 0m) || (run.MaxDrawdown > 0.20m);
-            if (hasWarning) _strategiesWithWarnings.Add(type);
+            // Component was disposed during loading — do not update state
         }
-
-        _allTypes = _strategies.Select(s => s.StrategyType).Distinct().OrderBy(t => t).ToList();
-        _loading = false;
     }
 
-    private static string GetStatus(StrategyIdentity s, BacktestResult? lastRun)
+    public void Dispose()
+    {
+        _cts.Cancel();
+        _cts.Dispose();
+    }
+
+    private string GetStatus(StrategyIdentity s, BacktestResult? lastRun)
     {
         if (s.Stage == DevelopmentStage.Retired) return "Retired";
         if (lastRun is null) return "Untested";
+        if (IsStale(s, lastRun)) return "Stale";
         return "Active";
     }
 
@@ -222,6 +244,14 @@ else
         _ => Color.Default
     };
 
+    private bool IsStale(StrategyIdentity strategy, BacktestResult? lastRun)
+    {
+        if (lastRun is null) return false;
+        var runDate = TryParseRunDate(lastRun.ScenarioConfig.ScenarioId);
+        if (runDate is null) return false;
+        return (DateTime.UtcNow - runDate.Value).TotalDays > StalenessOptions.Value.StalenessThresholdDays;
+    }
+
     private static string GetSharpeClass(decimal? sharpe) => sharpe switch
     {
         >= 1.5m => "mud-success-text",
@@ -231,11 +261,22 @@ else
 
     private static DateTime? TryParseRunDate(string? runId)
     {
-        if (string.IsNullOrWhiteSpace(runId) || runId.Length < 15) return null;
-        if (DateTime.TryParseExact(runId[..15], "yyyyMMdd-HHmmss",
-            System.Globalization.CultureInfo.InvariantCulture,
-            System.Globalization.DateTimeStyles.None, out var dt))
+        if (string.IsNullOrWhiteSpace(runId)) return null;
+
+        // Try parsing directly from the start (yyyyMMdd-HHmmss format)
+        if (runId.Length >= 15 &&
+            DateTime.TryParseExact(runId[..15], "yyyyMMdd-HHmmss",
+                System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.None, out var dt))
             return dt;
+
+        // Try parsing after "run-" prefix (run-yyyyMMdd-HHmmss format)
+        if (runId.StartsWith("run-", StringComparison.Ordinal) && runId.Length >= 19 &&
+            DateTime.TryParseExact(runId[4..19], "yyyyMMdd-HHmmss",
+                System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.None, out var dt2))
+            return dt2;
+
         return null;
     }
 

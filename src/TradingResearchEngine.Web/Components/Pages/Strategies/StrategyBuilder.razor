@@ -1,5 +1,6 @@
 @page "/strategies/builder"
 @page "/strategies/builder/{DraftId}"
+@using System.Text.Json
 @using TradingResearchEngine.Web.Components.Builder
 @using TradingResearchEngine.Application.DataFiles
 @using TradingResearchEngine.Application.Engine
@@ -21,7 +22,7 @@
 
 <MudText Typo="Typo.h4" Class="mb-2">Strategy Builder</MudText>
 
-<BuilderStepIndicator CurrentStep="@_vm.CurrentStep" OnStepSelected="GoToStep" />
+<BuilderStepIndicator CurrentStep="@_vm.CurrentStep" MaxVisitedStep="@_vm.MaxVisitedStep" OnStepSelected="GoToStep" />
 
 <MudGrid>
     @* Primary content area (~65%) *@
@@ -34,7 +35,9 @@
                                           Strategies="@_strategies"
                                           KnownStrategies="@_knownStrategies"
                                           OnTemplateSelected="OnTemplateSelected"
-                                          OnModelChanged="OnModelChanged" />
+                                          OnForkSelected="HandleForkSelected"
+                                          OnModelChanged="OnModelChanged"
+                                          OnImportJsonChanged="HandleImportJsonChanged" />
                 break;
             case 2:
                 <Step2DataExecutionWindow Model="@_vm"
@@ -107,6 +110,7 @@
     private PreflightResult? _preflightResult;
     private ResolvedConfig? _resolvedConfig;
     private bool _saving;
+    private string? _importJson;
 
     protected override async Task OnInitializedAsync()
     {
@@ -142,6 +146,25 @@
         return Task.CompletedTask;
     }
 
+    private async Task HandleForkSelected(StrategyIdentity identity)
+    {
+        var latestVersion = await StrategyRepo.GetLatestVersionAsync(identity.StrategyId);
+        if (latestVersion is null)
+        {
+            Snackbar.Add($"'{identity.StrategyName}' has no versions to fork.", Severity.Warning);
+            return;
+        }
+
+        _vm.StrategyType = latestVersion.BaseScenarioConfig.EffectiveStrategyConfig.StrategyType;
+        _vm.Parameters = new Dictionary<string, object>(latestVersion.Parameters);
+        _vm.Timeframe = latestVersion.BaseScenarioConfig.Timeframe ?? "Daily";
+        _vm.Hypothesis = latestVersion.Hypothesis;
+        _vm.SourceType = SourceType.Fork;
+        _vm.IsDirty = true;
+        LoadSchemaForCurrentStrategy();
+        StateHasChanged();
+    }
+
     private void LoadSchemaForCurrentStrategy()
     {
         if (_vm.StrategyType is not null)
@@ -154,7 +177,32 @@
     private async Task NextStep()
     {
         if (!CanAdvance()) return;
+
+        // Attempt import JSON deserialization before advancing from Step 1
+        if (_vm.CurrentStep == 1 && _vm.SourceType == SourceType.Import)
+        {
+            if (string.IsNullOrWhiteSpace(_importJson))
+            {
+                Snackbar.Add("Please paste a JSON config to import.", Severity.Error);
+                return;
+            }
+
+            try
+            {
+                var config = JsonSerializer.Deserialize<ScenarioConfig>(_importJson,
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                if (config is null) throw new JsonException("Deserialised to null.");
+                PopulateFromImport(config);
+            }
+            catch (JsonException ex)
+            {
+                Snackbar.Add($"Invalid JSON: {ex.Message}", Severity.Error);
+                return; // stay on Step 1
+            }
+        }
+
         _vm.CurrentStep++;
+        _vm.MaxVisitedStep = Math.Max(_vm.MaxVisitedStep, _vm.CurrentStep);
         _vm.IsDirty = true;
         await PersistDraft();
 
@@ -174,7 +222,7 @@
 
     private async Task GoToStep(int step)
     {
-        if (step < _vm.CurrentStep)
+        if (step >= 1 && step <= _vm.MaxVisitedStep)
         {
             _vm.CurrentStep = step;
             await PersistDraft();
@@ -223,6 +271,25 @@
         return Task.CompletedTask;
     }
 
+    private Task HandleImportJsonChanged(string? json)
+    {
+        _importJson = json;
+        return Task.CompletedTask;
+    }
+
+    private void PopulateFromImport(ScenarioConfig config)
+    {
+        _vm.StrategyType = config.EffectiveStrategyConfig.StrategyType;
+        _vm.Parameters = new Dictionary<string, object>(config.EffectiveStrategyConfig.StrategyParameters);
+        _vm.SlippageModelType = config.EffectiveExecutionConfig.SlippageModelType;
+        _vm.CommissionModelType = config.EffectiveExecutionConfig.CommissionModelType;
+        _vm.InitialCash = config.EffectiveRiskConfig.InitialCash;
+        _vm.AnnualRiskFreeRate = config.EffectiveRiskConfig.AnnualRiskFreeRate;
+        _vm.SourceType = SourceType.Import;
+        _vm.IsDirty = true;
+        LoadSchemaForCurrentStrategy();
+    }
+
     private bool CanAdvance() => _vm.CurrentStep switch
     {
         1 => (_vm.SourceType == SourceType.Template && _vm.TemplateId is not null) ||
@@ -230,8 +297,8 @@
              _vm.SourceType == SourceType.Fork ||
              _vm.SourceType == SourceType.Import,
         2 => !string.IsNullOrWhiteSpace(_vm.DataFilePath),
-        3 => true,
-        4 => true,
+        3 => SchemaValidator.ValidateParameters(_vm.Parameters, _schemas).Count == 0,
+        4 => SchemaValidator.ValidateRiskProfile(_vm.PresetOverrides, _vm.StopLoss).Count == 0,
         _ => false
     };
 
@@ -252,16 +319,15 @@
 
                 case "quick-sanity":
                     var (_, version) = await SaveDraftAndVersion();
-                    var quickConfig = _vm.ToScenarioConfig();
-                    // Override to FastResearch for quick sanity
-                    var result = await Task.Run(() => RunUseCase.RunAsync(quickConfig));
-                    HandleRunResult(result);
+                    var quickConfig = BuildQuickSanityConfig();
+                    var result = await RunUseCase.RunAsync(quickConfig);
+                    HandleRunResult(result, isQuickSanity: true);
                     break;
 
                 case "standard-backtest":
                     var (_, sv) = await SaveDraftAndVersion();
                     var stdConfig = _vm.ToScenarioConfig();
-                    var stdResult = await Task.Run(() => RunUseCase.RunAsync(stdConfig));
+                    var stdResult = await RunUseCase.RunAsync(stdConfig);
                     HandleRunResult(stdResult);
                     break;
             }
@@ -279,9 +345,7 @@
 
     private async Task<(StrategyIdentity, StrategyVersion)> SaveDraftAndVersion()
     {
-        var strategyId = _vm.StrategyName.ToLowerInvariant().Replace(" ", "-");
-        if (string.IsNullOrWhiteSpace(strategyId))
-            strategyId = $"strategy-{Guid.NewGuid():N}".Substring(0, 20);
+        var strategyId = StrategyIdGenerator.Generate(_vm.StrategyName);
 
         var identity = new StrategyIdentity(strategyId, _vm.StrategyName,
             _vm.StrategyType ?? "", DateTimeOffset.UtcNow, null,
@@ -297,16 +361,46 @@
         return (identity, version);
     }
 
-    private void HandleRunResult(dynamic result)
+    /// <summary>
+    /// Builds a transient ScenarioConfig with reduced settings for quick sanity checks.
+    /// Overrides are never persisted to ConfigDraft or StrategyVersion.
+    /// </summary>
+    private ScenarioConfig BuildQuickSanityConfig()
+    {
+        var baseConfig = _vm.ToScenarioConfig();
+
+        // Apply reduced date range: last 2 years from today
+        var reducedDataOpts = new Dictionary<string, object>(baseConfig.DataProviderOptions);
+        var twoYearsAgo = DateTimeOffset.UtcNow.AddYears(-2);
+        reducedDataOpts["From"] = twoYearsAgo;
+        reducedDataOpts["To"] = DateTimeOffset.UtcNow;
+
+        return baseConfig with
+        {
+            RealismProfile = ExecutionRealismProfile.FastResearch,
+            FillMode = FillMode.SameBarClose,
+            DataProviderOptions = reducedDataOpts,
+            // MaxTrials is not a config field; we use a single run (no sweep/MC)
+            ResearchWorkflowType = null,
+            ResearchWorkflowOptions = null
+        };
+    }
+
+    private void HandleRunResult(ScenarioRunResult result, bool isQuickSanity = false)
     {
         if (result.IsSuccess && result.Result is not null)
         {
             Snackbar.Add($"Backtest completed: {result.Result.TotalTrades} trades", Severity.Success);
-            Nav.NavigateTo($"/backtests/{result.Result.RunId}");
+            var url = $"/backtests/{result.Result.RunId}";
+            if (isQuickSanity) url += "?quickSanity=true";
+            Nav.NavigateTo(url);
         }
         else
         {
-            Snackbar.Add($"Run failed: {string.Join("; ", result.Errors ?? Array.Empty<string>())}", Severity.Error);
+            var msg = result.Errors is { Count: > 0 }
+                ? string.Join("; ", result.Errors)
+                : "Unknown error";
+            Snackbar.Add($"Run failed: {msg}", Severity.Error);
         }
     }
 }

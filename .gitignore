@@ -32,3 +32,6 @@ Thumbs.db
 
 # Generated reports
 samples/reports/*.md
+
+# Orphaned git file (prevent recurrence)
+/git

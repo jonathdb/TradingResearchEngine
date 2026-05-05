@@ -1,0 +1,136 @@
+@page "/backtests"
+@implements IDisposable
+@inject TradingResearchEngine.Application.Research.IBacktestResultRepository ResultRepo
+@inject NavigationManager Nav
+
+<PageTitle>Backtests — Research Engine</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Backtests</MudText>
+
+@if (_loading)
+{
+    <MudProgressCircular Indeterminate="true" />
+}
+else if (_results.Count == 0)
+{
+    <MudAlert Severity="Severity.Info">
+        No backtest results found. <MudLink Href="/strategies/builder">Create a strategy</MudLink> and run a backtest to see results here.
+    </MudAlert>
+}
+else
+{
+    <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3" Spacing="2">
+        <MudSelect T="string" @bind-Value="_strategyTypeFilter" Label="Strategy Type"
+                   Variant="Variant.Outlined" Clearable="true" Style="min-width:200px">
+            @foreach (var t in _allStrategyTypes)
+            {
+                <MudSelectItem Value="@t">@t</MudSelectItem>
+            }
+        </MudSelect>
+        <MudSelect T="string" @bind-Value="_statusFilter" Label="Status"
+                   Variant="Variant.Outlined" Clearable="true" Style="min-width:160px">
+            <MudSelectItem Value="@("Completed")">Completed</MudSelectItem>
+            <MudSelectItem Value="@("Failed")">Failed</MudSelectItem>
+            <MudSelectItem Value="@("Cancelled")">Cancelled</MudSelectItem>
+        </MudSelect>
+    </MudStack>
+
+    <MudTable Items="FilteredResults" Dense="true" Hover="true" Striped="true"
+              SortLabel="Sort By" OnRowClick="OnRowClicked" T="BacktestResult"
+              RowStyle="cursor:pointer;">
+        <HeaderContent>
+            <MudTh><MudTableSortLabel SortBy="new Func<BacktestResult, object>(x => x.ScenarioConfig.StrategyType)">Strategy Type</MudTableSortLabel></MudTh>
+            <MudTh><MudTableSortLabel SortBy="new Func<BacktestResult, object>(x => TryParseRunDate(x.Id) ?? DateTime.MinValue)">Run Date</MudTableSortLabel></MudTh>
+            <MudTh><MudTableSortLabel SortBy="new Func<BacktestResult, object>(x => x.SharpeRatio ?? 0m)">Sharpe Ratio</MudTableSortLabel></MudTh>
+            <MudTh><MudTableSortLabel SortBy="new Func<BacktestResult, object>(x => x.MaxDrawdown)">Max Drawdown</MudTableSortLabel></MudTh>
+            <MudTh><MudTableSortLabel SortBy="new Func<BacktestResult, object>(x => x.TotalTrades)">Total Trades</MudTableSortLabel></MudTh>
+            <MudTh><MudTableSortLabel SortBy="new Func<BacktestResult, object>(x => x.Status.ToString())">Status</MudTableSortLabel></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="Strategy Type">@context.ScenarioConfig.StrategyType</MudTd>
+            <MudTd DataLabel="Run Date">@(TryParseRunDate(context.Id)?.ToString("yyyy-MM-dd HH:mm") ?? "—")</MudTd>
+            <MudTd DataLabel="Sharpe Ratio">@(context.SharpeRatio?.ToString("F2") ?? "—")</MudTd>
+            <MudTd DataLabel="Max Drawdown">@context.MaxDrawdown.ToString("P1")</MudTd>
+            <MudTd DataLabel="Total Trades">@context.TotalTrades</MudTd>
+            <MudTd DataLabel="Status">
+                <MudChip T="string" Size="MudBlazor.Size.Small"
+                         Color="@GetStatusColor(context.Status)">
+                    @context.Status
+                </MudChip>
+            </MudTd>
+        </RowTemplate>
+        <PagerContent>
+            <MudTablePager />
+        </PagerContent>
+    </MudTable>
+}
+
+@code {
+    private readonly CancellationTokenSource _cts = new();
+
+    private List<BacktestResult> _results = new();
+    private List<string> _allStrategyTypes = new();
+    private string? _strategyTypeFilter;
+    private string? _statusFilter;
+    private bool _loading = true;
+
+    private List<BacktestResult> FilteredResults => _results
+        .Where(r => _strategyTypeFilter is null || r.ScenarioConfig.StrategyType == _strategyTypeFilter)
+        .Where(r => _statusFilter is null || r.Status.ToString() == _statusFilter)
+        .ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var all = await ResultRepo.ListAsync(_cts.Token);
+            _results = all.OrderByDescending(r => TryParseRunDate(r.Id) ?? DateTime.MinValue).ToList();
+            _allStrategyTypes = _results
+                .Select(r => r.ScenarioConfig.StrategyType)
+                .Distinct()
+                .OrderBy(t => t)
+                .ToList();
+            _loading = false;
+        }
+        catch (OperationCanceledException)
+        {
+            // Component was disposed during loading — do not update state
+        }
+    }
+
+    public void Dispose()
+    {
+        _cts.Cancel();
+        _cts.Dispose();
+    }
+
+    private void OnRowClicked(TableRowClickEventArgs<BacktestResult> args)
+    {
+        if (args.Item is not null)
+        {
+            Nav.NavigateTo($"/backtests/{args.Item.Id}");
+        }
+    }
+
+    private static Color GetStatusColor(BacktestStatus status) => status switch
+    {
+        BacktestStatus.Completed => Color.Success,
+        BacktestStatus.Failed => Color.Error,
+        BacktestStatus.Cancelled => Color.Warning,
+        _ => Color.Default
+    };
+
+    /// <summary>
+    /// Parses the run date from the RunId prefix (format: yyyyMMdd-HHmmss).
+    /// Shared helper for extracting timestamps from run identifiers.
+    /// </summary>
+    private static DateTime? TryParseRunDate(string? runId)
+    {
+        if (string.IsNullOrWhiteSpace(runId) || runId.Length < 15) return null;
+        if (DateTime.TryParseExact(runId[..15], "yyyyMMdd-HHmmss",
+            System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.None, out var dt))
+            return dt;
+        return null;
+    }
+}

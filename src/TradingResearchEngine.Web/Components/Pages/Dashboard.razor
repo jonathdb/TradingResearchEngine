@@ -1,8 +1,10 @@
 @page "/"
 @using TradingResearchEngine.Application.Strategy
+@implements IDisposable
 @inject TradingResearchEngine.Core.Persistence.IRepository<BacktestResult> ResultRepo
 @inject IStrategyRepository StrategyRepo
 @inject TradingResearchEngine.Application.Research.IStudyRepository StudyRepo
+@inject TradingResearchEngine.Application.Research.IRobustnessAdvisoryService RobustnessService
 @inject NavigationManager Nav
 
 <PageTitle>Dashboard — Research Engine</PageTitle>
@@ -196,6 +198,8 @@ else
 }
 
 @code {
+    private readonly CancellationTokenSource _cts = new();
+
     private List<StrategyIdentity> _strategies = new();
     private List<BacktestResult> _runs = new();
     private List<BacktestResult> _recentRuns = new();
@@ -209,40 +213,49 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        _strategies = (await StrategyRepo.ListAsync()).ToList();
-        _runs = (await ResultRepo.ListAsync()).OrderByDescending(r => r.RunId).ToList();
-        _recentRuns = _runs.Take(10).ToList();
-        _latestRun = _runs.FirstOrDefault();
-        var studies = (await StudyRepo.ListAsync()).ToList();
-        _activeStudies = studies.Count(s => s.Status == TradingResearchEngine.Application.Research.StudyStatus.Running);
-
-        _lastRunMap = _runs
-            .GroupBy(r => r.ScenarioConfig.StrategyType)
-            .ToDictionary(g => g.Key, g => g.First());
-
-        // Fix 2: strategy ID lookup by type
-        _strategyIdByType = _strategies
-            .GroupBy(s => s.StrategyType)
-            .ToDictionary(g => g.Key, g => g.First().StrategyId);
-
-        foreach (var run in _runs.Where(r => r.Status == BacktestStatus.Completed).Take(10))
+        try
         {
-            var w = new List<string>();
-            if (run.SharpeRatio > 3.0m) w.Add("Sharpe > 3");
-            if (run.TotalTrades < 30) w.Add($"{run.TotalTrades} trades");
-            if (run.EquityCurveSmoothness < 0m) w.Add("K-Ratio < 0");
-            if (run.MaxDrawdown > 0.20m) w.Add($"DD {run.MaxDrawdown:P0}");
-            if (w.Count > 0) _warningRuns.Add((run, w));
+            _strategies = (await StrategyRepo.ListAsync(_cts.Token)).ToList();
+            _runs = (await ResultRepo.ListAsync(_cts.Token)).OrderByDescending(r => r.RunId).ToList();
+            _recentRuns = _runs.Take(10).ToList();
+            _latestRun = _runs.FirstOrDefault();
+            var studies = (await StudyRepo.ListAsync(_cts.Token)).ToList();
+            _activeStudies = studies.Count(s => s.Status == TradingResearchEngine.Application.Research.StudyStatus.Running);
+
+            _lastRunMap = _runs
+                .GroupBy(r => r.ScenarioConfig.StrategyType)
+                .ToDictionary(g => g.Key, g => g.First());
+
+            // Fix 2: strategy ID lookup by type
+            _strategyIdByType = _strategies
+                .GroupBy(s => s.StrategyType)
+                .ToDictionary(g => g.Key, g => g.First().StrategyId);
+
+            foreach (var run in _runs.Where(r => r.Status == BacktestStatus.Completed).Take(10))
+            {
+                var w = RobustnessService.GetWarnings(run);
+                if (w.Count > 0) _warningRuns.Add((run, w.ToList()));
+            }
+
+            // V4: Research pipeline stage groups
+            _stageGroups = _strategies
+                .GroupBy(s => s.Stage)
+                .OrderBy(g => g.Key)
+                .Select(g => (Count: g.Count(), Stage: g.Key))
+                .ToList();
+
+            _loading = false;
         }
+        catch (OperationCanceledException)
+        {
+            // Component was disposed during loading — do not update state
+        }
+    }
 
-        // V4: Research pipeline stage groups
-        _stageGroups = _strategies
-            .GroupBy(s => s.Stage)
-            .OrderBy(g => g.Key)
-            .Select(g => (Count: g.Count(), Stage: g.Key))
-            .ToList();
-
-        _loading = false;
+    public void Dispose()
+    {
+        _cts.Cancel();
+        _cts.Dispose();
     }
 
     private static string GetSharpeClass(decimal? sharpe) => sharpe switch

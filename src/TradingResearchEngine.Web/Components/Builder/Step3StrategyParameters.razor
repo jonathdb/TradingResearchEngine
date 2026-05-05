@@ -1,4 +1,5 @@
 @* Step 3: Strategy Parameters — grouped by schema, Simple/Advanced toggle *@
+@using TradingResearchEngine.Application.Strategy
 
 <MudText Typo="Typo.h6" Class="mb-3">Strategy Parameters</MudText>
 
@@ -10,6 +11,13 @@
     </MudToggleGroup>
 </MudStack>
 
+@if (_validationErrors.Count > 0)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-3" aria-label="Validation errors summary">
+        @_validationErrors.Count parameter(s) have validation errors. Please correct them before proceeding.
+    </MudAlert>
+}
+
 @if (Schemas.Count == 0)
 {
     <MudAlert Severity="Severity.Info" Class="mb-3" aria-label="No schema available">
@@ -19,8 +27,10 @@
     @foreach (var key in Model.Parameters.Keys.ToList())
     {
         <MudTextField T="string" Value="@(Model.Parameters[key]?.ToString() ?? "")"
-                      ValueChanged="@((string v) => { Model.Parameters[key] = v; Model.IsDirty = true; })"
-                      Label="@key" Class="mb-2" aria-label="@key" />
+                      ValueChanged="@((string v) => { Model.Parameters[key] = v; Model.IsDirty = true; OnModelChanged.InvokeAsync(); })"
+                      Label="@key" Class="mb-2" aria-label="@key"
+                      Error="@HasFieldError(key)"
+                      ErrorText="@GetFieldError(key)" />
     }
 }
 else
@@ -29,7 +39,8 @@ else
                           Parameters="@Model.Parameters"
                           PresetParameters="@_presetParameters"
                           AdvancedMode="@Model.AdvancedMode"
-                          OnParameterChanged="OnParamChanged" />
+                          OnParameterChanged="OnParamChanged"
+                          ValidationErrors="@_validationErrors" />
 }
 
 @code {
@@ -39,16 +50,30 @@ else
     [Parameter] public EventCallback OnModelChanged { get; set; }
 
     private Dictionary<string, object>? _presetParameters;
+    private IReadOnlyList<ValidationError> _validationErrors = Array.Empty<ValidationError>();
 
     protected override void OnParametersSet()
     {
         _presetParameters = PresetParameters;
+        RunValidation();
     }
+
+    private void RunValidation()
+    {
+        _validationErrors = SchemaValidator.ValidateParameters(Model.Parameters, Schemas);
+    }
+
+    private bool HasFieldError(string fieldName) =>
+        _validationErrors.Any(e => e.FieldName == fieldName);
+
+    private string GetFieldError(string fieldName) =>
+        _validationErrors.FirstOrDefault(e => e.FieldName == fieldName)?.Message ?? "";
 
     private async Task OnParamChanged((string Key, object Value) change)
     {
         Model.Parameters[change.Key] = change.Value;
         Model.IsDirty = true;
+        RunValidation();
         await OnModelChanged.InvokeAsync();
     }
 }

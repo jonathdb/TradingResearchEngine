@@ -1,4 +1,5 @@
 @* Fine-grained controls for execution and risk fields with provenance indicators *@
+@using TradingResearchEngine.Application.Strategy
 
 <MudExpansionPanels>
     <MudExpansionPanel Text="Advanced Overrides" Expanded="false"
@@ -54,6 +55,18 @@
             </MudChip>
         </MudStack>
 
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-2">
+            <MudNumericField T="decimal" @bind-Value="Model.StopLoss" Label="Stop-Loss (%)"
+                             Min="0m" Step="0.5m" Style="flex: 1;"
+                             aria-label="Stop-loss percentage"
+                             Error="@(_stopLossError is not null)"
+                             ErrorText="@(_stopLossError ?? "")" />
+            <MudChip T="string" Size="MudBlazor.Size.Small" Color="Color.Default"
+                     Variant="Variant.Text" aria-label="Stop-loss provenance">
+                Custom
+            </MudChip>
+        </MudStack>
+
         @if (HasOverrides)
         {
             <MudAlert Severity="Severity.Info" Dense="true" Class="mt-2" aria-label="Custom overrides active">
@@ -69,11 +82,24 @@
     [Parameter] public ConfigPreset? ActivePreset { get; set; }
     [Parameter] public EventCallback OnModelChanged { get; set; }
 
+    private string? _stopLossError;
+
     private bool HasOverrides =>
         ActivePreset is not null && (
             Model.SlippageModelType != ActivePreset.ExecutionConfig.SlippageModelType ||
             Model.CommissionModelType != ActivePreset.ExecutionConfig.CommissionModelType ||
             (ActivePreset.RiskConfig is not null && Model.InitialCash != ActivePreset.RiskConfig.InitialCash));
+
+    protected override void OnParametersSet()
+    {
+        RunValidation();
+    }
+
+    private void RunValidation()
+    {
+        var errors = SchemaValidator.ValidateRiskProfile(Model.PresetOverrides, Model.StopLoss);
+        _stopLossError = errors.FirstOrDefault(e => e.FieldName == "StopLoss")?.Message;
+    }
 
     private string GetProvenance(string field)
     {

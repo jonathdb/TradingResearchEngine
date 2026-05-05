@@ -136,6 +136,72 @@ public sealed class JsonStrategyRepository : IStrategyRepository
         return null;
     }
 
+    /// <inheritdoc/>
+    public Task<IReadOnlyDictionary<string, int>> GetVersionCountsAsync(
+        IEnumerable<string> strategyIds, CancellationToken ct = default)
+    {
+        ct.ThrowIfCancellationRequested();
+
+        var strategyIdSet = strategyIds.ToHashSet();
+        var counts = strategyIdSet.ToDictionary(id => id, _ => 0);
+
+        // Single I/O pass: enumerate all strategy subdirectories and count version files
+        if (Directory.Exists(_baseDir))
+        {
+            foreach (var strategyDir in Directory.GetDirectories(_baseDir))
+            {
+                ct.ThrowIfCancellationRequested();
+
+                var dirName = Path.GetFileName(strategyDir);
+                if (dirName == "_version_index") continue;
+                if (!strategyIdSet.Contains(dirName)) continue;
+
+                var versionsDir = Path.Combine(strategyDir, "versions");
+                if (Directory.Exists(versionsDir))
+                {
+                    counts[dirName] = Directory.GetFiles(versionsDir, "*.json").Length;
+                }
+            }
+        }
+
+        return Task.FromResult<IReadOnlyDictionary<string, int>>(counts);
+    }
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<StrategyVersion>> ListAllVersionsAsync(CancellationToken ct = default)
+    {
+        ct.ThrowIfCancellationRequested();
+
+        var results = new List<StrategyVersion>();
+        if (!Directory.Exists(_baseDir)) return results;
+
+        // Single I/O pass: enumerate all strategy subdirectories and read all version files
+        foreach (var strategyDir in Directory.GetDirectories(_baseDir))
+        {
+            ct.ThrowIfCancellationRequested();
+
+            var dirName = Path.GetFileName(strategyDir);
+            if (dirName == "_version_index") continue;
+
+            var versionsDir = Path.Combine(strategyDir, "versions");
+            if (!Directory.Exists(versionsDir)) continue;
+
+            foreach (var file in Directory.GetFiles(versionsDir, "*.json"))
+            {
+                ct.ThrowIfCancellationRequested();
+
+                var json = await File.ReadAllTextAsync(file, ct);
+                var entity = JsonSerializer.Deserialize<StrategyVersion>(json, JsonOpts);
+                if (entity is not null) results.Add(entity);
+            }
+        }
+
+        return results
+            .OrderBy(v => v.StrategyId)
+            .ThenBy(v => v.VersionNumber)
+            .ToList();
+    }
+
     private string StrategyPath(string id) => Path.Combine(_baseDir, $"{id}.json");
     private string VersionDir(string strategyId) => Path.Combine(_baseDir, strategyId, "versions");
 }
