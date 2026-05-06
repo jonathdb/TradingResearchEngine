@@ -1,0 +1,146 @@
+@page "/paper-trading"
+@page "/paper-trading/setup"
+@rendermode InteractiveServer
+@using TradingResearchEngine.Core.Configuration
+@inject StrategyRegistry Registry
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+
+<PageTitle>Paper Trading — Session Setup</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-1">
+    Paper Trading
+    <MudChip T="string" Size="MudBlazor.Size.Small" Color="Color.Info">🧪 Simulated</MudChip>
+</MudText>
+<MudText Typo="Typo.subtitle1" Class="mb-4 text-muted">
+    Set up a simulated live trading session using the same execution pipeline as backtesting.
+</MudText>
+
+<MudBreadcrumbs Items="@_breadcrumbs" Class="pa-0 mb-3" />
+
+<MudGrid>
+    <MudItem xs="12" md="8">
+        <MudPaper Class="pa-4" Elevation="2">
+            <MudText Typo="Typo.h6" Class="mb-3">Session Configuration</MudText>
+
+            @* Strategy Selection *@
+            <MudSelect T="string" Label="Strategy" @bind-Value="_strategyType"
+                       Variant="Variant.Outlined" Class="mb-3"
+                       HelperText="Select the strategy to run in paper trading mode">
+                @foreach (var name in Registry.KnownNames)
+                {
+                    <MudSelectItem Value="@name">@name</MudSelectItem>
+                }
+            </MudSelect>
+
+            @* Data Source Configuration *@
+            <MudDivider Class="my-3" />
+            <MudText Typo="Typo.subtitle2" Class="mb-2">Data Source</MudText>
+
+            <MudTextField T="string" Label="Symbol" @bind-Value="_symbol"
+                          Variant="Variant.Outlined" Class="mb-2"
+                          HelperText="e.g. EURUSD, SPY, XAUUSD" />
+
+            <MudSelect T="string" Label="Timeframe" @bind-Value="_timeframe"
+                       Variant="Variant.Outlined" Class="mb-2">
+                <MudSelectItem Value="@("M1")">1 Minute</MudSelectItem>
+                <MudSelectItem Value="@("M5")">5 Minutes</MudSelectItem>
+                <MudSelectItem Value="@("M15")">15 Minutes</MudSelectItem>
+                <MudSelectItem Value="@("H1")">1 Hour</MudSelectItem>
+                <MudSelectItem Value="@("H4")">4 Hours</MudSelectItem>
+                <MudSelectItem Value="@("1D")">Daily</MudSelectItem>
+            </MudSelect>
+
+            @* Execution Settings *@
+            <MudDivider Class="my-3" />
+            <MudText Typo="Typo.subtitle2" Class="mb-2">Execution Settings</MudText>
+
+            <MudNumericField T="decimal" Label="Initial Cash" @bind-Value="_initialCash"
+                             Variant="Variant.Outlined" Class="mb-2" Min="1000" />
+
+            <MudSelect T="string" Label="Realism Profile" @bind-Value="_realismProfile"
+                       Variant="Variant.Outlined" Class="mb-2">
+                <MudSelectItem Value="@("FastResearch")">Fast Research</MudSelectItem>
+                <MudSelectItem Value="@("StandardBacktest")">Standard Backtest</MudSelectItem>
+                <MudSelectItem Value="@("BrokerConservative")">Broker Conservative</MudSelectItem>
+            </MudSelect>
+
+            <MudNumericField T="int" Label="Polling Interval (seconds)" @bind-Value="_pollingIntervalSeconds"
+                             Variant="Variant.Outlined" Class="mb-2" Min="1" Max="3600"
+                             HelperText="How often to poll for new bar data" />
+
+            <MudNumericField T="double" Label="Speed Ratio" @bind-Value="_speedRatio"
+                             Variant="Variant.Outlined" Class="mb-2" Min="0.1" Max="100"
+                             HelperText="1.0 = real-time, 10.0 = 10× faster" />
+        </MudPaper>
+    </MudItem>
+
+    <MudItem xs="12" md="4">
+        <MudPaper Class="pa-4" Elevation="2">
+            <MudText Typo="Typo.h6" Class="mb-3">Actions</MudText>
+
+            <MudButton Variant="Variant.Filled" Color="Color.Success"
+                       FullWidth="true" Class="mb-3"
+                       StartIcon="@Icons.Material.Filled.PlayArrow"
+                       OnClick="StartSession"
+                       Disabled="@(!CanStart)">
+                Start Paper Trading
+            </MudButton>
+
+            <MudButton Variant="Variant.Outlined" Color="Color.Default"
+                       FullWidth="true"
+                       Href="/paper-trading/history"
+                       StartIcon="@Icons.Material.Filled.History">
+                View Session History
+            </MudButton>
+
+            @if (!string.IsNullOrEmpty(_validationError))
+            {
+                <MudAlert Severity="Severity.Warning" Class="mt-3" Dense="true">@_validationError</MudAlert>
+            }
+        </MudPaper>
+
+        <MudPaper Class="pa-4 mt-4" Elevation="1">
+            <MudText Typo="Typo.caption" Class="text-muted mb-2">ABOUT PAPER TRADING</MudText>
+            <MudText Typo="Typo.body2" Class="text-muted">
+                Paper trading uses the same execution pipeline as backtesting — same strategy, risk layer,
+                slippage, and commission models. Results are directly comparable to historical backtests.
+            </MudText>
+        </MudPaper>
+    </MudItem>
+</MudGrid>
+
+@code {
+    private string _strategyType = "";
+    private string _symbol = "EURUSD";
+    private string _timeframe = "H1";
+    private decimal _initialCash = 100_000m;
+    private string _realismProfile = "StandardBacktest";
+    private int _pollingIntervalSeconds = 5;
+    private double _speedRatio = 10.0;
+    private string? _validationError;
+
+    private List<BreadcrumbItem> _breadcrumbs = new()
+    {
+        new("Dashboard", href: "/"),
+        new("Paper Trading", href: null, disabled: true)
+    };
+
+    private bool CanStart => !string.IsNullOrEmpty(_strategyType) && !string.IsNullOrEmpty(_symbol);
+
+    private void StartSession()
+    {
+        if (!CanStart)
+        {
+            _validationError = "Please select a strategy and enter a symbol.";
+            return;
+        }
+
+        _validationError = null;
+        // Navigate to the live dashboard with session parameters
+        var queryParams = $"?strategy={_strategyType}&symbol={_symbol}&timeframe={_timeframe}" +
+                          $"&cash={_initialCash}&profile={_realismProfile}" +
+                          $"&interval={_pollingIntervalSeconds}&speed={_speedRatio}";
+        Nav.NavigateTo($"/paper-trading/live{queryParams}");
+    }
+}

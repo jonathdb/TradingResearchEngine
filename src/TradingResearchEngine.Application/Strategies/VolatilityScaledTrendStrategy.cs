@@ -1,4 +1,6 @@
+using TradingResearchEngine.Application.Indicators;
 using TradingResearchEngine.Application.Strategy;
+using TradingResearchEngine.Core.DataHandling;
 using TradingResearchEngine.Core.Events;
 using TradingResearchEngine.Core.Strategy;
 
@@ -10,6 +12,9 @@ namespace TradingResearchEngine.Application.Strategies;
 /// Uses a fast/slow SMA crossover for trend direction and a trailing ATR
 /// for volatility warmup gating. Signal strength is the bar's Close price.
 ///
+/// Uses <see cref="SmaIndicator"/> and <see cref="AtrIndicator"/> wrappers backed by
+/// Skender.Stock.Indicators for indicator computation.
+///
 /// Hypothesis: Persistent directional moves continue long enough for
 /// trend-following entries to overcome transaction costs.
 /// </summary>
@@ -20,15 +25,11 @@ public sealed class VolatilityScaledTrendStrategy : IStrategy
     private readonly int _slowPeriod;
     private readonly int _atrPeriod;
     private readonly DirectionMode _directionMode;
-    private readonly List<decimal> _closes = new();
-    private decimal _fastSum;
-    private decimal _slowSum;
-    private decimal _atr;
-    private bool _atrWarmedUp;
-    private int _atrCount;
-    private decimal _atrInitialSum;
-    private decimal _prevClose;
+    private readonly SmaIndicator _fastSma;
+    private readonly SmaIndicator _slowSma;
+    private readonly AtrIndicator _atr;
     private Direction _position = Direction.Flat;
+    private int _barCount;
 
     /// <summary>Creates a volatility-scaled trend strategy.</summary>
     /// <param name="fastPeriod">Fast SMA lookback period (default 10).</param>
@@ -53,6 +54,9 @@ public sealed class VolatilityScaledTrendStrategy : IStrategy
         _slowPeriod = slowPeriod;
         _atrPeriod = atrPeriod;
         _directionMode = directionMode;
+        _fastSma = new SmaIndicator(fastPeriod);
+        _slowSma = new SmaIndicator(slowPeriod);
+        _atr = new AtrIndicator(atrPeriod);
     }
 
     /// <inheritdoc/>
@@ -60,48 +64,28 @@ public sealed class VolatilityScaledTrendStrategy : IStrategy
     {
         if (evt is not BarEvent bar) return Array.Empty<EngineEvent>();
 
-        _closes.Add(bar.Close);
-        int count = _closes.Count;
+        var barRecord = new BarRecord(
+            bar.Symbol, bar.Interval, bar.Open, bar.High, bar.Low, bar.Close, bar.Volume, bar.Timestamp);
 
-        // --- SMA accumulators (O(1) rolling) ---
-        if (count <= _fastPeriod) _fastSum += bar.Close;
-        else _fastSum += bar.Close - _closes[count - _fastPeriod - 1];
-
-        if (count <= _slowPeriod) _slowSum += bar.Close;
-        else _slowSum += bar.Close - _closes[count - _slowPeriod - 1];
-
-        // --- ATR via Wilder smoothing ---
-        if (count >= 2)
-        {
-            decimal tr = ComputeTrueRange(bar.High, bar.Low, _prevClose);
-            _atrCount++;
-
-            if (!_atrWarmedUp)
-            {
-                _atrInitialSum += tr;
-                if (_atrCount >= _atrPeriod)
-                {
-                    _atr = _atrInitialSum / _atrPeriod;
-                    _atrWarmedUp = true;
-                }
-            }
-            else
-            {
-                // Wilder smoothing: ATR = (prev * (period-1) + currentTR) / period
-                _atr = (_atr * (_atrPeriod - 1) + tr) / _atrPeriod;
-            }
-        }
-
-        _prevClose = bar.Close;
+        _fastSma.Add(barRecord);
+        _slowSma.Add(barRecord);
+        _atr.Add(barRecord);
+        _barCount++;
 
         // Need both SMAs warmed up and ATR warmed up
-        int minBars = Math.Max(_slowPeriod, _atrPeriod + 1);
-        if (count < minBars || !_atrWarmedUp) return Array.Empty<EngineEvent>();
+        if (!_fastSma.IsWarm || !_slowSma.IsWarm || !_atr.IsWarm)
+            return Array.Empty<EngineEvent>();
 
-        decimal fastSma = _fastSum / _fastPeriod;
-        decimal slowSma = _slowSum / _slowPeriod;
+        var fastResult = _fastSma.Results[^1];
+        var slowResult = _slowSma.Results[^1];
 
-        if (fastSma > slowSma && _position != Direction.Long
+        if (fastResult.Sma is null || slowResult.Sma is null)
+            return Array.Empty<EngineEvent>();
+
+        decimal fastValue = (decimal)fastResult.Sma.Value;
+        decimal slowValue = (decimal)slowResult.Sma.Value;
+
+        if (fastValue > slowValue && _position != Direction.Long
             && _directionMode is DirectionMode.Long or DirectionMode.Both)
         {
             _position = Direction.Long;
@@ -111,7 +95,7 @@ public sealed class VolatilityScaledTrendStrategy : IStrategy
             };
         }
 
-        if (fastSma <= slowSma && _position == Direction.Long)
+        if (fastValue <= slowValue && _position == Direction.Long)
         {
             _position = Direction.Flat;
             return new EngineEvent[]
@@ -121,7 +105,7 @@ public sealed class VolatilityScaledTrendStrategy : IStrategy
         }
 
         // V6: Short signal when fast < slow (when mode is Short or Both)
-        if (fastSma < slowSma && _position != Direction.Short
+        if (fastValue < slowValue && _position != Direction.Short
             && _directionMode is DirectionMode.Short or DirectionMode.Both)
         {
             _position = Direction.Short;
@@ -132,7 +116,7 @@ public sealed class VolatilityScaledTrendStrategy : IStrategy
         }
 
         // Exit short: fast crosses above slow
-        if (fastSma >= slowSma && _position == Direction.Short)
+        if (fastValue >= slowValue && _position == Direction.Short)
         {
             _position = Direction.Flat;
             return new EngineEvent[]
@@ -142,13 +126,5 @@ public sealed class VolatilityScaledTrendStrategy : IStrategy
         }
 
         return Array.Empty<EngineEvent>();
-    }
-
-    private static decimal ComputeTrueRange(decimal high, decimal low, decimal prevClose)
-    {
-        decimal hl = high - low;
-        decimal hc = Math.Abs(high - prevClose);
-        decimal lc = Math.Abs(low - prevClose);
-        return Math.Max(hl, Math.Max(hc, lc));
     }
 }

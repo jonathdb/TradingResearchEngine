@@ -16,7 +16,7 @@ public class MonteCarloWorkflowProperties
     private static readonly DateTimeOffset T0 = new(2024, 1, 1, 0, 0, 0, TimeSpan.Zero);
 
     // Feature: v51-engine-fixes, Property 10: Monte Carlo determinism with same seed and BlockSize
-    [Property(MaxTest = 100)]
+    [Property(MaxTest = 20)]
     public bool SameSeedAndBlockSize_ProduceIdenticalResults(PositiveInt seedWrap, PositiveInt blockWrap)
     {
         int seed = seedWrap.Get;

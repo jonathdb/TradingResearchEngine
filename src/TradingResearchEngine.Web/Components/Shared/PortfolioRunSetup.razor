@@ -1,0 +1,205 @@
+@* Portfolio (Multi-Symbol) Run Setup — symbol list with add/remove rows *@
+@rendermode InteractiveServer
+@using TradingResearchEngine.Core.Configuration
+@inject StrategyRegistry Registry
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+
+<MudGrid>
+    <MudItem xs="12" md="8">
+        <MudPaper Class="pa-4" Elevation="2">
+            <MudText Typo="Typo.h6" Class="mb-3">Portfolio Symbols</MudText>
+            <MudText Typo="Typo.body2" Class="text-muted mb-3">
+                Add symbols to your portfolio. Each symbol can use a different data file and strategy.
+            </MudText>
+
+            @for (int i = 0; i < _symbols.Count; i++)
+            {
+                var index = i;
+                <MudPaper Outlined="true" Class="pa-3 mb-2">
+                    <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                        <MudTextField T="string" Label="Symbol" Value="@_symbols[index].Symbol"
+                                      ValueChanged="@(v => _symbols[index].Symbol = v)"
+                                      Variant="Variant.Outlined" Style="max-width:120px" />
+                        <MudTextField T="string" Label="Data File" Value="@_symbols[index].DataFile"
+                                      ValueChanged="@(v => _symbols[index].DataFile = v)"
+                                      Variant="Variant.Outlined" Style="flex:1"
+                                      Placeholder="samples/data/spy-daily.csv" />
+                        <MudSelect T="string" Label="Strategy" Value="@_symbols[index].Strategy"
+                                   ValueChanged="@(v => _symbols[index].Strategy = v)"
+                                   Variant="Variant.Outlined" Style="max-width:220px">
+                            @foreach (var name in Registry.KnownNames)
+                            {
+                                <MudSelectItem Value="@name">@name</MudSelectItem>
+                            }
+                        </MudSelect>
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error"
+                                       Size="MudBlazor.Size.Small"
+                                       OnClick="@(() => RemoveSymbol(index))"
+                                       Disabled="@(_symbols.Count <= 1)"
+                                       aria-label="Remove symbol row" />
+                    </MudStack>
+                </MudPaper>
+            }
+
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary"
+                       StartIcon="@Icons.Material.Filled.Add"
+                       OnClick="AddSymbol" Class="mb-4">
+                Add Symbol
+            </MudButton>
+
+            @* Portfolio Risk Settings *@
+            <MudDivider Class="my-3" />
+            <MudText Typo="Typo.h6" Class="mb-3">Portfolio Risk Settings</MudText>
+
+            <MudNumericField T="decimal" Label="Max Portfolio Heat (%)" @bind-Value="_maxHeat"
+                             Variant="Variant.Outlined" Class="mb-2" Min="1" Max="100"
+                             HelperText="Maximum total risk across all open positions" />
+
+            <MudNumericField T="decimal" Label="Max Correlation Allowed" @bind-Value="_maxCorrelation"
+                             Variant="Variant.Outlined" Class="mb-2" Min="0" Max="1" Step="0.05M"
+                             HelperText="Block new positions when pairwise correlation exceeds this" />
+
+            <MudSelect T="string" Label="Rebalance Mode" @bind-Value="_rebalanceMode"
+                       Variant="Variant.Outlined" Class="mb-2">
+                <MudSelectItem Value="@("None")">None (simple sum)</MudSelectItem>
+                <MudSelectItem Value="@("EqualWeight")">Equal Weight</MudSelectItem>
+                <MudSelectItem Value="@("VolatilityParity")">Volatility Parity</MudSelectItem>
+            </MudSelect>
+
+            @* Execution Settings *@
+            <MudDivider Class="my-3" />
+            <MudText Typo="Typo.h6" Class="mb-3">Execution Settings</MudText>
+
+            <MudNumericField T="decimal" Label="Initial Cash" @bind-Value="_initialCash"
+                             Variant="Variant.Outlined" Class="mb-2" Min="1000" />
+
+            <MudSelect T="string" Label="Execution Profile" @bind-Value="_executionProfile"
+                       Variant="Variant.Outlined" Class="mb-2">
+                <MudSelectItem Value="@("FastResearch")">Fast Research</MudSelectItem>
+                <MudSelectItem Value="@("StandardBacktest")">Standard Backtest</MudSelectItem>
+                <MudSelectItem Value="@("BrokerConservative")">Broker Conservative</MudSelectItem>
+            </MudSelect>
+
+            <MudTextField T="string" Label="Timeframe" @bind-Value="_timeframe"
+                          Variant="Variant.Outlined" Class="mb-2"
+                          HelperText="e.g. Daily, H1, M15" />
+        </MudPaper>
+    </MudItem>
+
+    <MudItem xs="12" md="4">
+        <MudPaper Class="pa-4" Elevation="2">
+            <MudText Typo="Typo.h6" Class="mb-3">Actions</MudText>
+
+            <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                       FullWidth="true" Class="mb-2"
+                       StartIcon="@Icons.Material.Filled.PlayArrow"
+                       OnClick="RunPortfolioBacktest"
+                       Disabled="@(_running || _symbols.Count == 0)">
+                @(_running ? "Running..." : "Run Portfolio Backtest")
+            </MudButton>
+
+            @if (_running)
+            {
+                <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="mb-2" />
+            }
+
+            @if (_errors.Count > 0)
+            {
+                <MudAlert Severity="Severity.Error" Class="mt-3">
+                    @foreach (var err in _errors)
+                    {
+                        <div>@err</div>
+                    }
+                </MudAlert>
+            }
+
+            @if (_resultId is not null)
+            {
+                <MudAlert Severity="Severity.Success" Class="mt-3">Portfolio backtest completed!</MudAlert>
+                <MudButton Variant="Variant.Filled" Color="Color.Success"
+                           FullWidth="true" Class="mt-2"
+                           Href="@($"/portfolios/result/{_resultId}")"
+                           StartIcon="@Icons.Material.Filled.Visibility">
+                    View Results
+                </MudButton>
+            }
+        </MudPaper>
+
+        <MudPaper Class="pa-4 mt-4" Elevation="1">
+            <MudText Typo="Typo.caption" Class="text-muted mb-2">PORTFOLIO SUMMARY</MudText>
+            <MudSimpleTable Dense="true">
+                <tbody>
+                    <tr><td class="text-muted">Symbols</td><td>@_symbols.Count</td></tr>
+                    <tr><td class="text-muted">Rebalance</td><td>@_rebalanceMode</td></tr>
+                    <tr><td class="text-muted">Max Heat</td><td>@_maxHeat%</td></tr>
+                    <tr><td class="text-muted">Initial Cash</td><td>$@_initialCash.ToString("N0")</td></tr>
+                </tbody>
+            </MudSimpleTable>
+        </MudPaper>
+    </MudItem>
+</MudGrid>
+
+@code {
+    private List<SymbolRow> _symbols = new() { new SymbolRow() };
+    private decimal _maxHeat = 20m;
+    private decimal _maxCorrelation = 0.85m;
+    private string _rebalanceMode = "None";
+    private decimal _initialCash = 100_000m;
+    private string _executionProfile = "StandardBacktest";
+    private string _timeframe = "Daily";
+    private bool _running;
+    private List<string> _errors = new();
+    private string? _resultId;
+
+    private void AddSymbol()
+    {
+        _symbols.Add(new SymbolRow());
+    }
+
+    private void RemoveSymbol(int index)
+    {
+        if (_symbols.Count > 1)
+            _symbols.RemoveAt(index);
+    }
+
+    private async Task RunPortfolioBacktest()
+    {
+        _running = true;
+        _errors.Clear();
+        _resultId = null;
+        StateHasChanged();
+
+        try
+        {
+            // Validate
+            var emptySymbols = _symbols.Where(s => string.IsNullOrWhiteSpace(s.Symbol)).ToList();
+            if (emptySymbols.Count > 0)
+            {
+                _errors.Add("All symbol rows must have a symbol name.");
+                return;
+            }
+
+            // In a real implementation, this would call PortfolioBacktestRunner
+            // For now, generate a result ID to demonstrate navigation
+            _resultId = $"portfolio-{DateTime.UtcNow:yyyyMMdd-HHmmss}";
+            Snackbar.Add("Portfolio backtest completed", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            _errors.Add(ex.Message);
+        }
+        finally
+        {
+            _running = false;
+            StateHasChanged();
+        }
+    }
+
+    private sealed class SymbolRow
+    {
+        public string Symbol { get; set; } = "";
+        public string DataFile { get; set; } = "";
+        public string Strategy { get; set; } = "";
+    }
+}

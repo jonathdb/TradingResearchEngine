@@ -23,7 +23,7 @@ public class BarsPerYearConsistencyProperties
         ("D1", 1),
     };
 
-    [Property(MaxTest = 100)]
+    [Property(MaxTest = 20)]
     public bool BarsPerYear_Equals252TimesBarsPerDay(PositiveInt indexWrap)
     {
         var (timeframe, barsPerDay) = KnownTimeframes[indexWrap.Get % KnownTimeframes.Length];

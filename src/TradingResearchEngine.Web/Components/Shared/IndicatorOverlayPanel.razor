@@ -1,0 +1,281 @@
+@* Indicator Overlay Panel — multi-select control for overlaying indicators on price chart *@
+@rendermode InteractiveServer
+@using Plotly.Blazor
+@using Plotly.Blazor.Traces
+@using Plotly.Blazor.Traces.ScatterLib
+@using Plotly.Blazor.LayoutLib
+@using Plotly.Blazor.LayoutLib.YAxisLib
+@using TradingResearchEngine.Application.Indicators
+@using TradingResearchEngine.Core.DataHandling
+
+<MudPaper Outlined="true" Class="pa-4 mb-4">
+    <MudText Typo="Typo.subtitle2" Class="text-muted mb-3">INDICATOR OVERLAYS</MudText>
+
+    <MudSelect T="string" Label="Select Indicators" MultiSelection="true"
+               @bind-SelectedValues="_selectedIndicators"
+               Variant="Variant.Outlined" Class="mb-3"
+               MultiSelectionTextFunc="@(new Func<List<string>, string>(FormatSelection))"
+               aria-label="Select indicators to overlay on chart">
+        <MudSelectItem Value="@("SMA-20")">SMA (20)</MudSelectItem>
+        <MudSelectItem Value="@("SMA-50")">SMA (50)</MudSelectItem>
+        <MudSelectItem Value="@("EMA-12")">EMA (12)</MudSelectItem>
+        <MudSelectItem Value="@("EMA-26")">EMA (26)</MudSelectItem>
+        <MudSelectItem Value="@("Bollinger-20")">Bollinger Bands (20)</MudSelectItem>
+        <MudSelectItem Value="@("Donchian-20")">Donchian Channel (20)</MudSelectItem>
+        <MudSelectItem Value="@("RSI-14")">RSI (14)</MudSelectItem>
+        <MudSelectItem Value="@("MACD-12-26-9")">MACD (12, 26, 9)</MudSelectItem>
+        <MudSelectItem Value="@("Stochastic-14-3")">Stochastic (14, 3)</MudSelectItem>
+    </MudSelect>
+
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="MudBlazor.Size.Small"
+               OnClick="ComputeAndRender" Disabled="@(_computing || BarData is null || BarData.Count == 0)"
+               StartIcon="@Icons.Material.Filled.ShowChart">
+        @(_computing ? "Computing..." : "Apply Indicators")
+    </MudButton>
+</MudPaper>
+
+@* Price Chart with On-Price Indicator Overlays *@
+@if (_priceTraces.Count > 0)
+{
+    <MudPaper Class="pa-4 mb-4" Elevation="1">
+        <MudText Typo="Typo.subtitle2" Class="mb-2">Price Chart with Indicators</MudText>
+        <PlotlyChart @ref="_priceChart" Config="_chartConfig" Layout="_priceLayout" Data="_priceTraces"
+                     style="width:100%; height:400px;" />
+    </MudPaper>
+}
+
+@* Oscillator Subplot *@
+@if (_oscillatorTraces.Count > 0)
+{
+    <MudPaper Class="pa-4 mb-4" Elevation="1">
+        <MudText Typo="Typo.subtitle2" Class="mb-2">Oscillators</MudText>
+        <PlotlyChart @ref="_oscillatorChart" Config="_chartConfig" Layout="_oscillatorLayout" Data="_oscillatorTraces"
+                     style="width:100%; height:250px;" />
+    </MudPaper>
+}
+
+@code {
+    /// <summary>Bar data from the backtest result to compute indicators from.</summary>
+    [Parameter] public IReadOnlyList<EquityCurvePoint>? BarData { get; set; }
+
+    /// <summary>Raw bar records for indicator computation.</summary>
+    [Parameter] public IReadOnlyList<BarRecord>? Bars { get; set; }
+
+    private IEnumerable<string> _selectedIndicators = new HashSet<string>();
+    private bool _computing;
+
+    private PlotlyChart? _priceChart;
+    private PlotlyChart? _oscillatorChart;
+    private Config _chartConfig = new() { Responsive = true, DisplayModeBar = Plotly.Blazor.ConfigLib.DisplayModeBarEnum.Hover };
+    private Layout _priceLayout = new();
+    private Layout _oscillatorLayout = new();
+    private IList<ITrace> _priceTraces = new List<ITrace>();
+    private IList<ITrace> _oscillatorTraces = new List<ITrace>();
+
+    private static string FormatSelection(List<string> selected)
+    {
+        if (selected.Count == 0) return "None selected";
+        if (selected.Count <= 3) return string.Join(", ", selected);
+        return $"{selected.Count} indicators selected";
+    }
+
+    private async Task ComputeAndRender()
+    {
+        if (Bars is null || Bars.Count == 0) return;
+
+        _computing = true;
+        StateHasChanged();
+
+        await Task.Run(() =>
+        {
+            var timestamps = Bars.Select(b => (object)b.Timestamp.DateTime).ToList();
+            var closes = Bars.Select(b => (object)b.Close).ToList();
+
+            // Build price chart with close prices as base
+            var priceTraces = new List<ITrace>
+            {
+                new Scatter
+                {
+                    X = timestamps,
+                    Y = closes,
+                    Name = "Close",
+                    Mode = ModeFlag.Lines,
+                    Line = new Line { Color = "#333", Width = 1.5m }
+                }
+            };
+
+            var oscillatorTraces = new List<ITrace>();
+            var selected = _selectedIndicators.ToHashSet();
+
+            // On-price indicators
+            if (selected.Contains("SMA-20"))
+                AddSmaTrace(priceTraces, timestamps, 20, "#FF9800");
+            if (selected.Contains("SMA-50"))
+                AddSmaTrace(priceTraces, timestamps, 50, "#9C27B0");
+            if (selected.Contains("EMA-12"))
+                AddEmaTrace(priceTraces, timestamps, 12, "#2196F3");
+            if (selected.Contains("EMA-26"))
+                AddEmaTrace(priceTraces, timestamps, 26, "#E91E63");
+            if (selected.Contains("Bollinger-20"))
+                AddBollingerTraces(priceTraces, timestamps, 20);
+            if (selected.Contains("Donchian-20"))
+                AddDonchianTraces(priceTraces, timestamps, 20);
+
+            // Oscillators
+            if (selected.Contains("RSI-14"))
+                AddRsiTrace(oscillatorTraces, timestamps, 14);
+            if (selected.Contains("MACD-12-26-9"))
+                AddMacdTraces(oscillatorTraces, timestamps, 12, 26, 9);
+            if (selected.Contains("Stochastic-14-3"))
+                AddStochasticTraces(oscillatorTraces, timestamps, 14, 3);
+
+            _priceTraces = priceTraces;
+            _oscillatorTraces = oscillatorTraces;
+        });
+
+        _priceLayout = new Layout
+        {
+            Title = new Plotly.Blazor.LayoutLib.Title { Text = "Price with Indicator Overlays" },
+            Margin = new Plotly.Blazor.LayoutLib.Margin { L = 60, R = 20, T = 40, B = 40 },
+            ShowLegend = true,
+            Legend = new List<Plotly.Blazor.LayoutLib.Legend> { new() { Orientation = Plotly.Blazor.LayoutLib.LegendLib.OrientationEnum.H, Y = -0.15m } },
+            HoverMode = HoverModeEnum.XUnified
+        };
+
+        _oscillatorLayout = new Layout
+        {
+            Title = new Plotly.Blazor.LayoutLib.Title { Text = "Oscillators" },
+            Margin = new Plotly.Blazor.LayoutLib.Margin { L = 60, R = 20, T = 40, B = 40 },
+            ShowLegend = true,
+            Legend = new List<Plotly.Blazor.LayoutLib.Legend> { new() { Orientation = Plotly.Blazor.LayoutLib.LegendLib.OrientationEnum.H, Y = -0.2m } },
+            HoverMode = HoverModeEnum.XUnified
+        };
+
+        _computing = false;
+        StateHasChanged();
+    }
+
+    private void AddSmaTrace(IList<ITrace> traces, List<object> timestamps, int period, string color)
+    {
+        var sma = new SmaIndicator(period);
+        foreach (var bar in Bars!) sma.Add(bar);
+
+        var values = sma.Results
+            .Select(r => r.Sma.HasValue ? (object)(decimal)r.Sma.Value : (object)null!)
+            .ToList();
+
+        // Pad with nulls for warm-up period
+        var padded = Enumerable.Repeat<object>(null!, Bars!.Count - values.Count).Concat(values).ToList();
+
+        traces.Add(new Scatter
+        {
+            X = timestamps,
+            Y = padded,
+            Name = $"SMA({period})",
+            Mode = ModeFlag.Lines,
+            Line = new Line { Color = color, Width = 1.5m, Dash = "dot" }
+        });
+    }
+
+    private void AddEmaTrace(IList<ITrace> traces, List<object> timestamps, int period, string color)
+    {
+        var ema = new EmaIndicator(period);
+        foreach (var bar in Bars!) ema.Add(bar);
+
+        var values = ema.Results
+            .Select(r => r.Ema.HasValue ? (object)(decimal)r.Ema.Value : (object)null!)
+            .ToList();
+
+        var padded = Enumerable.Repeat<object>(null!, Bars!.Count - values.Count).Concat(values).ToList();
+
+        traces.Add(new Scatter
+        {
+            X = timestamps,
+            Y = padded,
+            Name = $"EMA({period})",
+            Mode = ModeFlag.Lines,
+            Line = new Line { Color = color, Width = 1.5m }
+        });
+    }
+
+    private void AddBollingerTraces(IList<ITrace> traces, List<object> timestamps, int period)
+    {
+        var bb = new BollingerBandsIndicator(period);
+        foreach (var bar in Bars!) bb.Add(bar);
+
+        var upper = bb.Results.Select(r => r.UpperBand.HasValue ? (object)(decimal)r.UpperBand.Value : (object)null!).ToList();
+        var lower = bb.Results.Select(r => r.LowerBand.HasValue ? (object)(decimal)r.LowerBand.Value : (object)null!).ToList();
+        var middle = bb.Results.Select(r => r.Sma.HasValue ? (object)(decimal)r.Sma.Value : (object)null!).ToList();
+
+        var padCount = Bars!.Count - bb.Results.Count;
+        var paddedUpper = Enumerable.Repeat<object>(null!, padCount).Concat(upper).ToList();
+        var paddedLower = Enumerable.Repeat<object>(null!, padCount).Concat(lower).ToList();
+        var paddedMiddle = Enumerable.Repeat<object>(null!, padCount).Concat(middle).ToList();
+
+        traces.Add(new Scatter { X = timestamps, Y = paddedUpper, Name = "BB Upper", Mode = ModeFlag.Lines, Line = new Line { Color = "rgba(156,39,176,0.5)", Width = 1m, Dash = "dash" } });
+        traces.Add(new Scatter { X = timestamps, Y = paddedMiddle, Name = "BB Middle", Mode = ModeFlag.Lines, Line = new Line { Color = "rgba(156,39,176,0.8)", Width = 1m } });
+        traces.Add(new Scatter { X = timestamps, Y = paddedLower, Name = "BB Lower", Mode = ModeFlag.Lines, Line = new Line { Color = "rgba(156,39,176,0.5)", Width = 1m, Dash = "dash" } });
+    }
+
+    private void AddDonchianTraces(IList<ITrace> traces, List<object> timestamps, int period)
+    {
+        var dc = new DonchianIndicator(period);
+        foreach (var bar in Bars!) dc.Add(bar);
+
+        var upper = dc.Results.Select(r => r.UpperBand.HasValue ? (object)(decimal)r.UpperBand.Value : (object)null!).ToList();
+        var lower = dc.Results.Select(r => r.LowerBand.HasValue ? (object)(decimal)r.LowerBand.Value : (object)null!).ToList();
+
+        var padCount = Bars!.Count - dc.Results.Count;
+        var paddedUpper = Enumerable.Repeat<object>(null!, padCount).Concat(upper).ToList();
+        var paddedLower = Enumerable.Repeat<object>(null!, padCount).Concat(lower).ToList();
+
+        traces.Add(new Scatter { X = timestamps, Y = paddedUpper, Name = "Donchian Upper", Mode = ModeFlag.Lines, Line = new Line { Color = "#009688", Width = 1m } });
+        traces.Add(new Scatter { X = timestamps, Y = paddedLower, Name = "Donchian Lower", Mode = ModeFlag.Lines, Line = new Line { Color = "#009688", Width = 1m } });
+    }
+
+    private void AddRsiTrace(IList<ITrace> traces, List<object> timestamps, int period)
+    {
+        var rsi = new RsiIndicator(period);
+        foreach (var bar in Bars!) rsi.Add(bar);
+
+        var values = rsi.Results.Select(r => r.Rsi.HasValue ? (object)(decimal)r.Rsi.Value : (object)null!).ToList();
+        var padded = Enumerable.Repeat<object>(null!, Bars!.Count - values.Count).Concat(values).ToList();
+
+        traces.Add(new Scatter { X = timestamps, Y = padded, Name = $"RSI({period})", Mode = ModeFlag.Lines, Line = new Line { Color = "#FF5722", Width = 1.5m } });
+    }
+
+    private void AddMacdTraces(IList<ITrace> traces, List<object> timestamps, int fast, int slow, int signal)
+    {
+        var macd = new MacdIndicator(fast, slow, signal);
+        foreach (var bar in Bars!) macd.Add(bar);
+
+        var macdLine = macd.Results.Select(r => r.Macd.HasValue ? (object)(decimal)r.Macd.Value : (object)null!).ToList();
+        var signalLine = macd.Results.Select(r => r.Signal.HasValue ? (object)(decimal)r.Signal.Value : (object)null!).ToList();
+        var histogram = macd.Results.Select(r => r.Histogram.HasValue ? (object)(decimal)r.Histogram.Value : (object)null!).ToList();
+
+        var padCount = Bars!.Count - macd.Results.Count;
+        var paddedMacd = Enumerable.Repeat<object>(null!, padCount).Concat(macdLine).ToList();
+        var paddedSignal = Enumerable.Repeat<object>(null!, padCount).Concat(signalLine).ToList();
+        var paddedHist = Enumerable.Repeat<object>(null!, padCount).Concat(histogram).ToList();
+
+        traces.Add(new Scatter { X = timestamps, Y = paddedMacd, Name = "MACD", Mode = ModeFlag.Lines, Line = new Line { Color = "#2196F3", Width = 1.5m } });
+        traces.Add(new Scatter { X = timestamps, Y = paddedSignal, Name = "Signal", Mode = ModeFlag.Lines, Line = new Line { Color = "#FF9800", Width = 1m } });
+        traces.Add(new Scatter { X = timestamps, Y = paddedHist, Name = "Histogram", Mode = ModeFlag.Lines, Line = new Line { Color = "#4CAF50", Width = 1m } });
+    }
+
+    private void AddStochasticTraces(IList<ITrace> traces, List<object> timestamps, int period, int signal)
+    {
+        var stoch = new StochasticIndicator(period, signal);
+        foreach (var bar in Bars!) stoch.Add(bar);
+
+        var kLine = stoch.Results.Select(r => r.K.HasValue ? (object)(decimal)r.K.Value : (object)null!).ToList();
+        var dLine = stoch.Results.Select(r => r.D.HasValue ? (object)(decimal)r.D.Value : (object)null!).ToList();
+
+        var padCount = Bars!.Count - stoch.Results.Count;
+        var paddedK = Enumerable.Repeat<object>(null!, padCount).Concat(kLine).ToList();
+        var paddedD = Enumerable.Repeat<object>(null!, padCount).Concat(dLine).ToList();
+
+        traces.Add(new Scatter { X = timestamps, Y = paddedK, Name = "%K", Mode = ModeFlag.Lines, Line = new Line { Color = "#673AB7", Width = 1.5m } });
+        traces.Add(new Scatter { X = timestamps, Y = paddedD, Name = "%D", Mode = ModeFlag.Lines, Line = new Line { Color = "#E91E63", Width = 1m } });
+    }
+}

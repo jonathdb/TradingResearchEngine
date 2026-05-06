@@ -1,0 +1,150 @@
+@* Export Strategy Panel — generates MQL4/MQL5/PineScript code from a strategy version *@
+@rendermode InteractiveServer
+@using TradingResearchEngine.Application.Export
+@using TradingResearchEngine.Application.Strategy
+@inject IEnumerable<IStrategyExporter> Exporters
+@inject ISnackbar Snackbar
+@inject IJSRuntime JS
+
+<MudPaper Outlined="true" Class="pa-4 mb-4">
+    <MudText Typo="Typo.subtitle2" Class="text-muted mb-3">EXPORT STRATEGY</MudText>
+
+    <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center" Class="mb-3">
+        <MudSelect T="ExportFormat" @bind-Value="_selectedFormat" Label="Export Format"
+                   Variant="Variant.Outlined" Style="max-width:200px">
+            <MudSelectItem Value="ExportFormat.MQL4">MQL4 (.mq4)</MudSelectItem>
+            <MudSelectItem Value="ExportFormat.MQL5">MQL5 (.mq5)</MudSelectItem>
+            <MudSelectItem Value="ExportFormat.PineScript">PineScript (.pine)</MudSelectItem>
+        </MudSelect>
+
+        <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                   OnClick="ExportStrategy" Disabled="_exporting"
+                   StartIcon="@Icons.Material.Filled.Code">
+            @(_exporting ? "Exporting..." : "Export")
+        </MudButton>
+    </MudStack>
+
+    @if (_exporting)
+    {
+        <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="mb-3" />
+    }
+
+    @if (_error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-3" Dense="true">@_error</MudAlert>
+    }
+
+    @if (_exportResult is not null)
+    {
+        @if (_exportResult.Warnings.Count > 0)
+        {
+            <MudAlert Severity="Severity.Warning" Class="mb-3" Dense="true">
+                <MudText Typo="Typo.subtitle2">Export Warnings</MudText>
+                <ul>
+                    @foreach (var warning in _exportResult.Warnings)
+                    {
+                        <li><MudText Typo="Typo.body2">@warning</MudText></li>
+                    }
+                </ul>
+            </MudAlert>
+        }
+
+        <MudTextField Value="@_exportResult.Code"
+                      Label="@($"Generated Code ({_exportResult.FileName})")"
+                      Lines="15"
+                      ReadOnly="true"
+                      Variant="Variant.Outlined"
+                      Class="mb-3"
+                      Style="font-family: 'Cascadia Code', 'Fira Code', monospace; font-size: 0.85rem;"
+                      aria-label="Generated export code" />
+
+        <MudStack Row="true" Spacing="2">
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary"
+                       StartIcon="@Icons.Material.Filled.ContentCopy"
+                       OnClick="CopyToClipboard">
+                Copy to Clipboard
+            </MudButton>
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary"
+                       StartIcon="@Icons.Material.Filled.Download"
+                       OnClick="DownloadFile">
+                Download
+            </MudButton>
+        </MudStack>
+    }
+</MudPaper>
+
+@code {
+    [Parameter] public StrategyVersion? Version { get; set; }
+
+    private ExportFormat _selectedFormat = ExportFormat.MQL4;
+    private bool _exporting;
+    private string? _error;
+    private ExportResult? _exportResult;
+
+    private async Task ExportStrategy()
+    {
+        if (Version is null) return;
+
+        _exporting = true;
+        _error = null;
+        _exportResult = null;
+        StateHasChanged();
+
+        try
+        {
+            var exporter = Exporters.FirstOrDefault(e => e.Format == _selectedFormat);
+            if (exporter is null)
+            {
+                _error = $"No exporter available for format {_selectedFormat}";
+                return;
+            }
+
+            _exportResult = await exporter.ExportAsync(Version, CancellationToken.None);
+
+            if (string.IsNullOrEmpty(_exportResult.Code) && _exportResult.Warnings.Count > 0)
+            {
+                _error = "Export produced no code. See warnings above.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = $"Export failed: {ex.Message}";
+        }
+        finally
+        {
+            _exporting = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task CopyToClipboard()
+    {
+        if (_exportResult?.Code is null) return;
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", _exportResult.Code);
+            Snackbar.Add("Code copied to clipboard", Severity.Success);
+        }
+        catch
+        {
+            Snackbar.Add("Failed to copy — use Ctrl+A then Ctrl+C in the code field", Severity.Warning);
+        }
+    }
+
+    private async Task DownloadFile()
+    {
+        if (_exportResult is null) return;
+        try
+        {
+            var bytes = System.Text.Encoding.UTF8.GetBytes(_exportResult.Code);
+            var base64 = Convert.ToBase64String(bytes);
+            await JS.InvokeVoidAsync("eval",
+                $"var a=document.createElement('a');a.href='data:text/plain;base64,{base64}';a.download='{_exportResult.FileName}';document.body.appendChild(a);a.click();document.body.removeChild(a);");
+            Snackbar.Add($"Downloaded {_exportResult.FileName}", Severity.Success);
+        }
+        catch
+        {
+            Snackbar.Add("Download failed — try copying the code instead", Severity.Warning);
+        }
+    }
+}

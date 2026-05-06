@@ -45,5 +45,10 @@ if (app.Environment.IsDevelopment())
 app.MapScenarioEndpoints();
 app.MapJobEndpoints();
 app.MapDiscoveryEndpoints();
+app.MapStrategyEndpoints();
+app.MapPortfolioEndpoints();
 
 app.Run();
+
+/// <summary>Partial class declaration to enable WebApplicationFactory in integration tests.</summary>
+public partial class Program { }

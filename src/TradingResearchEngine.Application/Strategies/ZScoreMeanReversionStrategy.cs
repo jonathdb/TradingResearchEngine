@@ -1,4 +1,7 @@
+using Skender.Stock.Indicators;
+using TradingResearchEngine.Application.Indicators;
 using TradingResearchEngine.Application.Strategy;
+using TradingResearchEngine.Core.DataHandling;
 using TradingResearchEngine.Core.Events;
 using TradingResearchEngine.Core.Indicators;
 using TradingResearchEngine.Core.Strategy;
@@ -11,6 +14,9 @@ namespace TradingResearchEngine.Application.Strategies;
 /// Computes a rolling z-score of close price: z = (Close - SMA) / StdDev.
 /// Buys when z drops below -entryThreshold (price is abnormally low),
 /// sells when z rises above exitThreshold (reversion complete).
+///
+/// Uses <see cref="SmaIndicator"/> and <see cref="BollingerBandsIndicator"/> wrappers
+/// backed by Skender.Stock.Indicators for indicator computation.
 ///
 /// Hypothesis: Short-term price dislocations around a rolling equilibrium
 /// tend to mean-revert in non-trending regimes.
@@ -48,11 +54,34 @@ public sealed class ZScoreMeanReversionStrategy : IStrategy
     {
         if (evt is not BarEvent bar) return Array.Empty<EngineEvent>();
 
+<<<<<<< HEAD
         _zScore.Update(bar.Close);
 
         if (!_zScore.IsReady) return Array.Empty<EngineEvent>();
 
         decimal zScoreValue = _zScore.Value!.Value;
+=======
+        var barRecord = new BarRecord(
+            bar.Symbol, bar.Interval, bar.Open, bar.High, bar.Low, bar.Close, bar.Volume, bar.Timestamp);
+
+        _bollinger.Add(barRecord);
+
+        if (!_bollinger.IsWarm)
+            return Array.Empty<EngineEvent>();
+
+        var result = _bollinger.Results[^1];
+
+        if (result.Sma is null || result.UpperBand is null)
+            return Array.Empty<EngineEvent>();
+
+        decimal sma = (decimal)result.Sma.Value;
+        // StdDev = UpperBand - Sma (since we used multiplier=1.0)
+        decimal stdDev = (decimal)(result.UpperBand.Value - result.Sma.Value);
+
+        if (stdDev <= 0m) return Array.Empty<EngineEvent>();
+
+        decimal zScore = (bar.Close - sma) / stdDev;
+>>>>>>> origin/feature/composite-strategy-engine
 
         // Entry: z < -entryThreshold → buy (price abnormally low, expect reversion up)
         if (zScoreValue < -_entryThreshold && _position != Direction.Long)

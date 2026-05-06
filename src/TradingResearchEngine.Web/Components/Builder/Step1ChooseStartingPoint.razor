@@ -1,4 +1,6 @@
-@* Step 1: Choose Starting Point — Template, Fork, Blank, Import *@
+@* Step 1: Choose Starting Point — Template, Fork, Blank, Import, AI *@
+@using TradingResearchEngine.Application.AI
+@inject IDialogService DialogService
 
 <MudText Typo="Typo.h6" Class="mb-3">Choose a Starting Point</MudText>
 
@@ -22,6 +24,12 @@
                Color="Color.Primary" OnClick="@(() => SetSource(SourceType.Import))"
                aria-label="Import from JSON">
         Import
+    </MudButton>
+    <MudButton Variant="Variant.Outlined" Color="Color.Secondary"
+               StartIcon="@Icons.Material.Filled.AutoAwesome"
+               OnClick="OpenAIAssistant"
+               aria-label="Generate strategy with AI Assistant">
+        AI Assistant
     </MudButton>
 </MudStack>
 
@@ -153,5 +161,24 @@ else if (Model.SourceType == SourceType.Manual)
     {
         _importJson = value;
         await OnImportJsonChanged.InvokeAsync(value);
+    }
+
+    private async Task OpenAIAssistant()
+    {
+        var options = new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<AIAssistantDialog>("AI Strategy Assistant", options);
+        var result = await dialog.Result;
+
+        if (result is not null && !result.Canceled && result.Data is AIStrategyDraft draft)
+        {
+            // Inject AI draft fields into the builder form
+            Model.SourceType = SourceType.AIGenerated;
+            Model.StrategyType = draft.StrategyType;
+            Model.StrategyName = draft.StrategyName;
+            Model.Hypothesis = draft.Hypothesis;
+            Model.Parameters = new Dictionary<string, object>(draft.Parameters);
+            Model.IsDirty = true;
+            await OnModelChanged.InvokeAsync();
+        }
     }
 }

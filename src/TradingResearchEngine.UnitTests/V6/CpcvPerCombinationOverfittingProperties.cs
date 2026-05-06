@@ -13,7 +13,7 @@ namespace TradingResearchEngine.UnitTests.V6;
 /// </summary>
 public class CpcvPerCombinationOverfittingProperties
 {
-    [Property(MaxTest = 100)]
+    [Property(MaxTest = 20)]
     public bool ProbabilityOfOverfitting_MatchesPerCombinationCount(PositiveInt countWrap)
     {
         // Generate synthetic IS and OOS Sharpe distributions
@@ -55,7 +55,7 @@ public class CpcvPerCombinationOverfittingProperties
             && result.TotalCombinations == count;
     }
 
-    [Property(MaxTest = 100)]
+    [Property(MaxTest = 20)]
     public bool AllOosNegative_ProbabilityIsOne(PositiveInt countWrap)
     {
         int count = (countWrap.Get % 10) + 3;

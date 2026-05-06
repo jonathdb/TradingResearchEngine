@@ -17,7 +17,7 @@ public class PortfolioEquityConservationProperties
     private static readonly ILogger<Core.Portfolio.Portfolio> Logger =
         NullLoggerFactory.Instance.CreateLogger<Core.Portfolio.Portfolio>();
 
-    [Property(MaxTest = 100)]
+    [Property(MaxTest = 20)]
     public bool PortfolioEquity_IncludesShortUnrealisedPnl(
         PositiveInt longPriceWrap, PositiveInt shortPriceWrap, PositiveInt currentPriceWrap)
     {

@@ -9,6 +9,20 @@
 
 <MudText Typo="Typo.h4" Class="mb-4">New Backtest Run</MudText>
 
+@* Mode Toggle: Single Symbol vs Portfolio *@
+<MudStack Row="true" Spacing="2" Class="mb-4" AlignItems="AlignItems.Center">
+    <MudToggleGroup T="string" @bind-Value="_mode" Color="Color.Primary">
+        <MudToggleItem Value="@("single")" Text="Single Symbol" />
+        <MudToggleItem Value="@("portfolio")" Text="Portfolio (Multi-Symbol)" />
+    </MudToggleGroup>
+</MudStack>
+
+@if (_mode == "portfolio")
+{
+    <PortfolioRunSetup />
+}
+else
+{
 <MudGrid>
     @* Left column: Configuration *@
     <MudItem xs="12" md="8">
@@ -166,11 +180,13 @@
         }
     </MudItem>
 </MudGrid>
+} @* end single-symbol mode *@
 
 @code {
     [SupplyParameterFromQuery] public string? Strategy { get; set; }
     [SupplyParameterFromQuery] public string? Config { get; set; }
 
+    private string _mode = "single";
     private string _strategyType = "";
     private string _dataProviderType = "csv";
     private string _filePath = "samples/data/spy-daily.csv";

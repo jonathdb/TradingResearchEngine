@@ -15,8 +15,11 @@ using TradingResearchEngine.Infrastructure.DataProviders;
 using TradingResearchEngine.Infrastructure.Persistence;
 using TradingResearchEngine.Infrastructure.Reporting;
 using TradingResearchEngine.Infrastructure.TickImport;
+using TradingResearchEngine.Application.Export;
+using TradingResearchEngine.Application.PaperTrading;
 using TradingResearchEngine.Application.PropFirm;
 using TradingResearchEngine.Application.Research;
+using TradingResearchEngine.Infrastructure.Export;
 
 namespace TradingResearchEngine.Infrastructure;
 
@@ -232,6 +235,54 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<TickImportService>();
         services.AddSingleton<TimeframeGeneratorService>();
 
+        // V8: Strategy exporters (keyed by format)
+        services.AddSingleton<IStrategyExporter, MQL4StrategyExporter>();
+        services.AddSingleton<IStrategyExporter, MQL5StrategyExporter>();
+        services.AddSingleton<IStrategyExporter, PineScriptExporter>();
+
+        // V8: Streaming data provider (wraps the default IDataProvider)
+        services.AddSingleton<IStreamingDataProvider>(sp =>
+        {
+            var inner = sp.GetRequiredService<IDataProvider>();
+            var logger = sp.GetRequiredService<ILogger<PollingStreamingDataProvider>>();
+            return new PollingStreamingDataProvider(inner, TimeSpan.FromSeconds(1), 1.0, logger);
+        });
+
+        // V8: AI Strategy Assistant — override Application's disabled fallback when API key is configured
+        services.AddSingleton<IGeminiClient>(sp =>
+        {
+            var options = sp.GetRequiredService<IOptions<GeminiOptions>>().Value;
+            if (string.IsNullOrWhiteSpace(options.ApiKey))
+            {
+                // Return a no-op client that will never be called (assistant is disabled)
+                return new NoOpGeminiClient();
+            }
+            var logger = sp.GetRequiredService<ILogger<GeminiClient>>();
+            return new GeminiClient(Options.Create(options), logger);
+        });
+
+        // Override the Application-layer disabled fallback with the real implementation when API key is present
+        services.AddSingleton<IAIStrategyAssistant>(sp =>
+        {
+            var options = sp.GetRequiredService<IOptions<GeminiOptions>>().Value;
+            var logger = sp.GetRequiredService<ILogger<GeminiStrategyAssistant>>();
+
+            if (string.IsNullOrWhiteSpace(options.ApiKey))
+            {
+                logger.LogWarning("Gemini API key is not configured. AI strategy assistant features are disabled.");
+                return new DisabledInfrastructureAIAssistant();
+            }
+
+            var registry = sp.GetRequiredService<TradingResearchEngine.Application.Strategy.StrategyRegistry>();
+            var geminiClient = sp.GetRequiredService<IGeminiClient>();
+            return new GeminiStrategyAssistant(
+                Options.Create(options), registry, logger, geminiClient);
+        });
+
+        // V8: Paper session record repository
+        services.AddSingleton<IRepository<PaperSessionRecord>,
+            JsonFileRepository<PaperSessionRecord>>();
+
         return services;
     }
 
@@ -255,5 +306,27 @@ public static class ServiceCollectionExtensions
         {
             providers.Add(provider);
         }
+    }
+
+    /// <summary>No-op Gemini client for when API key is not configured.</summary>
+    private sealed class NoOpGeminiClient : IGeminiClient
+    {
+        public Task<string> GenerateJsonAsync(string systemPrompt, string userMessage, CancellationToken ct)
+            => throw new InvalidOperationException("Gemini client is not configured.");
+    }
+
+    /// <summary>Disabled AI assistant fallback for Infrastructure layer.</summary>
+    private sealed class DisabledInfrastructureAIAssistant : IAIStrategyAssistant
+    {
+        public Task<Application.AI.AIStrategyDraft> GenerateStrategyAsync(string naturalLanguagePrompt, CancellationToken ct)
+            => throw new InvalidOperationException(
+                "AI strategy assistant is disabled. Configure a valid Gemini API key in GeminiOptions to enable this feature.");
+
+        public Task<Application.AI.AIStrategyDraft> RefineStrategyAsync(
+            Application.AI.AIStrategyDraft current, Core.Results.BacktestResult lastResult,
+            string refinementPrompt, CancellationToken ct)
+            => throw new InvalidOperationException(
+                "AI strategy assistant is disabled. Configure a valid Gemini API key in GeminiOptions to enable this feature.");
+    }
     }
 }

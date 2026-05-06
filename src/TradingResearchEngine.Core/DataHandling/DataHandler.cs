@@ -16,6 +16,7 @@ public sealed class DataHandler
     private readonly IDataProvider _provider;
     private readonly ScenarioConfig _config;
     private readonly ILogger<DataHandler> _logger;
+    private readonly BarDataPool? _barDataPool;
     private readonly IAsyncEnumerator<BarRecord>? _barEnumerator;
     private readonly IAsyncEnumerator<TickRecord>? _tickEnumerator;
     private bool _hasMore = true;
@@ -30,11 +31,16 @@ public sealed class DataHandler
     /// Initialises the handler. Throws <see cref="ConfigurationException"/> when
     /// <see cref="ReplayMode.Tick"/> is requested but the provider only supplies bars.
     /// </summary>
-    public DataHandler(IDataProvider provider, ScenarioConfig config, ILogger<DataHandler> logger)
+    /// <param name="provider">The data provider to read bars/ticks from.</param>
+    /// <param name="config">Scenario configuration controlling replay mode and data options.</param>
+    /// <param name="logger">Logger for diagnostics.</param>
+    /// <param name="barDataPool">Optional object pool for reducing hot-path allocations. Transparent to callers.</param>
+    public DataHandler(IDataProvider provider, ScenarioConfig config, ILogger<DataHandler> logger, BarDataPool? barDataPool = null)
     {
         _provider = provider;
         _config = config;
         _logger = logger;
+        _barDataPool = barDataPool;
 
         var opts = config.DataProviderOptions;
         string symbol = opts.TryGetValue("Symbol", out var s) ? s?.ToString() ?? "" : "";

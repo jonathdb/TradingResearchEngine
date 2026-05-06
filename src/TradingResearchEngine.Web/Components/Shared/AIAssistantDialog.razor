@@ -1,0 +1,137 @@
+@* AI Strategy Assistant Dialog — generates strategy drafts from natural language *@
+@rendermode InteractiveServer
+@using TradingResearchEngine.Application.AI
+@inject IAIStrategyAssistant AIAssistant
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <TitleContent>
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudIcon Icon="@Icons.Material.Filled.AutoAwesome" Color="Color.Primary" />
+            <MudText Typo="Typo.h6">AI Strategy Assistant</MudText>
+        </MudStack>
+    </TitleContent>
+    <DialogContent>
+        <MudText Typo="Typo.body2" Class="mb-3 text-muted">
+            Describe your trading idea in natural language. The AI will generate a structured strategy draft.
+        </MudText>
+
+        <MudTextField @bind-Value="_prompt"
+                      Label="Describe your strategy idea"
+                      Placeholder="e.g. A trend-following strategy that uses moving average crossovers on daily SPY data with ATR-based position sizing..."
+                      Lines="5"
+                      Variant="Variant.Outlined"
+                      Class="mb-3"
+                      Disabled="_generating"
+                      aria-label="Natural language strategy prompt" />
+
+        @if (_generating)
+        {
+            <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="mb-3" />
+            <MudText Typo="Typo.body2" Class="text-muted">Generating strategy draft...</MudText>
+        }
+
+        @if (_error is not null)
+        {
+            <MudAlert Severity="Severity.Error" Class="mb-3" Dense="true">@_error</MudAlert>
+        }
+
+        @if (_draft is not null)
+        {
+            <MudAlert Severity="Severity.Info" Class="mb-3" Dense="true">
+                <MudText Typo="Typo.subtitle2">Rationale</MudText>
+                <MudText Typo="Typo.body2">@_draft.Rationale</MudText>
+            </MudAlert>
+
+            @if (_draft.Caveats.Count > 0)
+            {
+                <MudAlert Severity="Severity.Warning" Class="mb-3" Dense="true">
+                    <MudText Typo="Typo.subtitle2">Caveats</MudText>
+                    <ul>
+                        @foreach (var caveat in _draft.Caveats)
+                        {
+                            <li><MudText Typo="Typo.body2">@caveat</MudText></li>
+                        }
+                    </ul>
+                </MudAlert>
+            }
+
+            <MudSimpleTable Dense="true" Class="mb-3">
+                <tbody>
+                    <tr><td class="text-muted">Strategy Name</td><td>@_draft.StrategyName</td></tr>
+                    <tr><td class="text-muted">Strategy Type</td><td>@_draft.StrategyType</td></tr>
+                    <tr><td class="text-muted">Hypothesis</td><td>@_draft.Hypothesis</td></tr>
+                </tbody>
+            </MudSimpleTable>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" Disabled="_generating">Cancel</MudButton>
+        @if (_draft is null)
+        {
+            <MudButton Color="Color.Primary" Variant="Variant.Filled"
+                       OnClick="Generate" Disabled="@(string.IsNullOrWhiteSpace(_prompt) || _generating)"
+                       StartIcon="@Icons.Material.Filled.AutoAwesome">
+                Generate
+            </MudButton>
+        }
+        else
+        {
+            <MudButton Color="Color.Primary" Variant="Variant.Filled"
+                       OnClick="ApplyDraft"
+                       StartIcon="@Icons.Material.Filled.Check">
+                Apply to Builder
+            </MudButton>
+        }
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = default!;
+
+    private string _prompt = "";
+    private bool _generating;
+    private string? _error;
+    private AIStrategyDraft? _draft;
+    private CancellationTokenSource? _cts;
+
+    private async Task Generate()
+    {
+        _generating = true;
+        _error = null;
+        _draft = null;
+        _cts = new CancellationTokenSource();
+        StateHasChanged();
+
+        try
+        {
+            _draft = await AIAssistant.GenerateStrategyAsync(_prompt, _cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            _error = "Generation was cancelled.";
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to generate strategy: {ex.Message}";
+        }
+        finally
+        {
+            _generating = false;
+            _cts?.Dispose();
+            _cts = null;
+            StateHasChanged();
+        }
+    }
+
+    private void ApplyDraft()
+    {
+        MudDialog.Close(DialogResult.Ok(_draft));
+    }
+
+    private void Cancel()
+    {
+        _cts?.Cancel();
+        MudDialog.Cancel();
+    }
+}

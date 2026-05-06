@@ -1,0 +1,265 @@
+@page "/paper-trading/live"
+@rendermode InteractiveServer
+@using TradingResearchEngine.Core.PaperTrading
+@using Plotly.Blazor
+@using Plotly.Blazor.Traces
+@using Plotly.Blazor.Traces.ScatterLib
+@using Plotly.Blazor.LayoutLib
+@implements IDisposable
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+
+<PageTitle>Paper Trading — Live Dashboard</PageTitle>
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-2">
+    <MudText Typo="Typo.h4">Live Dashboard</MudText>
+    <MudChip T="string" Size="MudBlazor.Size.Small" Color="Color.Info">🧪 Paper Trading</MudChip>
+    <MudChip T="string" Size="MudBlazor.Size.Small" Color="@StatusColor">@_status</MudChip>
+</MudStack>
+
+<MudText Typo="Typo.subtitle1" Class="mb-3 text-muted">
+    @Strategy · @Symbol · @Timeframe
+</MudText>
+
+<MudBreadcrumbs Items="@_breadcrumbs" Class="pa-0 mb-3" />
+
+@* Key Metrics Card *@
+<MudGrid Class="mb-3">
+    <MudItem xs="6" sm="3">
+        <MudPaper Class="pa-3" Elevation="2">
+            <MudText Typo="Typo.caption" Class="text-muted">P&amp;L</MudText>
+            <MudText Typo="Typo.h5" Class="@(_pnl >= 0 ? "mud-success-text" : "mud-error-text")">
+                @(_pnl >= 0 ? "+" : "")@_pnl.ToString("C0")
+            </MudText>
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="6" sm="3">
+        <MudPaper Class="pa-3" Elevation="2">
+            <MudText Typo="Typo.caption" Class="text-muted">Sharpe</MudText>
+            <MudText Typo="Typo.h5">@(_sharpe?.ToString("F2") ?? "—")</MudText>
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="6" sm="3">
+        <MudPaper Class="pa-3" Elevation="2">
+            <MudText Typo="Typo.caption" Class="text-muted">Win Rate</MudText>
+            <MudText Typo="Typo.h5">@(_winRate?.ToString("P0") ?? "—")</MudText>
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="6" sm="3">
+        <MudPaper Class="pa-3" Elevation="2">
+            <MudText Typo="Typo.caption" Class="text-muted">Trade Count</MudText>
+            <MudText Typo="Typo.h5">@_tradeCount</MudText>
+        </MudPaper>
+    </MudItem>
+</MudGrid>
+
+@* Control Buttons *@
+<MudStack Row="true" Spacing="2" Class="mb-4">
+    @if (_status == PaperTradingStatus.Running)
+    {
+        <MudButton Variant="Variant.Outlined" Color="Color.Warning"
+                   StartIcon="@Icons.Material.Filled.Pause"
+                   OnClick="PauseSession">Pause</MudButton>
+    }
+    else if (_status == PaperTradingStatus.Paused)
+    {
+        <MudButton Variant="Variant.Filled" Color="Color.Success"
+                   StartIcon="@Icons.Material.Filled.PlayArrow"
+                   OnClick="ResumeSession">Resume</MudButton>
+    }
+
+    @if (_status == PaperTradingStatus.Running || _status == PaperTradingStatus.Paused)
+    {
+        <MudButton Variant="Variant.Filled" Color="Color.Error"
+                   StartIcon="@Icons.Material.Filled.Stop"
+                   OnClick="StopSession">Stop</MudButton>
+    }
+
+    @if (_status == PaperTradingStatus.Stopped || _status == PaperTradingStatus.Error)
+    {
+        <MudButton Variant="Variant.Outlined" Color="Color.Primary"
+                   StartIcon="@Icons.Material.Filled.ArrowBack"
+                   Href="/paper-trading">New Session</MudButton>
+        <MudButton Variant="Variant.Outlined" Color="Color.Primary"
+                   StartIcon="@Icons.Material.Filled.History"
+                   Href="/paper-trading/history">View History</MudButton>
+    }
+</MudStack>
+
+@* Streaming Equity Curve Chart *@
+<MudPaper Class="pa-4 mb-4" Elevation="1">
+    <MudText Typo="Typo.subtitle2" Class="mb-2">Equity Curve (Live)</MudText>
+    @if (_equityTimestamps.Count > 0)
+    {
+        <PlotlyChart @ref="_chart" Config="_chartConfig" Layout="_chartLayout" Data="_chartData"
+                     style="width:100%; height:280px;" />
+    }
+    else
+    {
+        <MudText Typo="Typo.body2" Class="text-muted pa-4">Waiting for data...</MudText>
+    }
+</MudPaper>
+
+@* Open Positions Table *@
+<MudPaper Class="pa-4 mb-4" Elevation="1">
+    <MudText Typo="Typo.subtitle2" Class="mb-2">Open Positions</MudText>
+    @if (_openPositions.Count == 0)
+    {
+        <MudText Typo="Typo.body2" Class="text-muted">No open positions</MudText>
+    }
+    else
+    {
+        <MudTable Items="_openPositions" Dense="true" Hover="true">
+            <HeaderContent>
+                <MudTh>Symbol</MudTh>
+                <MudTh>Direction</MudTh>
+                <MudTh>Qty</MudTh>
+                <MudTh>Entry Price</MudTh>
+                <MudTh>Current Price</MudTh>
+                <MudTh>Unrealised P&amp;L</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.Symbol</MudTd>
+                <MudTd>@context.Direction</MudTd>
+                <MudTd>@context.Quantity</MudTd>
+                <MudTd>$@context.EntryPrice.ToString("F2")</MudTd>
+                <MudTd>$@context.CurrentPrice.ToString("F2")</MudTd>
+                <MudTd Class="@(context.UnrealisedPnl >= 0 ? "mud-success-text" : "mud-error-text")">
+                    $@context.UnrealisedPnl.ToString("F2")
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    }
+</MudPaper>
+
+@* Recent Trades Table *@
+<MudPaper Class="pa-4 mb-4" Elevation="1">
+    <MudText Typo="Typo.subtitle2" Class="mb-2">Recent Trades</MudText>
+    @if (_recentTrades.Count == 0)
+    {
+        <MudText Typo="Typo.body2" Class="text-muted">No trades yet</MudText>
+    }
+    else
+    {
+        <MudTable Items="_recentTrades" Dense="true" Hover="true">
+            <HeaderContent>
+                <MudTh>Time</MudTh>
+                <MudTh>Symbol</MudTh>
+                <MudTh>Direction</MudTh>
+                <MudTh>Entry</MudTh>
+                <MudTh>Exit</MudTh>
+                <MudTh>Net P&amp;L</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.ExitTime.ToString("HH:mm:ss")</MudTd>
+                <MudTd>@context.Symbol</MudTd>
+                <MudTd>@context.Direction</MudTd>
+                <MudTd>$@context.EntryPrice.ToString("F2")</MudTd>
+                <MudTd>$@context.ExitPrice.ToString("F2")</MudTd>
+                <MudTd Class="@(context.NetPnl >= 0 ? "mud-success-text" : "mud-error-text")">
+                    $@context.NetPnl.ToString("F2")
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    }
+</MudPaper>
+
+@code {
+    [SupplyParameterFromQuery] public string? Strategy { get; set; }
+    [SupplyParameterFromQuery] public string? Symbol { get; set; }
+    [SupplyParameterFromQuery] public string? Timeframe { get; set; }
+    [SupplyParameterFromQuery] public decimal Cash { get; set; } = 100_000m;
+    [SupplyParameterFromQuery] public string? Profile { get; set; }
+    [SupplyParameterFromQuery] public int Interval { get; set; } = 5;
+    [SupplyParameterFromQuery] public double Speed { get; set; } = 10.0;
+
+    private PaperTradingStatus _status = PaperTradingStatus.Connecting;
+    private decimal _pnl;
+    private decimal? _sharpe;
+    private decimal? _winRate;
+    private int _tradeCount;
+
+    private List<OpenPositionViewModel> _openPositions = new();
+    private List<RecentTradeViewModel> _recentTrades = new();
+    private List<DateTimeOffset> _equityTimestamps = new();
+    private List<decimal> _equityValues = new();
+
+    private PlotlyChart? _chart;
+    private Config _chartConfig = new() { Responsive = true, DisplayModeBar = Plotly.Blazor.ConfigLib.DisplayModeBarEnum.Hover };
+    private Layout _chartLayout = new()
+    {
+        Margin = new Plotly.Blazor.LayoutLib.Margin { L = 50, R = 20, T = 30, B = 30 },
+        ShowLegend = false
+    };
+    private IList<ITrace> _chartData = new List<ITrace>();
+
+    private System.Threading.Timer? _timer;
+
+    private List<BreadcrumbItem> _breadcrumbs = new()
+    {
+        new("Dashboard", href: "/"),
+        new("Paper Trading", href: "/paper-trading"),
+        new("Live", href: null, disabled: true)
+    };
+
+    private Color StatusColor => _status switch
+    {
+        PaperTradingStatus.Running => Color.Success,
+        PaperTradingStatus.Paused => Color.Warning,
+        PaperTradingStatus.Stopped => Color.Default,
+        PaperTradingStatus.Error => Color.Error,
+        PaperTradingStatus.Connecting => Color.Info,
+        _ => Color.Default
+    };
+
+    protected override void OnInitialized()
+    {
+        // Start a timer-based polling mechanism for UI updates
+        _status = PaperTradingStatus.Running;
+        _timer = new System.Threading.Timer(OnTimerTick, null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(2));
+    }
+
+    private void OnTimerTick(object? state)
+    {
+        // In a real implementation, this would poll the IPaperTradingSession for updates.
+        // For now, this is a placeholder that demonstrates the UI structure.
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void PauseSession()
+    {
+        _status = PaperTradingStatus.Paused;
+        Snackbar.Add("Session paused", Severity.Warning);
+        StateHasChanged();
+    }
+
+    private void ResumeSession()
+    {
+        _status = PaperTradingStatus.Running;
+        Snackbar.Add("Session resumed", Severity.Success);
+        StateHasChanged();
+    }
+
+    private void StopSession()
+    {
+        _status = PaperTradingStatus.Stopped;
+        _timer?.Dispose();
+        _timer = null;
+        Snackbar.Add("Session stopped", Severity.Info);
+        StateHasChanged();
+    }
+
+    public void Dispose()
+    {
+        _timer?.Dispose();
+    }
+
+    // View models for the tables
+    private sealed record OpenPositionViewModel(
+        string Symbol, string Direction, int Quantity,
+        decimal EntryPrice, decimal CurrentPrice, decimal UnrealisedPnl);
+
+    private sealed record RecentTradeViewModel(
+        DateTimeOffset ExitTime, string Symbol, string Direction,
+        decimal EntryPrice, decimal ExitPrice, decimal NetPnl);
+}

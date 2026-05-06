@@ -1,14 +1,20 @@
 using System.Reflection;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using TradingResearchEngine.Application.AI;
 using TradingResearchEngine.Application.Configuration;
 using TradingResearchEngine.Application.Engine;
 using TradingResearchEngine.Application.Execution;
+using TradingResearchEngine.Application.Export;
+using TradingResearchEngine.Application.PaperTrading;
+using TradingResearchEngine.Application.Portfolio;
 using TradingResearchEngine.Application.PropFirm;
 using TradingResearchEngine.Application.Research;
 using TradingResearchEngine.Application.Risk;
 using TradingResearchEngine.Application.Strategy;
+using TradingResearchEngine.Core.DataHandling;
 using TradingResearchEngine.Core.Engine;
 using TradingResearchEngine.Core.Execution;
 using TradingResearchEngine.Core.Risk;
@@ -32,6 +38,9 @@ public static class ServiceCollectionExtensions
         services.Configure<RepositoryOptions>(configuration.GetSection("Repository"));
         services.Configure<SweepOptions>(configuration.GetSection("Sweep"));
         services.Configure<WalkForwardOptions>(configuration.GetSection("WalkForward"));
+
+        // V8: Bind GeminiOptions from configuration
+        services.Configure<GeminiOptions>(configuration.GetSection("Gemini"));
 
         services.AddSingleton<StrategyRegistry>(sp =>
         {
@@ -85,6 +94,29 @@ public static class ServiceCollectionExtensions
         // V4: Background study service (singleton — manages study lifecycle across navigations)
         services.AddSingleton<BackgroundStudyService>();
 
+        // V8: Portfolio backtest runner
+        services.AddScoped<PortfolioBacktestRunner>();
+
+        // V8: BarDataPool singleton for hot-path allocation reduction
+        services.AddSingleton<BarDataPool>();
+
+        // V8: AI Strategy Assistant — conditionally registered based on API key availability
+        services.AddSingleton<IAIStrategyAssistant>(sp =>
+        {
+            var geminiOptions = sp.GetRequiredService<IOptions<GeminiOptions>>().Value;
+            var logger = sp.GetRequiredService<ILogger<DisabledAIStrategyAssistant>>();
+
+            if (string.IsNullOrWhiteSpace(geminiOptions.ApiKey))
+            {
+                logger.LogWarning("Gemini API key is not configured. AI strategy assistant features are disabled.");
+                return new DisabledAIStrategyAssistant();
+            }
+
+            // Actual implementation is registered by Infrastructure layer
+            // This fallback ensures graceful degradation when Infrastructure hasn't registered one
+            return new DisabledAIStrategyAssistant();
+        });
+
         return services;
     }
 
@@ -109,4 +141,21 @@ public sealed class StrategyRegistryOptions
 {
     /// <summary>Assemblies to scan for IStrategy implementations.</summary>
     public List<Assembly> Assemblies { get; } = new();
+}
+
+/// <summary>
+/// No-op AI strategy assistant used when the Gemini API key is not configured.
+/// Throws descriptive errors when invoked, allowing the application to start without crashing.
+/// </summary>
+internal sealed class DisabledAIStrategyAssistant : IAIStrategyAssistant
+{
+    public Task<AIStrategyDraft> GenerateStrategyAsync(string naturalLanguagePrompt, CancellationToken ct)
+        => throw new InvalidOperationException(
+            "AI strategy assistant is disabled. Configure a valid Gemini API key in GeminiOptions to enable this feature.");
+
+    public Task<AIStrategyDraft> RefineStrategyAsync(
+        AIStrategyDraft current, Core.Results.BacktestResult lastResult,
+        string refinementPrompt, CancellationToken ct)
+        => throw new InvalidOperationException(
+            "AI strategy assistant is disabled. Configure a valid Gemini API key in GeminiOptions to enable this feature.");
 }

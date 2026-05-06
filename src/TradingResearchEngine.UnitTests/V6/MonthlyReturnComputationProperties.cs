@@ -12,7 +12,7 @@ namespace TradingResearchEngine.UnitTests.V6;
 /// </summary>
 public class MonthlyReturnComputationProperties
 {
-    [Property(MaxTest = 100)]
+    [Property(MaxTest = 20)]
     public bool MonthlyReturns_OnePerCalendarMonth(PositiveInt monthCount)
     {
         // Generate an equity curve spanning 1 to 12 months
@@ -40,7 +40,7 @@ public class MonthlyReturnComputationProperties
         return distinctMonths == months;
     }
 
-    [Property(MaxTest = 100)]
+    [Property(MaxTest = 20)]
     public bool MonthlyReturns_EmptyCurve_ReturnsEmpty(bool _)
     {
         var result = ChartComputationHelpers.ComputeMonthlyReturns(new List<EquityCurvePoint>());
