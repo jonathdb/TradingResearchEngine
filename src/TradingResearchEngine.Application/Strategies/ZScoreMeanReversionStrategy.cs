@@ -1,15 +1,22 @@
+using Skender.Stock.Indicators;
+using TradingResearchEngine.Application.Indicators;
 using TradingResearchEngine.Application.Strategy;
+using TradingResearchEngine.Core.DataHandling;
 using TradingResearchEngine.Core.Events;
 using TradingResearchEngine.Core.Strategy;
 
 namespace TradingResearchEngine.Application.Strategies;
 
 /// <summary>
-/// Z-score mean reversion strategy using O(1) rolling sum accumulators.
+/// Z-score mean reversion strategy using <see cref="BollingerBandsIndicator"/> for
+/// SMA and standard deviation computation.
 ///
 /// Computes a rolling z-score of close price: z = (Close - SMA) / StdDev.
 /// Buys when z drops below -entryThreshold (price is abnormally low),
 /// sells when z rises above exitThreshold (reversion complete).
+///
+/// Uses <see cref="SmaIndicator"/> and <see cref="BollingerBandsIndicator"/> wrappers
+/// backed by Skender.Stock.Indicators for indicator computation.
 ///
 /// Hypothesis: Short-term price dislocations around a rolling equilibrium
 /// tend to mean-revert in non-trending regimes.
@@ -20,9 +27,7 @@ public sealed class ZScoreMeanReversionStrategy : IStrategy
     private readonly int _lookback;
     private readonly decimal _entryThreshold;
     private readonly decimal _exitThreshold;
-    private readonly List<decimal> _closes = new();
-    private decimal _sum;
-    private decimal _sumSq;
+    private readonly BollingerBandsIndicator _bollinger;
     private Direction _position = Direction.Flat;
 
     /// <summary>Creates a z-score mean reversion strategy.</summary>
@@ -43,6 +48,8 @@ public sealed class ZScoreMeanReversionStrategy : IStrategy
         _lookback = lookback;
         _entryThreshold = entryThreshold;
         _exitThreshold = exitThreshold;
+        // Use standardDeviations=1.0 so UpperBand = SMA + 1*StdDev, giving us direct access to StdDev
+        _bollinger = new BollingerBandsIndicator(lookback, 1.0);
     }
 
     /// <inheritdoc/>
@@ -50,29 +57,24 @@ public sealed class ZScoreMeanReversionStrategy : IStrategy
     {
         if (evt is not BarEvent bar) return Array.Empty<EngineEvent>();
 
-        _closes.Add(bar.Close);
-        int count = _closes.Count;
+        var barRecord = new BarRecord(
+            bar.Symbol, bar.Interval, bar.Open, bar.High, bar.Low, bar.Close, bar.Volume, bar.Timestamp);
 
-        // O(1) rolling sum accumulators
-        if (count <= _lookback)
-        {
-            _sum += bar.Close;
-            _sumSq += bar.Close * bar.Close;
-        }
-        else
-        {
-            decimal departed = _closes[count - _lookback - 1];
-            _sum += bar.Close - departed;
-            _sumSq += bar.Close * bar.Close - departed * departed;
-        }
+        _bollinger.Add(barRecord);
 
-        if (count < _lookback) return Array.Empty<EngineEvent>();
+        if (!_bollinger.IsWarm)
+            return Array.Empty<EngineEvent>();
 
-        decimal sma = _sum / _lookback;
-        // Population variance: E[X²] - (E[X])²
-        decimal variance = _sumSq / _lookback - sma * sma;
-        if (variance <= 0m) return Array.Empty<EngineEvent>();
-        decimal stdDev = (decimal)Math.Sqrt((double)variance);
+        var result = _bollinger.Results[^1];
+
+        if (result.Sma is null || result.UpperBand is null)
+            return Array.Empty<EngineEvent>();
+
+        decimal sma = (decimal)result.Sma.Value;
+        // StdDev = UpperBand - Sma (since we used multiplier=1.0)
+        decimal stdDev = (decimal)(result.UpperBand.Value - result.Sma.Value);
+
+        if (stdDev <= 0m) return Array.Empty<EngineEvent>();
 
         decimal zScore = (bar.Close - sma) / stdDev;
 

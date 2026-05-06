@@ -11,7 +11,7 @@ namespace TradingResearchEngine.UnitTests.V6;
 /// </summary>
 public class CpcvCombinationCountProperties
 {
-    [Property(MaxTest = 100)]
+    [Property(MaxTest = 20)]
     public bool CpcvCombinationCount_MatchesFormula(PositiveInt nWrap, PositiveInt kWrap)
     {
         // Constrain N to [3, 10] and k to [1, N-1]

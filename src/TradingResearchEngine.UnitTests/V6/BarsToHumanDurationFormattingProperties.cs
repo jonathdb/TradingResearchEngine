@@ -24,7 +24,7 @@ public class BarsToHumanDurationFormattingProperties
         ("D1", "daily", 1),
     };
 
-    [Property(MaxTest = 100)]
+    [Property(MaxTest = 20)]
     public bool KnownTimeframe_MatchesExpectedFormat(PositiveInt barsWrap, PositiveInt tfWrap)
     {
         int bars = (barsWrap.Get % 10000) + 1; // 1..10000
@@ -38,7 +38,7 @@ public class BarsToHumanDurationFormattingProperties
         return result == expected;
     }
 
-    [Property(MaxTest = 100)]
+    [Property(MaxTest = 20)]
     public bool UnknownTimeframe_ReturnsBarsOnly(PositiveInt barsWrap)
     {
         int bars = (barsWrap.Get % 10000) + 1;

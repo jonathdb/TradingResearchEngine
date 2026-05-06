@@ -1,0 +1,241 @@
+@page "/portfolios/result/{Id}"
+@rendermode InteractiveServer
+@using TradingResearchEngine.Application.Portfolio
+@using Plotly.Blazor
+@using Plotly.Blazor.Traces
+@using Plotly.Blazor.Traces.ScatterLib
+@using Plotly.Blazor.LayoutLib
+@inject ISnackbar Snackbar
+
+<PageTitle>Portfolio Result — Research Engine</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-1">Portfolio Backtest Result</MudText>
+<MudText Typo="Typo.subtitle1" Class="mb-3 text-muted">Multi-symbol portfolio analysis</MudText>
+
+<MudBreadcrumbs Items="@_breadcrumbs" Class="pa-0 mb-3" />
+
+@if (_loading)
+{
+    <MudProgressCircular Indeterminate="true" />
+}
+else if (_result is null)
+{
+    <MudAlert Severity="Severity.Warning">Portfolio result not found: @Id</MudAlert>
+}
+else
+{
+    @* Portfolio-Level Metrics *@
+    <MudGrid Class="mb-4">
+        <MudItem xs="6" sm="2">
+            <MudPaper Class="pa-3" Elevation="2">
+                <MudText Typo="Typo.caption" Class="text-muted">Portfolio Sharpe</MudText>
+                <MudText Typo="Typo.h5">@(_result.PortfolioResult.SharpeRatio?.ToString("F2") ?? "—")</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="6" sm="2">
+            <MudPaper Class="pa-3" Elevation="2">
+                <MudText Typo="Typo.caption" Class="text-muted">Max Drawdown</MudText>
+                <MudText Typo="Typo.h5">@_result.PortfolioResult.MaxDrawdown.ToString("P1")</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="6" sm="2">
+            <MudPaper Class="pa-3" Elevation="2">
+                <MudText Typo="Typo.caption" Class="text-muted">Total Trades</MudText>
+                <MudText Typo="Typo.h5">@_result.PortfolioResult.TotalTrades</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="6" sm="2">
+            <MudPaper Class="pa-3" Elevation="2">
+                <MudText Typo="Typo.caption" Class="text-muted">Turnover</MudText>
+                <MudText Typo="Typo.h5">@_result.AnnualisedTurnover.ToString("F1")</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="6" sm="2">
+            <MudPaper Class="pa-3" Elevation="2">
+                <MudText Typo="Typo.caption" Class="text-muted">Rebalance Mode</MudText>
+                <MudText Typo="Typo.h5">@_result.RebalanceMode</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="6" sm="2">
+            <MudPaper Class="pa-3" Elevation="2">
+                <MudText Typo="Typo.caption" Class="text-muted">Symbols</MudText>
+                <MudText Typo="Typo.h5">@_result.SymbolResults.Count</MudText>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    @* Portfolio Equity Curve *@
+    <MudPaper Class="pa-4 mb-4" Elevation="1">
+        <MudText Typo="Typo.subtitle2" Class="mb-2">Portfolio Equity Curve</MudText>
+        @if (_result.PortfolioResult.EquityCurve.Count > 0)
+        {
+            <PlotlyChart @ref="_equityChart" Config="_chartConfig" Layout="_equityLayout" Data="_equityData"
+                         style="width:100%; height:320px;" />
+        }
+        else
+        {
+            <MudText Typo="Typo.body2" Class="text-muted">No equity curve data available.</MudText>
+        }
+    </MudPaper>
+
+    @* Per-Symbol Performance Cards *@
+    <MudText Typo="Typo.h6" Class="mb-3">Per-Symbol Performance</MudText>
+    <MudGrid Class="mb-4">
+        @foreach (var symbolResult in _result.SymbolResults)
+        {
+            <MudItem xs="12" sm="6" md="4">
+                <MudPaper Class="pa-3" Elevation="1">
+                    <MudText Typo="Typo.subtitle2">@symbolResult.ScenarioConfig.ScenarioId</MudText>
+                    <MudDivider Class="my-2" />
+                    <MudStack Spacing="1">
+                        <MudStack Row="true" Justify="Justify.SpaceBetween">
+                            <MudText Typo="Typo.caption" Class="text-muted">Sharpe</MudText>
+                            <MudText Typo="Typo.body2">@(symbolResult.SharpeRatio?.ToString("F2") ?? "—")</MudText>
+                        </MudStack>
+                        <MudStack Row="true" Justify="Justify.SpaceBetween">
+                            <MudText Typo="Typo.caption" Class="text-muted">Max DD</MudText>
+                            <MudText Typo="Typo.body2">@symbolResult.MaxDrawdown.ToString("P1")</MudText>
+                        </MudStack>
+                        <MudStack Row="true" Justify="Justify.SpaceBetween">
+                            <MudText Typo="Typo.caption" Class="text-muted">Win Rate</MudText>
+                            <MudText Typo="Typo.body2">@(symbolResult.WinRate?.ToString("P0") ?? "—")</MudText>
+                        </MudStack>
+                        <MudStack Row="true" Justify="Justify.SpaceBetween">
+                            <MudText Typo="Typo.caption" Class="text-muted">Trades</MudText>
+                            <MudText Typo="Typo.body2">@symbolResult.TotalTrades</MudText>
+                        </MudStack>
+                    </MudStack>
+                </MudPaper>
+            </MudItem>
+        }
+    </MudGrid>
+
+    @* Correlation Matrix Heatmap *@
+    <MudPaper Class="pa-4 mb-4" Elevation="1">
+        <MudText Typo="Typo.subtitle2" Class="mb-2">Correlation Matrix</MudText>
+        <MudText Typo="Typo.body2" Class="text-muted mb-3">
+            Green = low correlation (good diversification), Red = high correlation (concentrated risk)
+        </MudText>
+        @if (_correlationData.Count > 0)
+        {
+            <PlotlyChart @ref="_correlationChart" Config="_chartConfig" Layout="_correlationLayout" Data="_correlationData"
+                         style="width:100%; height:400px;" />
+        }
+        else
+        {
+            <MudText Typo="Typo.body2" Class="text-muted">No correlation data available.</MudText>
+        }
+    </MudPaper>
+}
+
+@code {
+    [Parameter] public string Id { get; set; } = "";
+
+    private bool _loading = true;
+    private PortfolioBacktestResult? _result;
+
+    private PlotlyChart? _equityChart;
+    private PlotlyChart? _correlationChart;
+    private Config _chartConfig = new() { Responsive = true, DisplayModeBar = Plotly.Blazor.ConfigLib.DisplayModeBarEnum.Hover };
+    private Layout _equityLayout = new();
+    private IList<ITrace> _equityData = new List<ITrace>();
+    private Layout _correlationLayout = new();
+    private IList<ITrace> _correlationData = new List<ITrace>();
+
+    private List<BreadcrumbItem> _breadcrumbs = new()
+    {
+        new("Dashboard", href: "/"),
+        new("Backtests", href: "/backtests/new"),
+        new("Portfolio Result", href: null, disabled: true)
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        // In a real implementation, this would load from a repository
+        // For now, demonstrate the UI structure
+        await Task.Delay(100); // Simulate loading
+        _loading = false;
+
+        // If we had a result, build charts
+        if (_result is not null)
+        {
+            BuildEquityChart();
+            BuildCorrelationHeatmap();
+        }
+    }
+
+    private void BuildEquityChart()
+    {
+        if (_result is null) return;
+
+        var curve = _result.PortfolioResult.EquityCurve;
+        if (curve.Count == 0) return;
+
+        var timestamps = curve.Select(p => (object)p.Timestamp.DateTime).ToList();
+        var equities = curve.Select(p => (object)p.TotalEquity).ToList();
+
+        _equityData = new List<ITrace>
+        {
+            new Scatter
+            {
+                X = timestamps,
+                Y = equities,
+                Name = "Portfolio Equity",
+                Mode = ModeFlag.Lines,
+                Line = new Line { Color = "#42A5F5", Width = 2m }
+            }
+        };
+
+        _equityLayout = new Layout
+        {
+            Title = new Plotly.Blazor.LayoutLib.Title { Text = "Portfolio Equity Curve" },
+            Margin = new Plotly.Blazor.LayoutLib.Margin { L = 60, R = 20, T = 40, B = 40 },
+            ShowLegend = true
+        };
+    }
+
+    private void BuildCorrelationHeatmap()
+    {
+        if (_result is null) return;
+
+        var matrix = _result.CorrelationMatrix;
+        if (matrix.Count == 0) return;
+
+        var symbols = matrix.Keys.ToList();
+        var zValues = new List<object>();
+
+        foreach (var row in symbols)
+        {
+            var rowValues = new List<object>();
+            foreach (var col in symbols)
+            {
+                rowValues.Add(matrix[row][col]);
+            }
+            zValues.Add(rowValues);
+        }
+
+        _correlationData = new List<ITrace>
+        {
+            new HeatMap
+            {
+                X = symbols.Cast<object>().ToList(),
+                Y = symbols.Cast<object>().ToList(),
+                Z = zValues as IList<object>,
+                ColorScale = new object[]
+                {
+                    new object[] { 0, "#4CAF50" },   // Green = low correlation
+                    new object[] { 0.5, "#FFEB3B" }, // Yellow = medium
+                    new object[] { 1, "#F44336" }    // Red = high correlation
+                } as IList<object>,
+                ZMid = 0m,
+                HoverTemplate = "%{x} vs %{y}: %{z:.2f}<extra></extra>"
+            }
+        };
+
+        _correlationLayout = new Layout
+        {
+            Title = new Plotly.Blazor.LayoutLib.Title { Text = "Correlation Matrix" },
+            Margin = new Plotly.Blazor.LayoutLib.Margin { L = 80, R = 20, T = 40, B = 80 }
+        };
+    }
+}

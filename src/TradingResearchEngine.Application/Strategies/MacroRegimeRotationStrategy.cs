@@ -1,4 +1,7 @@
+using Skender.Stock.Indicators;
+using TradingResearchEngine.Application.Indicators;
 using TradingResearchEngine.Application.Strategy;
+using TradingResearchEngine.Core.DataHandling;
 using TradingResearchEngine.Core.Events;
 using TradingResearchEngine.Core.Strategy;
 
@@ -12,15 +15,18 @@ namespace TradingResearchEngine.Application.Strategies;
 /// 
 /// 1. Volatility regime: realized volatility vs its own moving average
 ///    (proxy for VIX — high vol = risk-off, low vol = risk-on)
-/// 2. Trend regime: price vs long-term SMA
-///    (proxy for yield curve slope — above SMA = expansion, below = contraction)
-/// 3. Momentum regime: rate of change over medium term
-///    (proxy for fed funds direction — positive momentum = accommodative)
+/// 2. Trend regime: price vs long-term EMA
+///    (proxy for yield curve slope — above EMA = expansion, below = contraction)
+/// 3. Momentum regime: RSI-based momentum assessment
+///    (proxy for fed funds direction — RSI above 50 = accommodative)
 /// 
+/// Uses <see cref="EmaIndicator"/> and <see cref="RsiIndicator"/> wrappers backed by
+/// Skender.Stock.Indicators for indicator computation.
+///
 /// Decision rules (simplified decision tree):
-/// - Risk-On (100% long): low vol + above SMA + positive momentum
+/// - Risk-On (100% long): low vol + above EMA + positive momentum
 /// - Cautious (50% long): mixed signals (2 of 3 positive)
-/// - Risk-Off (0% / flat): high vol + below SMA + negative momentum
+/// - Risk-Off (0% / flat): high vol + below EMA + negative momentum
 /// 
 /// Rebalances monthly (every rebalanceDays bars). Allocation is expressed via
 /// signal strength which the RiskLayer converts to position size.
@@ -32,23 +38,25 @@ public sealed class MacroRegimeRotationStrategy : IStrategy
     private readonly int _trendLookback;
     private readonly int _momentumLookback;
     private readonly int _rebalanceDays;
+    private readonly EmaIndicator _trendEma;
+    private readonly RsiIndicator _rsi;
     private readonly List<decimal> _closes = new();
     private int _barsSinceRebalance;
     private Direction _currentPosition = Direction.Flat;
     private decimal _currentAllocation; // 0.0 to 1.0
 
     /// <param name="volLookback">Realized volatility lookback (default 21 = ~1 month).</param>
-    /// <param name="trendLookback">Trend SMA lookback (default 200 = ~10 months).</param>
-    /// <param name="momentumLookback">Rate of change lookback (default 63 = ~3 months).</param>
+    /// <param name="trendLookback">Trend EMA lookback (default 200 = ~10 months).</param>
+    /// <param name="momentumLookback">RSI lookback period (default 63 = ~3 months).</param>
     /// <param name="rebalanceDays">Bars between rebalances (default 21 = monthly).</param>
     public MacroRegimeRotationStrategy(
         [ParameterMeta(DisplayName = "Volatility Lookback", Description = "Realized volatility lookback (~1 month).",
             SensitivityHint = SensitivityHint.Medium, Group = "Signal", DisplayOrder = 0, Min = 5)]
         int volLookback = 21,
-        [ParameterMeta(DisplayName = "Trend Lookback", Description = "Trend SMA lookback (~10 months).",
+        [ParameterMeta(DisplayName = "Trend Lookback", Description = "Trend EMA lookback (~10 months).",
             SensitivityHint = SensitivityHint.High, Group = "Signal", DisplayOrder = 1, Min = 20)]
         int trendLookback = 200,
-        [ParameterMeta(DisplayName = "Momentum Lookback", Description = "Rate of change lookback (~3 months).",
+        [ParameterMeta(DisplayName = "Momentum Lookback", Description = "RSI lookback period (~3 months).",
             SensitivityHint = SensitivityHint.Medium, Group = "Signal", DisplayOrder = 2, Min = 5)]
         int momentumLookback = 63,
         [ParameterMeta(DisplayName = "Rebalance Days", Description = "Bars between rebalances (monthly).",
@@ -59,6 +67,8 @@ public sealed class MacroRegimeRotationStrategy : IStrategy
         _trendLookback = trendLookback;
         _momentumLookback = momentumLookback;
         _rebalanceDays = rebalanceDays;
+        _trendEma = new EmaIndicator(trendLookback);
+        _rsi = new RsiIndicator(momentumLookback);
     }
 
     /// <inheritdoc/>
@@ -66,6 +76,11 @@ public sealed class MacroRegimeRotationStrategy : IStrategy
     {
         if (evt is not BarEvent bar) return Array.Empty<EngineEvent>();
 
+        var barRecord = new BarRecord(
+            bar.Symbol, bar.Interval, bar.Open, bar.High, bar.Low, bar.Close, bar.Volume, bar.Timestamp);
+
+        _trendEma.Add(barRecord);
+        _rsi.Add(barRecord);
         _closes.Add(bar.Close);
         _barsSinceRebalance++;
 
@@ -78,7 +93,7 @@ public sealed class MacroRegimeRotationStrategy : IStrategy
 
         // Compute regime indicators
         bool lowVol = IsLowVolatility();
-        bool aboveTrend = IsAboveTrend();
+        bool aboveTrend = IsAboveTrend(bar.Close);
         bool positiveMomentum = IsPositiveMomentum();
 
         int bullSignals = (lowVol ? 1 : 0) + (aboveTrend ? 1 : 0) + (positiveMomentum ? 1 : 0);
@@ -103,7 +118,6 @@ public sealed class MacroRegimeRotationStrategy : IStrategy
 
         if (targetAllocation > 0 && _currentPosition != Direction.Long)
         {
-            // Enter long with strength = close * allocation (RiskLayer uses strength for sizing)
             _currentPosition = Direction.Long;
             _currentAllocation = targetAllocation;
             signals.Add(new SignalEvent(bar.Symbol, Direction.Long,
@@ -112,7 +126,6 @@ public sealed class MacroRegimeRotationStrategy : IStrategy
         else if (targetAllocation > 0 && _currentPosition == Direction.Long
                  && Math.Abs(targetAllocation - _currentAllocation) > 0.1m)
         {
-            // Rebalance: close and re-enter with new allocation
             signals.Add(new SignalEvent(bar.Symbol, Direction.Flat, bar.Close, bar.Timestamp));
             _currentAllocation = targetAllocation;
             signals.Add(new SignalEvent(bar.Symbol, Direction.Long,
@@ -120,7 +133,6 @@ public sealed class MacroRegimeRotationStrategy : IStrategy
         }
         else if (targetAllocation == 0 && _currentPosition == Direction.Long)
         {
-            // Exit to flat
             _currentPosition = Direction.Flat;
             _currentAllocation = 0;
             signals.Add(new SignalEvent(bar.Symbol, Direction.Flat, bar.Close, bar.Timestamp));
@@ -138,7 +150,6 @@ public sealed class MacroRegimeRotationStrategy : IStrategy
         var recentReturns = ComputeReturns(_closes, _volLookback);
         decimal currentVol = StdDev(recentReturns);
 
-        // Compare to longer-term vol average
         var longerReturns = ComputeReturns(_closes, _volLookback * 2);
         decimal avgVol = StdDev(longerReturns);
 
@@ -146,28 +157,30 @@ public sealed class MacroRegimeRotationStrategy : IStrategy
     }
 
     /// <summary>
-    /// Trend regime: current price vs long-term SMA.
-    /// Above SMA = uptrend (expansion).
+    /// Trend regime: current price vs EMA indicator.
+    /// Above EMA = uptrend (expansion).
     /// </summary>
-    private bool IsAboveTrend()
+    private bool IsAboveTrend(decimal currentClose)
     {
-        decimal sma = 0;
-        int start = _closes.Count - _trendLookback;
-        for (int i = start; i < _closes.Count; i++)
-            sma += _closes[i];
-        sma /= _trendLookback;
-        return _closes[^1] > sma;
+        if (!_trendEma.IsWarm) return false;
+
+        var emaResult = _trendEma.Results[^1];
+        if (emaResult.Ema is null) return false;
+
+        return currentClose > (decimal)emaResult.Ema.Value;
     }
 
     /// <summary>
-    /// Momentum regime: rate of change over medium term.
-    /// Positive ROC = positive momentum.
+    /// Momentum regime: RSI above 50 indicates positive momentum.
     /// </summary>
     private bool IsPositiveMomentum()
     {
-        decimal current = _closes[^1];
-        decimal past = _closes[_closes.Count - 1 - _momentumLookback];
-        return past > 0 && current > past;
+        if (!_rsi.IsWarm) return false;
+
+        var rsiResult = _rsi.Results[^1];
+        if (rsiResult.Rsi is null) return false;
+
+        return rsiResult.Rsi.Value > 50.0;
     }
 
     private static List<decimal> ComputeReturns(List<decimal> closes, int lookback)

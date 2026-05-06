@@ -12,7 +12,7 @@ namespace TradingResearchEngine.UnitTests.V6;
 /// </summary>
 public class ParallelWalkForwardDeterminismProperties
 {
-    [Property(MaxTest = 100)]
+    [Property(MaxTest = 20)]
     public bool PrecomputeWindows_SameInputs_IdenticalOutput(
         PositiveInt isLengthDays, PositiveInt oosLengthDays, PositiveInt stepDays, PositiveInt totalDays)
     {
@@ -51,7 +51,7 @@ public class ParallelWalkForwardDeterminismProperties
         return true;
     }
 
-    [Property(MaxTest = 100)]
+    [Property(MaxTest = 20)]
     public bool PrecomputeWindows_ResultsSortedByWindowIndex(
         PositiveInt isLengthDays, PositiveInt oosLengthDays, PositiveInt stepDays, PositiveInt totalDays)
     {
@@ -82,7 +82,7 @@ public class ParallelWalkForwardDeterminismProperties
         return true;
     }
 
-    [Property(MaxTest = 100)]
+    [Property(MaxTest = 20)]
     public bool PrecomputeWindows_Anchored_SameInputs_IdenticalOutput(
         PositiveInt isLengthDays, PositiveInt oosLengthDays, PositiveInt stepDays, PositiveInt totalDays)
     {

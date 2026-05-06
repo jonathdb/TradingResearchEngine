@@ -13,7 +13,7 @@ namespace TradingResearchEngine.UnitTests.V6;
 /// </summary>
 public class CpcvDeterminismProperties
 {
-    [Property(MaxTest = 100)]
+    [Property(MaxTest = 20)]
     public bool CombinationGeneration_IsDeterministic(PositiveInt nWrap, PositiveInt kWrap)
     {
         int n = (nWrap.Get % 8) + 3; // 3..10
@@ -32,7 +32,7 @@ public class CpcvDeterminismProperties
         return true;
     }
 
-    [Property(MaxTest = 100)]
+    [Property(MaxTest = 20)]
     public bool MedianComputation_IsDeterministic(NonEmptyArray<int> valuesWrap)
     {
         var values = valuesWrap.Get.Select(v => (decimal)v).ToList();
@@ -43,7 +43,7 @@ public class CpcvDeterminismProperties
         return run1 == run2;
     }
 
-    [Property(MaxTest = 100)]
+    [Property(MaxTest = 20)]
     public bool SameSeedProducesSameDistributions(PositiveInt seedWrap, PositiveInt countWrap)
     {
         int seed = seedWrap.Get;

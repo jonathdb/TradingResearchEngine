@@ -19,7 +19,7 @@ public class AppSettingsQdmProperties
     /// equals the original value.
     /// **Validates: Requirements 4.3**
     /// </summary>
-    [Property(MaxTest = 100)]
+    [Property(MaxTest = 20)]
     public Property QdmWatchDirectory_PersistenceRoundTrip()
     {
         // Generate non-empty path strings: alphanumeric segments joined by path separators

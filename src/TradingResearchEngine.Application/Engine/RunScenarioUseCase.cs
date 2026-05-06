@@ -98,7 +98,8 @@ public sealed class RunScenarioUseCase
             ? _services.GetService<Core.Sessions.ISessionCalendar>()
             : null;
 
-        var engine = new BacktestEngine(dataProvider, strategy, riskLayer, executionHandler, engineLogger, sessionCalendar);
+        var engine = new BacktestEngine(dataProvider, strategy, riskLayer, executionHandler, engineLogger, sessionCalendar,
+            _services.GetService<BarDataPool>());
         var result = await engine.RunAsync(config, ct);
 
         // V5: Collect realism advisories from SimulatedExecutionHandler

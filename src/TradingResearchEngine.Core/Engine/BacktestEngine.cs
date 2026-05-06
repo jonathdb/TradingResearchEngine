@@ -26,6 +26,7 @@ public sealed class BacktestEngine : IBacktestEngine
     private readonly IRiskLayer _riskLayer;
     private readonly IExecutionHandler _executionHandler;
     private readonly ISessionCalendar? _sessionCalendar;
+    private readonly BarDataPool? _barDataPool;
     private readonly ILogger<BacktestEngine> _logger;
 
     /// <summary>Initialises the engine with all required pipeline components.</summary>
@@ -35,7 +36,8 @@ public sealed class BacktestEngine : IBacktestEngine
         IRiskLayer riskLayer,
         IExecutionHandler executionHandler,
         ILogger<BacktestEngine> logger,
-        ISessionCalendar? sessionCalendar = null)
+        ISessionCalendar? sessionCalendar = null,
+        BarDataPool? barDataPool = null)
     {
         _dataProvider = dataProvider;
         _strategy = strategy;
@@ -43,6 +45,7 @@ public sealed class BacktestEngine : IBacktestEngine
         _executionHandler = executionHandler;
         _logger = logger;
         _sessionCalendar = sessionCalendar;
+        _barDataPool = barDataPool;
     }
 
     /// <inheritdoc/>
@@ -53,7 +56,7 @@ public sealed class BacktestEngine : IBacktestEngine
         var portfolio = new Portfolio.Portfolio(config.InitialCash,
             loggerFactory.CreateLogger<Portfolio.Portfolio>());
         var queue = new EventQueue();
-        var dataHandler = new DataHandler(_dataProvider, config, loggerFactory.CreateLogger<DataHandler>());
+        var dataHandler = new DataHandler(_dataProvider, config, loggerFactory.CreateLogger<DataHandler>(), _barDataPool);
         var state = new RunState(config.EffectiveFillMode, config.EnableEventTrace);
 
         try

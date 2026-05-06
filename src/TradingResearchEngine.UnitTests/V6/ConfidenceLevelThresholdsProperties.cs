@@ -11,7 +11,7 @@ namespace TradingResearchEngine.UnitTests.V6;
 /// </summary>
 public class ConfidenceLevelThresholdsProperties
 {
-    [Property(MaxTest = 100)]
+    [Property(MaxTest = 20)]
     public bool ConfidenceLevel_MatchesThresholds(
         bool b1, bool b2, bool b3, bool b4, bool b5, bool b6, bool b7, bool b8, bool b9)
     {

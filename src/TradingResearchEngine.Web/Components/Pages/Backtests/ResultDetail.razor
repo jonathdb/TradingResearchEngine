@@ -1,6 +1,10 @@
 @page "/backtests/{Id}"
+@using TradingResearchEngine.Application.AI
+@using TradingResearchEngine.Application.Strategy
 @inject TradingResearchEngine.Core.Persistence.IRepository<BacktestResult> ResultRepo
 @inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@inject IStrategyRepository StrategyRepo
 
 <PageTitle>Run Detail — Research Engine</PageTitle>
 
@@ -255,11 +259,19 @@ else
         }
     </MudExpansionPanels>
 
-    @* Action band — Study + Prop Firm *@
+    @* Action band — Study + Prop Firm + AI Refine *@
     @if (_result.Status == BacktestStatus.Completed)
     {
         <MudPaper Outlined="true" Class="pa-3 mb-4">
             <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap">
+                @if (_isAIGenerated)
+                {
+                    <MudText Typo="Typo.caption" Class="text-muted mr-2">AI</MudText>
+                    <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Outlined" Color="Color.Secondary"
+                               StartIcon="@Icons.Material.Filled.AutoAwesome"
+                               OnClick="OpenRefineWithAI">Refine with AI</MudButton>
+                    <MudDivider Vertical="true" FlexItem="true" Class="mx-2" />
+                }
                 <MudText Typo="Typo.caption" Class="text-muted mr-2">STUDY</MudText>
                 <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Outlined" Color="Color.Primary"
                            Href="@($"/research/montecarlo?result={_result.Id}")">Monte Carlo</MudButton>
@@ -284,6 +296,9 @@ else
         </MudTabPanel>
         <MudTabPanel Text="Drawdown">
             <DrawdownChart Data="_result.EquityCurve" />
+        </MudTabPanel>
+        <MudTabPanel Text="Indicators">
+            <IndicatorOverlayPanel BarData="_result.EquityCurve" Bars="_barRecords" />
         </MudTabPanel>
         <MudTabPanel Text="Charts">
             <MudText Typo="Typo.subtitle2" Class="mb-3">Equity Curve with Drawdown</MudText>
@@ -373,6 +388,8 @@ else
     private List<BreadcrumbItem> _breadcrumbs = new();
     private bool _researchReadiness; // V5: research readiness badge
     private bool _isOosAvailable; // V5: IS vs OOS comparison available
+    private bool _isAIGenerated; // V8: whether the strategy was AI-generated
+    private IReadOnlyList<TradingResearchEngine.Core.DataHandling.BarRecord>? _barRecords; // V8: bar data for indicator overlays
 
     private string SharpeColor => _result?.SharpeRatio switch
     {
@@ -422,6 +439,13 @@ else
 
             // V5: Check if IS vs OOS data is available (walk-forward results)
             _isOosAvailable = false;
+
+            // V8: Check if the strategy version was AI-generated
+            if (_result.StrategyVersionId is not null)
+            {
+                var version = await StrategyRepo.GetVersionAsync(_result.StrategyVersionId);
+                _isAIGenerated = version?.SourceType == SourceType.AIGenerated;
+            }
         }
         _loading = false;
     }
@@ -479,5 +503,21 @@ else
         var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TradingResearchEngine", "Exports");
         if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
         return Path.Combine(dir, fileName);
+    }
+
+    private async Task OpenRefineWithAI()
+    {
+        if (_result is null) return;
+        var parameters = new DialogParameters<RefineWithAIDialog>
+        {
+            { x => x.Result, _result }
+        };
+        var options = new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<RefineWithAIDialog>("Refine with AI", parameters, options);
+        var dialogResult = await dialog.Result;
+        if (dialogResult is not null && !dialogResult.Canceled)
+        {
+            Snackbar.Add("AI refinement applied. Navigate to the Strategy Builder to review.", Severity.Success);
+        }
     }
 }

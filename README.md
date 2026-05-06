@@ -13,6 +13,7 @@ src/
   TradingResearchEngine.Cli            — argument-driven + interactive CLI host
   TradingResearchEngine.Api            — ASP.NET Core minimal API host
   TradingResearchEngine.Web            — Blazor Server UI host (MudBlazor)
+  TradingResearchEngine.Benchmarks     — BenchmarkDotNet performance suite
   TradingResearchEngine.UnitTests      — xUnit + FsCheck property tests
   TradingResearchEngine.IntegrationTests — end-to-end, infrastructure, and FsCheck property tests
 ```
@@ -28,7 +29,7 @@ Dependency rule: `Core ← Application ← Infrastructure ← { Cli, Api, Web }`
 - **Application — Market Data Acquisition**: `IMarketDataProvider` (provider-agnostic download interface with `SourceName`, `GetSupportedSymbolsAsync`, `DownloadToFileAsync`), `IMarketDataImportRepository` (CRUD for import records), `MarketDataImportRecord` (persistent import job record), `MarketDataImportStatus` (Running, Completed, Failed, Cancelled), `MarketSymbolInfo` (provider symbol metadata), `CsvWriteResult` (canonical CSV output metadata), `MarketDataImportService` (singleton orchestrator: validate → download → normalize → register DataFileRecord → update import record; one-at-a-time concurrency guard, progress/completion events, startup recovery, duplicate detection, temp-file-then-rename write pattern)
 - **Research Workflows**: parameter sweep, variance testing, Monte Carlo, walk-forward, parameter perturbation, randomized out-of-sample, scenario comparison, benchmark comparison
 - **PropFirmModule**: challenge/instant-funding economics, rule evaluation, variance presets, multi-phase rule packs (V3)
-- **Infrastructure**: CSV, HTTP, and in-memory data providers, data file discovery/metadata service, JSON file repository, console/markdown reporters, `JsonDataFileRepository` (V4), `MigrationService` (V4 — migrates orphaned pre-V4 results into the strategy model on startup), `DukascopyHelpers` (shared static helpers for Dukascopy decompression, parsing, aggregation, and CSV I/O), `DukascopyImportProvider` (Dukascopy adapter for `IMarketDataProvider`), `JsonMarketDataImportRepository` (JSON file persistence for import records). V5 adds `JsonFileRepository<T>` registrations for `BacktestJob`, `ConfigDraft`, and `ConfigPreset` persistence. V6 adds `SqliteIndexRepository<T>` — an index-only SQLite layer over existing JSON files providing O(log n) lookups by strategy version and strategy ID, implementing `IBacktestResultRepository`.
+- **Infrastructure**: CSV, HTTP, and in-memory data providers, data file discovery/metadata service, JSON file repository, console/markdown reporters, `JsonDataFileRepository` (V4), `MigrationService` (V4 — migrates orphaned pre-V4 results into the strategy model on startup), `DukascopyHelpers` (shared static helpers for Dukascopy decompression, parsing, aggregation, and CSV I/O), `DukascopyImportProvider` (Dukascopy adapter for `IMarketDataProvider`), `JsonMarketDataImportRepository` (JSON file persistence for import records). V5 adds `JsonFileRepository<T>` registrations for `BacktestJob`, `ConfigDraft`, and `ConfigPreset` persistence. V6 adds `SqliteIndexRepository<T>` — an index-only SQLite layer over existing JSON files providing O(log n) lookups by strategy version and strategy ID, implementing `IBacktestResultRepository`. V8 adds `GeminiStrategyAssistant` (Google Gemini AI client via `Mscc.GenerativeAI` for natural-language strategy generation), `MQL4StrategyExporter`/`MQL5StrategyExporter`/`PineScriptExporter` (strategy code export to external platforms), and `PollingStreamingDataProvider` (polling-based streaming data for paper trading).
 
 ## Built-in Strategies
 
@@ -60,6 +61,9 @@ dotnet run --project src/TradingResearchEngine.Web
 | POST | /scenarios/sweep | Parameter sweep |
 | POST | /scenarios/montecarlo | Monte Carlo simulation |
 | POST | /scenarios/walkforward | Walk-forward analysis |
+| POST | /strategies/{versionId}/export | Export strategy to MQL4/MQL5/PineScript |
+| POST | /portfolios/run | Run a multi-symbol portfolio backtest |
+| POST | /portfolios/sweep | Portfolio parameter sweep |
 
 ## Product Goals
 
@@ -84,3 +88,9 @@ dotnet run --project src/TradingResearchEngine.Web
 - V5 (in progress): execution realism enhancements (`MaxFillPercentOfVolume`, `RealismAdvisories`)
 - V5 (in progress): typed strategy parameter schemas (`StrategyParameterSchema`, `IStrategySchemaProvider`, `[ParameterMeta]` attribute, `SensitivityHint` enum) for builder UI, API discovery, and parameter validation
 - Market Data Acquisition: standalone workflow for downloading, normalizing, and registering historical candles from external providers (Dukascopy first) as validated Data Files
+- V8: AI Strategy Builder with Google Gemini integration for natural-language strategy generation and iterative refinement
+- V8: Strategy export to MQL4, MQL5, and PineScript for deployment on external platforms
+- V8: Paper trading mode with simulated live execution reusing the backtest pipeline
+- V8: Shared indicator library backed by Skender.Stock.Indicators with 8 standard wrappers (SMA, EMA, RSI, MACD, Bollinger Bands, ATR, Stochastic, Donchian)
+- V8: Parallel multi-symbol portfolio backtesting with correlation analysis and equity curve merging
+- V8: BenchmarkDotNet performance suite with object pooling for hot-path allocation reduction

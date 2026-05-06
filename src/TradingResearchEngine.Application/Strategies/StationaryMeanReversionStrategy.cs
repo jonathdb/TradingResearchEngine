@@ -1,4 +1,6 @@
+using TradingResearchEngine.Application.Indicators;
 using TradingResearchEngine.Application.Strategy;
+using TradingResearchEngine.Core.DataHandling;
 using TradingResearchEngine.Core.Events;
 using TradingResearchEngine.Core.Strategy;
 
@@ -17,6 +19,10 @@ namespace TradingResearchEngine.Application.Strategies;
 /// 4. Buys when z-score &lt; -entryThreshold (abnormal negative = expect reversion)
 /// 5. Sells when z-score &gt; exitThreshold (reversion complete)
 /// 
+/// Uses <see cref="SmaIndicator"/> and <see cref="BollingerBandsIndicator"/> wrappers
+/// for indicator overlay computation. Signal logic uses inline returns-based z-score
+/// with ADF stationarity gating.
+///
 /// Long-only. Based on the QuantConnect stationary z-score approach.
 /// </summary>
 [StrategyName("stationary-mean-reversion")]
@@ -27,8 +33,10 @@ public sealed class StationaryMeanReversionStrategy : IStrategy
     private readonly decimal _exitThreshold;
     private readonly decimal _adfPValueThreshold;
     private readonly int _adfRecheckInterval;
-    private readonly List<decimal> _closes = new();
     private readonly bool _skipStationarityTest;
+    private readonly SmaIndicator _sma;
+    private readonly BollingerBandsIndicator _bollinger;
+    private readonly List<decimal> _closes = new();
     private int _barsSinceAdfCheck;
     private bool _cachedStationarity;
     private bool _adfWarmedUp;
@@ -66,6 +74,8 @@ public sealed class StationaryMeanReversionStrategy : IStrategy
         _adfPValueThreshold = adfPValueThreshold;
         _skipStationarityTest = skipStationarityTest;
         _adfRecheckInterval = adfRecheckInterval;
+        _sma = new SmaIndicator(lookback);
+        _bollinger = new BollingerBandsIndicator(lookback, 1.0);
     }
 
     /// <inheritdoc/>
@@ -73,7 +83,13 @@ public sealed class StationaryMeanReversionStrategy : IStrategy
     {
         if (evt is not BarEvent bar) return Array.Empty<EngineEvent>();
 
+        var barRecord = new BarRecord(
+            bar.Symbol, bar.Interval, bar.Open, bar.High, bar.Low, bar.Close, bar.Volume, bar.Timestamp);
+
+        _sma.Add(barRecord);
+        _bollinger.Add(barRecord);
         _closes.Add(bar.Close);
+
         if (_closes.Count < _lookback + 1) return Array.Empty<EngineEvent>();
 
         // Compute returns over lookback window
@@ -174,17 +190,12 @@ public sealed class StationaryMeanReversionStrategy : IStrategy
     /// Simplified Augmented Dickey-Fuller stationarity test.
     /// Tests H0: unit root exists (non-stationary) vs H1: stationary.
     /// Returns true if the series appears stationary (reject H0).
-    /// 
-    /// Implementation: computes the t-statistic of the coefficient on y(t-1)
-    /// in the regression: Δy(t) = α + β*y(t-1) + ε(t)
-    /// Compares against critical values for the ADF distribution.
     /// </summary>
     private static bool IsStationary(List<decimal> series, double pValueThreshold)
     {
         if (series.Count < 20) return false;
 
         int n = series.Count;
-        // Compute first differences: Δy(t) = y(t) - y(t-1)
         var dy = new double[n - 1];
         var yLag = new double[n - 1];
         for (int i = 0; i < n - 1; i++)
@@ -193,8 +204,6 @@ public sealed class StationaryMeanReversionStrategy : IStrategy
             yLag[i] = (double)series[i];
         }
 
-        // OLS regression: Δy = α + β * y_lag + ε
-        // β = Cov(Δy, y_lag) / Var(y_lag)
         int m = dy.Length;
         double sumDy = 0, sumYl = 0, sumDyYl = 0, sumYl2 = 0;
         for (int i = 0; i < m; i++)
@@ -208,7 +217,6 @@ public sealed class StationaryMeanReversionStrategy : IStrategy
         double meanDy = sumDy / m;
         double meanYl = sumYl / m;
         double cov = sumDyYl / m - meanDy * meanYl;
-        // Unbiased sample variance (Bessel's correction)
         double varYl = (sumYl2 - m * meanYl * meanYl) / (m - 1);
 
         if (varYl == 0) return false;
@@ -216,7 +224,6 @@ public sealed class StationaryMeanReversionStrategy : IStrategy
         double beta = cov / varYl;
         double alpha = meanDy - beta * meanYl;
 
-        // Compute residuals and standard error of beta
         double ssResidual = 0;
         for (int i = 0; i < m; i++)
         {
@@ -230,12 +237,8 @@ public sealed class StationaryMeanReversionStrategy : IStrategy
 
         if (seBeta == 0) return false;
 
-        // t-statistic for beta
         double tStat = beta / seBeta;
 
-        // ADF critical values (approximate, for n > 100):
-        // 1% : -3.43, 5% : -2.86, 10% : -2.57
-        // We reject H0 (unit root) if t-stat < critical value
         double criticalValue = pValueThreshold <= 0.01 ? -3.43
             : pValueThreshold <= 0.05 ? -2.86
             : -2.57;

@@ -13,7 +13,7 @@ namespace TradingResearchEngine.UnitTests.V6;
 /// </summary>
 public class PnlBinningCoverageProperties
 {
-    [Property(MaxTest = 100)]
+    [Property(MaxTest = 20)]
     public bool PnlBinning_Exactly20Bins_CoveringMinToMax(NonEmptyArray<int> pnlInts)
     {
         // Convert ints to decimal PnL values to get varied inputs

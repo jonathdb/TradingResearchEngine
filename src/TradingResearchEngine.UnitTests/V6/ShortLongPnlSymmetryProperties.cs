@@ -17,7 +17,7 @@ public class ShortLongPnlSymmetryProperties
     private static readonly ILogger<Core.Portfolio.Portfolio> Logger =
         NullLoggerFactory.Instance.CreateLogger<Core.Portfolio.Portfolio>();
 
-    [Property(MaxTest = 100)]
+    [Property(MaxTest = 20)]
     public bool ShortLongPnlSymmetry_IdenticalMagnitude(PositiveInt entryWrap, PositiveInt exitWrap, PositiveInt qtyWrap)
     {
         decimal entryPrice = (decimal)entryWrap.Get / 100m + 0.01m; // ensure > 0

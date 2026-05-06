@@ -25,6 +25,11 @@
 | `Microsoft.Extensions.Logging` | Infrastructure, Cli, Api |
 | `Microsoft.Data.Sqlite` | Infrastructure |
 | `Plotly.Blazor` | Web |
+| `Microsoft.Extensions.ObjectPool` | Core |
+| `Skender.Stock.Indicators` (2.x) | Application |
+| `System.Reactive` | Application |
+| `Mscc.GenerativeAI` | Infrastructure |
+| `BenchmarkDotNet` | Benchmarks |
 
 Do not add packages outside this list without updating this file and the tasks list.
 

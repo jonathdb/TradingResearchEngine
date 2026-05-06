@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using TradingResearchEngine.Application;
 using TradingResearchEngine.Application.Engine;
+using TradingResearchEngine.Cli.Commands;
 using TradingResearchEngine.Cli.Interactive;
 using TradingResearchEngine.Core.Configuration;
 using TradingResearchEngine.Core.Reporting;
@@ -21,6 +22,30 @@ services.AddStrategyAssembly(typeof(TradingResearchEngine.Application.Strategies
 services.AddLogging();
 
 var sp = services.BuildServiceProvider();
+
+// Handle 'paper' subcommand
+if (args.Length > 0 && args[0] == "paper")
+{
+    string? paperScenario = null;
+    double paperSpeed = 1.0;
+
+    for (int i = 1; i < args.Length; i++)
+    {
+        if (args[i] == "--scenario" && i + 1 < args.Length) paperScenario = args[++i];
+        else if (args[i] == "--speed" && i + 1 < args.Length && double.TryParse(args[++i], out var s)) paperSpeed = s;
+        else if (args[i] == "--help") { PaperCommand.PrintHelp(); return 0; }
+    }
+
+    if (paperScenario is null)
+    {
+        Console.Error.WriteLine("Error: --scenario is required for the paper subcommand.");
+        PaperCommand.PrintHelp();
+        return 1;
+    }
+
+    return await PaperCommand.ExecuteAsync(paperScenario, paperSpeed, sp);
+}
+
 var useCase = sp.GetRequiredService<RunScenarioUseCase>();
 var reporter = sp.GetRequiredService<IReporter>();
 
@@ -105,4 +130,7 @@ static void PrintHelp()
     Console.WriteLine("  --output <path>      Path to write Markdown report");
     Console.WriteLine("  --simulations <int>  Number of Monte Carlo simulations");
     Console.WriteLine("  --help               Show this help");
+    Console.WriteLine();
+    Console.WriteLine("Subcommands:");
+    PaperCommand.PrintHelp();
 }

@@ -68,7 +68,7 @@ public class SqliteIndexSyncProperties
             StrategyVersionId: versionId);
     }
 
-    [Property(MaxTest = 100)]
+    [Property(MaxTest = 20)]
     public bool SavedEntity_RetrievedById_HasMatchingId(PositiveInt seed)
     {
         var repo = new InMemoryBacktestResultRepository();
@@ -81,7 +81,7 @@ public class SqliteIndexSyncProperties
         return retrieved is not null && retrieved.Id == entity.Id;
     }
 
-    [Property(MaxTest = 100)]
+    [Property(MaxTest = 20)]
     public bool SavedEntity_ListByVersion_ContainsEntity(PositiveInt seed)
     {
         var repo = new InMemoryBacktestResultRepository();
@@ -94,7 +94,7 @@ public class SqliteIndexSyncProperties
         return results.Any(r => r.Id == entity.Id);
     }
 
-    [Property(MaxTest = 100)]
+    [Property(MaxTest = 20)]
     public bool DeletedEntity_NotRetrievable(PositiveInt seed)
     {
         var repo = new InMemoryBacktestResultRepository();

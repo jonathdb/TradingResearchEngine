@@ -1,4 +1,7 @@
+using Skender.Stock.Indicators;
+using TradingResearchEngine.Application.Indicators;
 using TradingResearchEngine.Application.Strategy;
+using TradingResearchEngine.Core.DataHandling;
 using TradingResearchEngine.Core.Events;
 using TradingResearchEngine.Core.Strategy;
 
@@ -10,6 +13,9 @@ namespace TradingResearchEngine.Application.Strategies;
 /// Entry: close moves above the PRIOR day's upper Donchian band (highest high over trailing N days).
 /// Exit: close falls below the PRIOR day's lower Donchian band (lowest low over trailing N days).
 /// 
+/// Uses <see cref="DonchianIndicator"/> wrapper backed by Skender.Stock.Indicators
+/// for channel computation.
+///
 /// V6: Supports bidirectional signals via DirectionMode parameter.
 /// Uses lagged (prior day) channel values to avoid same-bar lookahead bias.
 /// </summary>
@@ -18,12 +24,12 @@ public sealed class DonchianBreakoutStrategy : IStrategy
 {
     private readonly int _period;
     private readonly DirectionMode _directionMode;
-    private readonly List<decimal> _highs = new();
-    private readonly List<decimal> _lows = new();
+    private readonly DonchianIndicator _donchian;
     private decimal _priorUpperBand;
     private decimal _priorLowerBand;
     private Direction _position = Direction.Flat;
-    private bool _warmedUp;
+    private bool _hasPriorBands;
+    private int _barCount;
 
     /// <param name="period">Donchian channel lookback period (default 20).</param>
     /// <param name="directionMode">Signal direction mode: Long, Short, or Both (default Long).</param>
@@ -37,6 +43,7 @@ public sealed class DonchianBreakoutStrategy : IStrategy
     {
         _period = period;
         _directionMode = directionMode;
+        _donchian = new DonchianIndicator(period);
     }
 
     /// <inheritdoc/>
@@ -44,20 +51,28 @@ public sealed class DonchianBreakoutStrategy : IStrategy
     {
         if (evt is not BarEvent bar) return Array.Empty<EngineEvent>();
 
-        _highs.Add(bar.High);
-        _lows.Add(bar.Low);
+        var barRecord = new BarRecord(
+            bar.Symbol, bar.Interval, bar.Open, bar.High, bar.Low, bar.Close, bar.Volume, bar.Timestamp);
 
-        if (_highs.Count <= _period)
+        _donchian.Add(barRecord);
+        _barCount++;
+
+        if (!_donchian.IsWarm)
             return Array.Empty<EngineEvent>();
 
-        decimal currentUpper = MaxOfRange(_highs, _highs.Count - _period - 1, _period);
-        decimal currentLower = MinOfRange(_lows, _lows.Count - _period - 1, _period);
+        var result = _donchian.Results[^1];
 
-        if (!_warmedUp)
+        if (result.UpperBand is null || result.LowerBand is null)
+            return Array.Empty<EngineEvent>();
+
+        decimal currentUpper = (decimal)result.UpperBand.Value;
+        decimal currentLower = (decimal)result.LowerBand.Value;
+
+        if (!_hasPriorBands)
         {
             _priorUpperBand = currentUpper;
             _priorLowerBand = currentLower;
-            _warmedUp = true;
+            _hasPriorBands = true;
             return Array.Empty<EngineEvent>();
         }
 
@@ -94,23 +109,5 @@ public sealed class DonchianBreakoutStrategy : IStrategy
         _priorLowerBand = currentLower;
 
         return signals;
-    }
-
-    private static decimal MaxOfRange(List<decimal> list, int start, int count)
-    {
-        start = Math.Max(0, start);
-        decimal max = decimal.MinValue;
-        for (int i = start; i < start + count && i < list.Count; i++)
-            if (list[i] > max) max = list[i];
-        return max;
-    }
-
-    private static decimal MinOfRange(List<decimal> list, int start, int count)
-    {
-        start = Math.Max(0, start);
-        decimal min = decimal.MaxValue;
-        for (int i = start; i < start + count && i < list.Count; i++)
-            if (list[i] < min) min = list[i];
-        return min;
     }
 }

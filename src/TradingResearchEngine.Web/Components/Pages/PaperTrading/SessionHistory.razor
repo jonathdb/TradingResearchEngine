@@ -1,0 +1,118 @@
+@page "/paper-trading/history"
+@rendermode InteractiveServer
+@using TradingResearchEngine.Application.PaperTrading
+@using TradingResearchEngine.Core.PaperTrading
+@inject TradingResearchEngine.Core.Persistence.IRepository<PaperSessionRecord> SessionRepo
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+
+<PageTitle>Paper Trading — Session History</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-1">
+    Session History
+    <MudChip T="string" Size="MudBlazor.Size.Small" Color="Color.Info">🧪 Paper Trading</MudChip>
+</MudText>
+<MudText Typo="Typo.subtitle1" Class="mb-4 text-muted">
+    View past paper trading sessions and compare results to historical backtests.
+</MudText>
+
+<MudBreadcrumbs Items="@_breadcrumbs" Class="pa-0 mb-3" />
+
+<MudStack Row="true" Spacing="2" Class="mb-4">
+    <MudButton Variant="Variant.Filled" Color="Color.Primary"
+               StartIcon="@Icons.Material.Filled.Add"
+               Href="/paper-trading">New Session</MudButton>
+</MudStack>
+
+@if (_loading)
+{
+    <MudProgressCircular Indeterminate="true" />
+}
+else if (_sessions.Count == 0)
+{
+    <MudPaper Class="pa-8" Elevation="1">
+        <MudStack AlignItems="AlignItems.Center" Spacing="2">
+            <MudIcon Icon="@Icons.Material.Filled.PlayCircle" Size="MudBlazor.Size.Large" Class="text-faint" />
+            <MudText Typo="Typo.h6">No paper trading sessions yet</MudText>
+            <MudText Typo="Typo.body2" Class="text-muted">
+                Start a paper trading session to see results here.
+            </MudText>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                       Href="/paper-trading" Class="mt-2">
+                Start Paper Trading
+            </MudButton>
+        </MudStack>
+    </MudPaper>
+}
+else
+{
+    <MudTable Items="_sessions" Dense="true" Hover="true" Striped="true">
+        <HeaderContent>
+            <MudTh>Strategy</MudTh>
+            <MudTh>Started</MudTh>
+            <MudTh>Stopped</MudTh>
+            <MudTh>Status</MudTh>
+            <MudTh>Final P&amp;L</MudTh>
+            <MudTh>Trades</MudTh>
+            <MudTh>Actions</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.StrategyVersionId</MudTd>
+            <MudTd>@context.StartedAt.ToString("yyyy-MM-dd HH:mm")</MudTd>
+            <MudTd>@(context.StoppedAt?.ToString("yyyy-MM-dd HH:mm") ?? "—")</MudTd>
+            <MudTd>
+                <MudChip T="string" Size="MudBlazor.Size.Small" Color="@GetStatusColor(context.Status)">
+                    🧪 @context.Status
+                </MudChip>
+            </MudTd>
+            <MudTd Class="@(context.FinalPnl >= 0 ? "mud-success-text" : "mud-error-text")">
+                @(context.FinalPnl?.ToString("C0") ?? "—")
+            </MudTd>
+            <MudTd>@context.TradeCount</MudTd>
+            <MudTd>
+                <MudStack Row="true" Spacing="1">
+                    <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Text" Color="Color.Primary"
+                               OnClick="@(() => CompareToBacktest(context))">
+                        Compare to Backtest
+                    </MudButton>
+                </MudStack>
+            </MudTd>
+        </RowTemplate>
+        <PagerContent><MudTablePager /></PagerContent>
+    </MudTable>
+}
+
+@code {
+    private bool _loading = true;
+    private List<PaperSessionRecord> _sessions = new();
+
+    private List<BreadcrumbItem> _breadcrumbs = new()
+    {
+        new("Dashboard", href: "/"),
+        new("Paper Trading", href: "/paper-trading"),
+        new("History", href: null, disabled: true)
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        var all = await SessionRepo.ListAsync();
+        _sessions = all.OrderByDescending(s => s.StartedAt).ToList();
+        _loading = false;
+    }
+
+    private Color GetStatusColor(PaperTradingStatus status) => status switch
+    {
+        PaperTradingStatus.Running => Color.Success,
+        PaperTradingStatus.Paused => Color.Warning,
+        PaperTradingStatus.Stopped => Color.Default,
+        PaperTradingStatus.Error => Color.Error,
+        _ => Color.Default
+    };
+
+    private void CompareToBacktest(PaperSessionRecord session)
+    {
+        // Navigate to comparison view with the paper session and its linked backtest
+        Nav.NavigateTo($"/compare?paperSessionId={session.Id}&strategyVersionId={session.StrategyVersionId}");
+        Snackbar.Add("Navigating to comparison view...", Severity.Info);
+    }
+}

@@ -1,0 +1,169 @@
+@* Refine with AI Dialog — refines an AI-generated strategy using backtest results *@
+@rendermode InteractiveServer
+@using TradingResearchEngine.Application.AI
+@inject IAIStrategyAssistant AIAssistant
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <TitleContent>
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudIcon Icon="@Icons.Material.Filled.AutoAwesome" Color="Color.Secondary" />
+            <MudText Typo="Typo.h6">Refine with AI</MudText>
+        </MudStack>
+    </TitleContent>
+    <DialogContent>
+        <MudText Typo="Typo.body2" Class="mb-3 text-muted">
+            Provide feedback on the backtest results. The AI will suggest parameter adjustments.
+        </MudText>
+
+        @if (Result is not null)
+        {
+            <MudPaper Outlined="true" Class="pa-3 mb-3">
+                <MudText Typo="Typo.caption" Class="text-muted mb-1">CURRENT RESULTS</MudText>
+                <MudStack Row="true" Spacing="4" Wrap="Wrap.Wrap">
+                    <MudStack Spacing="0">
+                        <MudText Typo="Typo.caption" Class="text-muted">Sharpe</MudText>
+                        <MudText Typo="Typo.body1">@(Result.SharpeRatio?.ToString("F2") ?? "—")</MudText>
+                    </MudStack>
+                    <MudStack Spacing="0">
+                        <MudText Typo="Typo.caption" Class="text-muted">Max DD</MudText>
+                        <MudText Typo="Typo.body1">@Result.MaxDrawdown.ToString("P1")</MudText>
+                    </MudStack>
+                    <MudStack Spacing="0">
+                        <MudText Typo="Typo.caption" Class="text-muted">Win Rate</MudText>
+                        <MudText Typo="Typo.body1">@(Result.WinRate?.ToString("P0") ?? "—")</MudText>
+                    </MudStack>
+                    <MudStack Spacing="0">
+                        <MudText Typo="Typo.caption" Class="text-muted">Trades</MudText>
+                        <MudText Typo="Typo.body1">@Result.TotalTrades</MudText>
+                    </MudStack>
+                </MudStack>
+            </MudPaper>
+        }
+
+        <MudTextField @bind-Value="_refinementPrompt"
+                      Label="What would you like to improve?"
+                      Placeholder="e.g. Reduce drawdown while maintaining Sharpe above 1.0, or increase trade frequency..."
+                      Lines="4"
+                      Variant="Variant.Outlined"
+                      Class="mb-3"
+                      Disabled="_refining"
+                      aria-label="Refinement prompt" />
+
+        @if (_refining)
+        {
+            <MudProgressLinear Indeterminate="true" Color="Color.Secondary" Class="mb-3" />
+            <MudText Typo="Typo.body2" Class="text-muted">Refining strategy...</MudText>
+        }
+
+        @if (_error is not null)
+        {
+            <MudAlert Severity="Severity.Error" Class="mb-3" Dense="true">@_error</MudAlert>
+        }
+
+        @if (_refinedDraft is not null)
+        {
+            <MudAlert Severity="Severity.Info" Class="mb-3" Dense="true">
+                <MudText Typo="Typo.subtitle2">Rationale</MudText>
+                <MudText Typo="Typo.body2">@_refinedDraft.Rationale</MudText>
+            </MudAlert>
+
+            @if (_refinedDraft.Caveats.Count > 0)
+            {
+                <MudAlert Severity="Severity.Warning" Class="mb-3" Dense="true">
+                    <MudText Typo="Typo.subtitle2">Caveats</MudText>
+                    <ul>
+                        @foreach (var caveat in _refinedDraft.Caveats)
+                        {
+                            <li><MudText Typo="Typo.body2">@caveat</MudText></li>
+                        }
+                    </ul>
+                </MudAlert>
+            }
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" Disabled="_refining">Cancel</MudButton>
+        @if (_refinedDraft is null)
+        {
+            <MudButton Color="Color.Secondary" Variant="Variant.Filled"
+                       OnClick="Refine" Disabled="@(string.IsNullOrWhiteSpace(_refinementPrompt) || _refining)"
+                       StartIcon="@Icons.Material.Filled.AutoAwesome">
+                Refine
+            </MudButton>
+        }
+        else
+        {
+            <MudButton Color="Color.Primary" Variant="Variant.Filled"
+                       OnClick="ApplyRefinement"
+                       StartIcon="@Icons.Material.Filled.Check">
+                Apply Refinement
+            </MudButton>
+        }
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = default!;
+    [Parameter] public BacktestResult? Result { get; set; }
+
+    private string _refinementPrompt = "";
+    private bool _refining;
+    private string? _error;
+    private AIStrategyDraft? _refinedDraft;
+    private CancellationTokenSource? _cts;
+
+    private async Task Refine()
+    {
+        if (Result is null) return;
+
+        _refining = true;
+        _error = null;
+        _refinedDraft = null;
+        _cts = new CancellationTokenSource();
+        StateHasChanged();
+
+        try
+        {
+            // Build a current draft from the result's scenario config
+            var currentDraft = new AIStrategyDraft(
+                StrategyName: Result.ScenarioConfig.StrategyType,
+                Hypothesis: "",
+                StrategyType: Result.ScenarioConfig.StrategyType,
+                Parameters: Result.ScenarioConfig.StrategyParameters,
+                SuggestedRisk: new TradingResearchEngine.Core.Configuration.RiskConfig(
+                    new Dictionary<string, object>(), Result.ScenarioConfig.InitialCash, Result.ScenarioConfig.AnnualRiskFreeRate),
+                Rationale: "",
+                Caveats: Array.Empty<string>(),
+                SourceType: SourceType.AIGenerated);
+
+            _refinedDraft = await AIAssistant.RefineStrategyAsync(currentDraft, Result, _refinementPrompt, _cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            _error = "Refinement was cancelled.";
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to refine strategy: {ex.Message}";
+        }
+        finally
+        {
+            _refining = false;
+            _cts?.Dispose();
+            _cts = null;
+            StateHasChanged();
+        }
+    }
+
+    private void ApplyRefinement()
+    {
+        MudDialog.Close(DialogResult.Ok(_refinedDraft));
+    }
+
+    private void Cancel()
+    {
+        _cts?.Cancel();
+        MudDialog.Cancel();
+    }
+}

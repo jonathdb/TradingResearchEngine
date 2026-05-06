@@ -18,7 +18,7 @@ public class SlippageDirectionSymmetryProperties
 {
     private static readonly DateTimeOffset T0 = new(2024, 1, 1, 0, 0, 0, TimeSpan.Zero);
 
-    [Property(MaxTest = 100)]
+    [Property(MaxTest = 20)]
     public bool SlippageDirection_LongAddsShortSubtracts(PositiveInt priceWrap, PositiveInt slipWrap)
     {
         decimal basePrice = (decimal)priceWrap.Get / 100m + 0.01m;

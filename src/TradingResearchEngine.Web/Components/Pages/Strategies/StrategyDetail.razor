@@ -513,6 +513,14 @@ else
         </div>
     }
 
+    @* V8: Strategy Export Panel *@
+    @if (_selectedVersion is not null)
+    {
+        <div class="mt-4">
+            <StrategyExportPanel Version="_selectedVersion" />
+        </div>
+    }
+
     @* Run Dialog *@
     <MudDialog @bind-Visible="_runDialogOpen">
         <TitleContent>Run Backtest</TitleContent>

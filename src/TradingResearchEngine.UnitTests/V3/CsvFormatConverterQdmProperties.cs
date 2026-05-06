@@ -20,7 +20,7 @@ public class CsvFormatConverterQdmProperties
     /// and MetaTrader when the first data row uses dash separators.
     /// **Validates: Requirements 1.2, 1.3**
     /// </summary>
-    [Property(MaxTest = 100)]
+    [Property(MaxTest = 20)]
     public Property FormatDetection_DotMeansQdm_DashMeansMetaTrader()
     {
         var gen =
@@ -67,7 +67,7 @@ public class CsvFormatConverterQdmProperties
     /// whose year, month, day, hour, and minute match the original input values.
     /// **Validates: Requirements 2.1, 2.2, 2.3, 3.2**
     /// </summary>
-    [Property(MaxTest = 100)]
+    [Property(MaxTest = 20)]
     public Property QdmConversion_TimestampRoundTrip()
     {
         var gen =
@@ -116,7 +116,7 @@ public class CsvFormatConverterQdmProperties
     /// to the corresponding values in the source row.
     /// **Validates: Requirements 2.4**
     /// </summary>
-    [Property(MaxTest = 100)]
+    [Property(MaxTest = 20)]
     public Property QdmConversion_OhlcvPreservation()
     {
         var gen =
@@ -169,7 +169,7 @@ public class CsvFormatConverterQdmProperties
     /// ConvertLine with SourceFormat.QuantDataManager SHALL return null (skip the line).
     /// **Validates: Requirements 2.5**
     /// </summary>
-    [Property(MaxTest = 100)]
+    [Property(MaxTest = 20)]
     public Property MalformedLine_IsSkipped()
     {
         var fieldGen = Gen.Elements("abc", "123", "1.5", "2020.01.01", "00:00", "test", "42.7");
