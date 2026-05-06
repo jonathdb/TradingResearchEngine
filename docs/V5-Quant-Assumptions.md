@@ -128,7 +128,7 @@ The engine does not simulate order book dynamics, queue priority, or partial fil
 
 ### V6: Full Short-Selling Execution
 
-V6 removes the `LongOnlyGuard` and enables full bidirectional execution. `SimulatedExecutionHandler` fills short orders with `fillPrice = basePrice - slippageAmount`. `Portfolio` tracks short positions separately with correct mark-to-market (`(entryPrice - currentPrice) × |qty|`). Four strategies (`DonchianBreakoutStrategy`, `VolatilityScaledTrendStrategy`, `ZScoreMeanReversionStrategy`, `StationaryMeanReversionStrategy`) support a `DirectionMode` parameter (Long / Short / Both). `BaselineBuyAndHoldStrategy` and `MacroRegimeRotationStrategy` remain long-only.
+V6 removes the `LongOnlyGuard` and enables full bidirectional execution. `SimulatedExecutionHandler` fills short orders with `fillPrice = basePrice - slippageAmount`. `Portfolio` tracks short positions separately with correct mark-to-market (`(entryPrice - currentPrice) × |qty|`). Four strategies (`DonchianBreakoutStrategy`, `VolatilityScaledTrendStrategy`, `ZScoreMeanReversionStrategy`, `StationaryMeanReversionStrategy`) support bidirectional signals. `DonchianBreakoutStrategy` and `VolatilityScaledTrendStrategy` use a `DirectionMode` parameter (Long / Short / Both); `ZScoreMeanReversionStrategy` always emits bidirectional signals without a `DirectionMode` parameter. `BaselineBuyAndHoldStrategy` and `MacroRegimeRotationStrategy` remain long-only.
 
 ### V6 Roadmap (Completed)
 

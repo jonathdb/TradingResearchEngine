@@ -38,7 +38,7 @@ Strategies are discovered via the `[StrategyName]` registry. Use the name in `Sc
 | Name | Class | Description |
 |---|---|---|
 | `volatility-scaled-trend` | `VolatilityScaledTrendStrategy` | Trend following with fast/slow SMA crossover gated by ATR warmup |
-| `zscore-mean-reversion` | `ZScoreMeanReversionStrategy` | Z-score mean reversion: buys when z < -threshold, exits on reversion to mean |
+| `zscore-mean-reversion` | `ZScoreMeanReversionStrategy` | Bidirectional z-score mean reversion: longs when z < -threshold, shorts when z > +threshold, exits on reversion to mean |
 | `donchian-breakout` | `DonchianBreakoutStrategy` | Long-only Donchian Channel breakout with lagged bands to avoid lookahead bias |
 | `stationary-mean-reversion` | `StationaryMeanReversionStrategy` | Z-score mean reversion with ADF stationarity filter; exits on regime change |
 | `macro-regime-rotation` | `MacroRegimeRotationStrategy` | Multi-regime rotation using volatility, trend, and momentum indicators; rebalances monthly with 4-tier allocation |

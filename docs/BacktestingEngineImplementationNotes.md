@@ -393,6 +393,10 @@ CREATE INDEX IF NOT EXISTS idx_br_date ON BacktestResultIndex(RunDate);
 
 > **Note:** The `StudyIndex` table defined in the design document is not yet implemented in `SqliteIndexRepository`. The current implementation indexes `BacktestResult` only. Study indexing may be added in a future iteration.
 
+### Startup Initialization (Web Host)
+
+The Web host's `Program.cs` resolves `IBacktestResultRepository` from DI and, if the instance is `SqliteIndexRepository`, calls `InitializeAsync` to build or verify the SQLite index. This runs inside a try/catch — if initialization fails (e.g. disk permissions, corrupted DB), the app logs a warning and continues without the index. The pattern mirrors market data import recovery and job executor recovery: startup failures are non-fatal.
+
 ### Consumer Changes
 
 `ResearchChecklistService.GetVersionAsync` uses `IBacktestResultRepository.ListByVersionAsync` instead of the previous O(n×m) full-scan loop. `StrategyDetail.razor` also uses the indexed query for loading version-specific results.
@@ -735,7 +739,7 @@ V5 added `Direction.Short` to the enum (`{ Long, Short, Flat }`) for exhaustive 
 - `SimulatedExecutionHandler` fills short orders with `fillPrice = basePrice - slippageAmount` (favorable to seller). For tick data, short fills at Bid.
 - `Portfolio` tracks short positions in a separate `_shortPositions` dictionary. Short unrealised PnL: `(entryPrice - currentPrice) × |qty|`. Short close PnL: `(entryPrice - exitPrice) × |qty|`.
 - `DefaultRiskLayer` converts `Direction.Short` signals into orders and handles `Direction.Flat` with open short positions. When `AllowReversals == false` (default) and an opposing position exists, the signal is rejected.
-- Four strategies support bidirectional signals via a `DirectionMode` parameter: `DonchianBreakoutStrategy`, `VolatilityScaledTrendStrategy`, `ZScoreMeanReversionStrategy`, `StationaryMeanReversionStrategy`. `BaselineBuyAndHoldStrategy` and `MacroRegimeRotationStrategy` remain long-only.
+- Four strategies support bidirectional signals: `DonchianBreakoutStrategy`, `VolatilityScaledTrendStrategy`, `ZScoreMeanReversionStrategy`, `StationaryMeanReversionStrategy`. The first two use a `DirectionMode` parameter (Long/Short/Both); `ZScoreMeanReversionStrategy` always emits bidirectional signals (long when z < -threshold, short when z > +threshold) without a `DirectionMode` parameter. `BaselineBuyAndHoldStrategy` and `MacroRegimeRotationStrategy` remain long-only.
 
 ### ExperimentMetadata V5 Fields
 
