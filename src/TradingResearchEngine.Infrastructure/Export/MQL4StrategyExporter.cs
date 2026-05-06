@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using TradingResearchEngine.Application.Export;
 using TradingResearchEngine.Application.Strategy;
+using TradingResearchEngine.Application.Strategy.Composite;
 
 namespace TradingResearchEngine.Infrastructure.Export;
 
@@ -18,7 +19,8 @@ public sealed class MQL4StrategyExporter : IStrategyExporter
         "zscore-mean-reversion",
         "stationary-mean-reversion",
         "donchian-breakout",
-        "macro-regime"
+        "macro-regime",
+        "composite"
     };
 
     /// <inheritdoc/>
@@ -40,6 +42,27 @@ public sealed class MQL4StrategyExporter : IStrategyExporter
         }
 
         var parameters = version.Parameters ?? new Dictionary<string, object>();
+
+        // Handle composite strategy via CompositeExportHelper
+        if (string.Equals(strategyType, "composite", StringComparison.OrdinalIgnoreCase))
+        {
+            var compositeConfig = CompositeExportHelper.ExtractCompositeConfig(parameters);
+            if (compositeConfig is null)
+            {
+                var failResult = new ExportResult(
+                    ExportFormat.MQL4,
+                    string.Empty,
+                    string.Empty,
+                    new List<string> { "Could not extract CompositeStrategyConfig from strategy parameters." });
+                return Task.FromResult(failResult);
+            }
+
+            var (compositeCode, compositeWarnings) = CompositeExportHelper.GenerateMQL4(compositeConfig);
+            var compositeFileName = $"{SanitizeName(compositeConfig.Name)}_EA.mq4";
+            var compositeResult = new ExportResult(ExportFormat.MQL4, compositeFileName, compositeCode, compositeWarnings);
+            return Task.FromResult(compositeResult);
+        }
+
         var code = GenerateCode(strategyType, parameters);
         var fileName = $"{SanitizeName(strategyType)}_EA.mq4";
 

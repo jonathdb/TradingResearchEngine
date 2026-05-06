@@ -5,6 +5,7 @@ using Mscc.GenerativeAI;
 using TradingResearchEngine.Application.AI;
 using TradingResearchEngine.Application.Configuration;
 using TradingResearchEngine.Application.Strategy;
+using TradingResearchEngine.Application.Strategy.Composite;
 using TradingResearchEngine.Core.Configuration;
 using TradingResearchEngine.Core.Results;
 
@@ -82,6 +83,46 @@ public sealed class GeminiStrategyAssistant : IAIStrategyAssistant
             return retryDraft with { SourceType = SourceType.AIGenerated };
         }
 
+        // Validate CompositeConfig when StrategyType is "composite"
+        if (string.Equals(draft.StrategyType, "composite", StringComparison.OrdinalIgnoreCase)
+            && draft.CompositeConfig is not null)
+        {
+            var validationErrors = CompositeStrategyConfigValidator.Validate(draft.CompositeConfig);
+            if (validationErrors.Count > 0)
+            {
+                _logger.LogWarning(
+                    "CompositeConfig validation failed with {ErrorCount} error(s). Retrying with correction prompt.",
+                    validationErrors.Count);
+
+                var correctionPrompt = BuildCompositeValidationCorrectionPrompt(draft, validationErrors);
+                var retryJson = await _geminiClient.GenerateJsonAsync(systemPrompt, correctionPrompt, ct);
+                var retryDraft = DeserializeDraft(retryJson);
+
+                // Re-validate the retry result
+                if (string.Equals(retryDraft.StrategyType, "composite", StringComparison.OrdinalIgnoreCase)
+                    && retryDraft.CompositeConfig is not null)
+                {
+                    var retryErrors = CompositeStrategyConfigValidator.Validate(retryDraft.CompositeConfig);
+                    if (retryErrors.Count > 0)
+                    {
+                        _logger.LogWarning(
+                            "Retry also failed CompositeConfig validation with {ErrorCount} error(s). Returning draft with caveats.",
+                            retryErrors.Count);
+
+                        var caveats = retryDraft.Caveats.ToList();
+                        caveats.Add($"Composite configuration has validation errors: {string.Join("; ", retryErrors)}");
+                        return retryDraft with
+                        {
+                            Caveats = caveats,
+                            SourceType = SourceType.AIGenerated
+                        };
+                    }
+                }
+
+                return retryDraft with { SourceType = SourceType.AIGenerated };
+            }
+        }
+
         return draft with { SourceType = SourceType.AIGenerated };
     }
 
@@ -134,6 +175,10 @@ public sealed class GeminiStrategyAssistant : IAIStrategyAssistant
 
     private bool IsKnownStrategyType(string strategyType)
     {
+        // "composite" is always valid even if not yet registered in the assembly scan
+        if (string.Equals(strategyType, "composite", StringComparison.OrdinalIgnoreCase))
+            return true;
+
         return _registry.KnownNames.Contains(strategyType, StringComparer.OrdinalIgnoreCase);
     }
 
@@ -145,6 +190,27 @@ public sealed class GeminiStrategyAssistant : IAIStrategyAssistant
             Please choose from the following known strategy types: {knownNames}
             
             Regenerate the strategy draft using one of the known types listed above.
+            """;
+    }
+
+    private static string BuildCompositeValidationCorrectionPrompt(
+        AIStrategyDraft draft,
+        IReadOnlyList<string> validationErrors)
+    {
+        var errorList = string.Join("\n", validationErrors.Select((e, i) => $"  {i + 1}. {e}"));
+        return $"""
+            The composite strategy configuration you returned has validation errors:
+            {errorList}
+
+            Original configuration:
+            - Name: {draft.CompositeConfig?.Name ?? "(none)"}
+            - Entry Condition: {draft.CompositeConfig?.EntryCondition ?? "(none)"}
+            - Exit Condition: {draft.CompositeConfig?.ExitCondition ?? "(none)"}
+
+            Please fix the validation errors and regenerate the composite strategy configuration.
+            Ensure all indicator IDs referenced in conditions are defined in the indicators list,
+            all indicator types are supported (sma, ema, rsi, macd, bollinger, atr, stochastic, donchian),
+            and all condition expressions use valid syntax.
             """;
     }
 
@@ -170,6 +236,13 @@ public sealed class GeminiStrategyAssistant : IAIStrategyAssistant
         var dto = JsonSerializer.Deserialize<AIStrategyDraftDto>(json, options)
             ?? throw new InvalidOperationException("Failed to deserialize AI response into AIStrategyDraft.");
 
+        CompositeStrategyConfig? compositeConfig = null;
+        if (string.Equals(dto.StrategyType, "composite", StringComparison.OrdinalIgnoreCase)
+            && dto.CompositeConfig is not null)
+        {
+            compositeConfig = MapCompositeConfig(dto.CompositeConfig);
+        }
+
         return new AIStrategyDraft(
             StrategyName: dto.StrategyName ?? "Unnamed Strategy",
             Hypothesis: dto.Hypothesis ?? "",
@@ -181,7 +254,36 @@ public sealed class GeminiStrategyAssistant : IAIStrategyAssistant
                 dto.SuggestedRisk?.AnnualRiskFreeRate ?? 0.05m),
             Rationale: dto.Rationale ?? "",
             Caveats: dto.Caveats ?? new List<string>(),
+            CompositeConfig: compositeConfig,
             SourceType: SourceType.AIGenerated);
+    }
+
+    private static CompositeStrategyConfig MapCompositeConfig(CompositeConfigDto dto)
+    {
+        var indicators = dto.Indicators?
+            .Select(i => new IndicatorConfig(
+                Id: i.Id ?? "",
+                Type: i.Type ?? "",
+                Parameters: i.Parameters?.ToDictionary(
+                    kvp => kvp.Key,
+                    kvp => kvp.Value) as IReadOnlyDictionary<string, object>
+                    ?? new Dictionary<string, object>()))
+            .ToList() as IReadOnlyList<IndicatorConfig>
+            ?? new List<IndicatorConfig>();
+
+        var directionMode = DirectionMode.Long;
+        if (!string.IsNullOrWhiteSpace(dto.DirectionMode)
+            && Enum.TryParse<DirectionMode>(dto.DirectionMode, ignoreCase: true, out var parsed))
+        {
+            directionMode = parsed;
+        }
+
+        return new CompositeStrategyConfig(
+            Name: dto.Name ?? "Unnamed Composite Strategy",
+            Indicators: indicators,
+            EntryCondition: dto.EntryCondition ?? "",
+            ExitCondition: dto.ExitCondition ?? "",
+            DirectionMode: directionMode);
     }
 
     /// <summary>
@@ -196,6 +298,7 @@ public sealed class GeminiStrategyAssistant : IAIStrategyAssistant
         public RiskConfigDto? SuggestedRisk { get; set; }
         public string? Rationale { get; set; }
         public List<string>? Caveats { get; set; }
+        public CompositeConfigDto? CompositeConfig { get; set; }
     }
 
     private sealed class RiskConfigDto
@@ -203,5 +306,29 @@ public sealed class GeminiStrategyAssistant : IAIStrategyAssistant
         public Dictionary<string, object>? RiskParameters { get; set; }
         public decimal InitialCash { get; set; } = 100_000m;
         public decimal AnnualRiskFreeRate { get; set; } = 0.05m;
+    }
+
+    /// <summary>
+    /// Internal DTO for deserializing the composite strategy configuration from AI responses.
+    /// Maps to <see cref="CompositeStrategyConfig"/>.
+    /// </summary>
+    private sealed class CompositeConfigDto
+    {
+        public string? Name { get; set; }
+        public List<IndicatorConfigDto>? Indicators { get; set; }
+        public string? EntryCondition { get; set; }
+        public string? ExitCondition { get; set; }
+        public string? DirectionMode { get; set; }
+    }
+
+    /// <summary>
+    /// Internal DTO for deserializing indicator configuration entries from AI responses.
+    /// Maps to <see cref="IndicatorConfig"/>.
+    /// </summary>
+    private sealed class IndicatorConfigDto
+    {
+        public string? Id { get; set; }
+        public string? Type { get; set; }
+        public Dictionary<string, object>? Parameters { get; set; }
     }
 }

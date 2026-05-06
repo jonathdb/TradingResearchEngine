@@ -1,5 +1,6 @@
 using TradingResearchEngine.Core.Configuration;
 using TradingResearchEngine.Application.Strategy;
+using TradingResearchEngine.Application.Strategy.Composite;
 
 namespace TradingResearchEngine.Application.AI;
 
@@ -15,6 +16,10 @@ namespace TradingResearchEngine.Application.AI;
 /// <param name="SuggestedRisk">Suggested risk configuration for the strategy.</param>
 /// <param name="Rationale">Explanation of why the AI chose this configuration.</param>
 /// <param name="Caveats">Warnings or limitations the user should be aware of.</param>
+/// <param name="CompositeConfig">
+/// Optional composite strategy configuration. Non-null when <paramref name="StrategyType"/> is
+/// <c>"composite"</c>; must be null for compiled strategy types.
+/// </param>
 /// <param name="SourceType">Provenance tag; defaults to <see cref="Strategy.SourceType.AIGenerated"/>.</param>
 public sealed record AIStrategyDraft(
     string StrategyName,
@@ -24,4 +29,5 @@ public sealed record AIStrategyDraft(
     RiskConfig SuggestedRisk,
     string Rationale,
     IReadOnlyList<string> Caveats,
+    CompositeStrategyConfig? CompositeConfig = null,
     SourceType SourceType = SourceType.AIGenerated);

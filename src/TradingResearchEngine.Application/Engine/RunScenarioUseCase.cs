@@ -1,8 +1,10 @@
+using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using TradingResearchEngine.Application.Execution;
 using TradingResearchEngine.Application.Metrics;
 using TradingResearchEngine.Application.Strategy;
+using TradingResearchEngine.Application.Strategy.Composite;
 using TradingResearchEngine.Core.Configuration;
 using TradingResearchEngine.Core.DataHandling;
 using TradingResearchEngine.Core.Engine;
@@ -25,6 +27,19 @@ public sealed record ScenarioRunResult(BacktestResult? Result, IReadOnlyList<str
 
     /// <summary>True when the run completed without validation errors.</summary>
     public bool IsSuccess => Errors is null || Errors.Count == 0;
+}
+
+/// <summary>Internal result wrapper for composite strategy construction.</summary>
+internal sealed record CompositeStrategyResult(IStrategy? Strategy, IReadOnlyList<string>? Errors)
+{
+    /// <summary>True when the strategy was constructed successfully.</summary>
+    public bool IsSuccess => Strategy is not null;
+
+    /// <summary>Returns a successful result.</summary>
+    public static CompositeStrategyResult Ok(IStrategy strategy) => new(strategy, null);
+
+    /// <summary>Returns a failure with validation errors.</summary>
+    public static CompositeStrategyResult Fail(IReadOnlyList<string> errors) => new(null, errors);
 }
 
 /// <summary>
@@ -85,7 +100,18 @@ public sealed class RunScenarioUseCase
             return ScenarioRunResult.Failure(new[] { ex.Message });
         }
 
-        var strategy = CreateStrategy(strategyType, effectiveStrategy.StrategyParameters);
+        IStrategy strategy;
+        if (string.Equals(effectiveStrategy.StrategyType, "composite", StringComparison.OrdinalIgnoreCase))
+        {
+            var compositeResult = CreateCompositeStrategy(effectiveStrategy.StrategyParameters);
+            if (!compositeResult.IsSuccess)
+                return ScenarioRunResult.Failure(compositeResult.Errors!);
+            strategy = compositeResult.Strategy!;
+        }
+        else
+        {
+            strategy = CreateStrategy(strategyType, effectiveStrategy.StrategyParameters);
+        }
         var effectiveData = config.EffectiveDataConfig;
         var dataProviderFactory = _services.GetRequiredService<IDataProviderFactory>();
         var dataProvider = dataProviderFactory.Create(effectiveData.DataProviderType, effectiveData.DataProviderOptions);
@@ -272,6 +298,109 @@ public sealed class RunScenarioUseCase
         // Fallback: parameterless or DI-resolved
         return (IStrategy)ActivatorUtilities.CreateInstance(_services, strategyType);
     }
+
+    /// <summary>
+    /// Creates a <see cref="CompositeStrategy"/> from the strategy parameters dictionary.
+    /// Extracts and deserialises the <see cref="CompositeStrategyConfig"/>, validates it,
+    /// and constructs the strategy. Returns structured errors on failure.
+    /// </summary>
+    private CompositeStrategyResult CreateCompositeStrategy(Dictionary<string, object> parameters)
+    {
+        CompositeStrategyConfig? config = null;
+
+        // Try to extract CompositeStrategyConfig from the parameters dictionary
+        // It may be stored under "compositeConfig" or "CompositeConfig" key
+        var configKey = parameters.Keys
+            .FirstOrDefault(k => string.Equals(k, "compositeConfig", StringComparison.OrdinalIgnoreCase));
+
+        if (configKey is not null)
+        {
+            var rawValue = parameters[configKey];
+            config = DeserialiseCompositeConfig(rawValue);
+        }
+        else
+        {
+            // Attempt to deserialise the entire parameters dictionary as a CompositeStrategyConfig
+            try
+            {
+                var json = JsonSerializer.Serialize(parameters, CompositeJsonOptions);
+                config = JsonSerializer.Deserialize<CompositeStrategyConfig>(json, CompositeJsonOptions);
+            }
+            catch
+            {
+                // Fall through to error below
+            }
+        }
+
+        if (config is null)
+        {
+            return CompositeStrategyResult.Fail(new[]
+            {
+                "StrategyType is 'composite' but no valid CompositeStrategyConfig was found in StrategyParameters. " +
+                "Provide a 'compositeConfig' key containing the composite strategy configuration."
+            });
+        }
+
+        // Validate the config before construction
+        var validationErrors = CompositeStrategyConfigValidator.Validate(config);
+        if (validationErrors.Count > 0)
+        {
+            return CompositeStrategyResult.Fail(validationErrors);
+        }
+
+        // Construct the CompositeStrategy
+        try
+        {
+            var strategy = new CompositeStrategy(config);
+            return CompositeStrategyResult.Ok(strategy);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return CompositeStrategyResult.Fail(new[] { ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected error constructing CompositeStrategy.");
+            return CompositeStrategyResult.Fail(new[] { $"Failed to construct composite strategy: {ex.Message}" });
+        }
+    }
+
+    /// <summary>
+    /// Deserialises a <see cref="CompositeStrategyConfig"/> from a raw value that may be
+    /// a <see cref="JsonElement"/>, a string, or an already-typed object.
+    /// </summary>
+    private static CompositeStrategyConfig? DeserialiseCompositeConfig(object rawValue)
+    {
+        try
+        {
+            if (rawValue is CompositeStrategyConfig typed)
+                return typed;
+
+            if (rawValue is JsonElement je)
+            {
+                var json = je.GetRawText();
+                return JsonSerializer.Deserialize<CompositeStrategyConfig>(json, CompositeJsonOptions);
+            }
+
+            if (rawValue is string str)
+                return JsonSerializer.Deserialize<CompositeStrategyConfig>(str, CompositeJsonOptions);
+
+            // Try serialising and deserialising as a last resort
+            var serialised = JsonSerializer.Serialize(rawValue, CompositeJsonOptions);
+            return JsonSerializer.Deserialize<CompositeStrategyConfig>(serialised, CompositeJsonOptions);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>JSON serialisation options for composite strategy config.</summary>
+    private static readonly JsonSerializerOptions CompositeJsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+    };
 
     private static object? ConvertJsonElement(System.Text.Json.JsonElement je, Type targetType)
     {

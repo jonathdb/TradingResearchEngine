@@ -221,7 +221,8 @@ public sealed class GeminiStrategyAssistantTests : IDisposable
             "Test", "Hypothesis", "moving-average-crossover",
             new Dictionary<string, object>(),
             new RiskConfig(new Dictionary<string, object>()),
-            "Rationale", new List<string>(), SourceType.AIGenerated);
+            "Rationale", new List<string>(),
+            SourceType: SourceType.AIGenerated);
 
         var backtestResult = CreateMinimalBacktestResult();
 
@@ -258,7 +259,8 @@ public sealed class GeminiStrategyAssistantTests : IDisposable
             "Test", "Hypothesis", "moving-average-crossover",
             new Dictionary<string, object>(),
             new RiskConfig(new Dictionary<string, object>()),
-            "Rationale", new List<string>(), SourceType.AIGenerated);
+            "Rationale", new List<string>(),
+            SourceType: SourceType.AIGenerated);
 
         var backtestResult = CreateMinimalBacktestResult();
 

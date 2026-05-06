@@ -79,6 +79,9 @@ public sealed class PreflightValidator
         var strategyType = config.EffectiveStrategyConfig.StrategyType;
         if (string.IsNullOrWhiteSpace(strategyType)) return;
 
+        // Composite strategies use CompositeStrategyConfig, not individual parameters
+        if (string.Equals(strategyType, "composite", StringComparison.OrdinalIgnoreCase)) return;
+
         IReadOnlyList<StrategyParameterSchema> schema;
         try { schema = _schemaProvider.GetSchema(strategyType); }
         catch { return; } // Strategy not found — already caught by ValidateRequiredFields
@@ -109,6 +112,9 @@ public sealed class PreflightValidator
     {
         var strategyType = config.EffectiveStrategyConfig.StrategyType;
         if (string.IsNullOrWhiteSpace(strategyType)) return;
+
+        // Composite strategies use CompositeStrategyConfig, not individual parameters
+        if (string.Equals(strategyType, "composite", StringComparison.OrdinalIgnoreCase)) return;
 
         IReadOnlyList<StrategyParameterSchema> schema;
         try { schema = _schemaProvider.GetSchema(strategyType); }
