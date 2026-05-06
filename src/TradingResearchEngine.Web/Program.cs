@@ -65,6 +65,17 @@ catch (Exception ex)
     app.Logger.LogWarning(ex, "Job recovery failed on startup");
 }
 
+// Tick Import: recover orphaned tick imports on startup
+try
+{
+    var tickImportService = app.Services.GetRequiredService<TradingResearchEngine.Application.TickImport.TickImportService>();
+    await tickImportService.RecoverOnStartupAsync();
+}
+catch (Exception ex)
+{
+    app.Logger.LogWarning(ex, "Tick import recovery failed on startup");
+}
+
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Error");

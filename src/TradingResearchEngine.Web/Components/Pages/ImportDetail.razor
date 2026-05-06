@@ -1,0 +1,224 @@
+@page "/market-data/import/{ImportId}"
+@using TradingResearchEngine.Application.TickImport
+@inject ITickImportRepository TickImportRepo
+@inject IGeneratedTimeframeRepository TimeframeRepo
+@inject TimeframeGeneratorService TimeframeGenerator
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+@implements IDisposable
+
+<PageTitle>Import Detail — TradingResearchEngine</PageTitle>
+
+<MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.ArrowBack"
+           Href="/market-data" Class="mb-3">
+    ← Back to Market Data
+</MudButton>
+
+@if (_loading)
+{
+    <MudProgressCircular Indeterminate="true" />
+}
+else if (_import is null)
+{
+    <MudAlert Severity="Severity.Error">Import not found.</MudAlert>
+}
+else
+{
+    <MudText Typo="Typo.h5" Class="mb-3">@_import.Symbol — Tick Import</MudText>
+
+    @* Import Summary *@
+    <MudPaper Class="pa-4 mb-4" Elevation="1">
+        <MudGrid>
+            <MudItem xs="12" sm="6" md="3">
+                <MudText Typo="Typo.caption" Class="text-muted">Symbol</MudText>
+                <MudText Typo="Typo.body1">@_import.Symbol</MudText>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudText Typo="Typo.caption" Class="text-muted">Source</MudText>
+                <MudText Typo="Typo.body1">@_import.Source</MudText>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudText Typo="Typo.caption" Class="text-muted">Date Range</MudText>
+                <MudText Typo="Typo.body1">@_import.RequestedStart.ToString("yyyy-MM-dd") → @_import.RequestedEnd.ToString("yyyy-MM-dd")</MudText>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudText Typo="Typo.caption" Class="text-muted">Total Ticks</MudText>
+                <MudText Typo="Typo.body1">@(_import.TotalTickCount?.ToString("N0") ?? "—")</MudText>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudText Typo="Typo.caption" Class="text-muted">Downloaded</MudText>
+                <MudText Typo="Typo.body1">@(_import.CompletedAt?.ToString("yyyy-MM-dd HH:mm") ?? "—")</MudText>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+
+    @* Timeframe Generation Controls *@
+    <MudPaper Class="pa-4 mb-4" Elevation="1">
+        <MudText Typo="Typo.subtitle2" Class="text-muted mb-3">GENERATE TIMEFRAME</MudText>
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudSelect T="string" @bind-Value="_selectedTimeframe" Label="Timeframe" Variant="Variant.Outlined"
+                       Style="max-width: 200px" Disabled="@_isGenerating">
+                @foreach (var tf in _timeframes)
+                {
+                    <MudSelectItem Value="@tf">@tf</MudSelectItem>
+                }
+            </MudSelect>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                       OnClick="GenerateTimeframe" Disabled="@_isGenerating"
+                       StartIcon="@Icons.Material.Filled.Build">
+                Generate
+            </MudButton>
+            @if (_isGenerating)
+            {
+                <MudProgressCircular Size="MudBlazor.Size.Small" Indeterminate="true" />
+                <MudText Typo="Typo.caption" Class="text-muted">Generating...</MudText>
+            }
+        </MudStack>
+
+        @if (_regenerateWarning)
+        {
+            <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-2">
+                A file for this timeframe already exists. Generating will overwrite the existing file.
+            </MudAlert>
+        }
+
+        @if (_generationError is not null)
+        {
+            <MudAlert Severity="Severity.Error" Dense="true" Class="mt-2">@_generationError</MudAlert>
+        }
+    </MudPaper>
+
+    @* Generated Timeframes List *@
+    <MudText Typo="Typo.subtitle2" Class="text-muted mb-2">GENERATED TIMEFRAMES</MudText>
+
+    @if (_generatedTimeframes.Count == 0)
+    {
+        <MudAlert Severity="Severity.Info">No timeframes generated yet. Use the controls above to generate bar data.</MudAlert>
+    }
+    else
+    {
+        <MudSimpleTable Dense="true" Hover="true" Bordered="true">
+            <thead>
+                <tr>
+                    <th>Timeframe</th>
+                    <th>File Name</th>
+                    <th>Bar Count</th>
+                    <th>Generated</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var tf in _generatedTimeframes.OrderBy(t => t.GeneratedAt))
+                {
+                    <tr>
+                        <td>@tf.Timeframe</td>
+                        <td>@Path.GetFileName(tf.OutputFilePath)</td>
+                        <td>@tf.BarCount.ToString("N0")</td>
+                        <td>@tf.GeneratedAt.ToString("yyyy-MM-dd HH:mm")</td>
+                        <td>
+                            <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Text" Href="/data">
+                                View in Data Files
+                            </MudButton>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </MudSimpleTable>
+    }
+}
+
+@code {
+    [Parameter]
+    public string ImportId { get; set; } = string.Empty;
+
+    private bool _loading = true;
+    private TickImportRecord? _import;
+    private List<GeneratedTimeframeRecord> _generatedTimeframes = new();
+    private string _selectedTimeframe = "1H";
+    private bool _isGenerating;
+    private bool _regenerateWarning;
+    private string? _generationError;
+    private CancellationTokenSource? _cts;
+
+    private readonly string[] _timeframes = { "1m", "5m", "15m", "30m", "1H", "4H", "Daily" };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadImport();
+        await LoadGeneratedTimeframes();
+        _loading = false;
+    }
+
+    private async Task LoadImport()
+    {
+        try
+        {
+            _import = await TickImportRepo.GetAsync(ImportId);
+        }
+        catch { _import = null; }
+    }
+
+    private async Task LoadGeneratedTimeframes()
+    {
+        try
+        {
+            var all = await TimeframeRepo.ListByImportAsync(ImportId);
+            _generatedTimeframes = all.ToList();
+        }
+        catch { _generatedTimeframes = new(); }
+    }
+
+    private async Task GenerateTimeframe()
+    {
+        _generationError = null;
+        _regenerateWarning = false;
+
+        if (_import is null) return;
+
+        // Check if timeframe already exists
+        var existing = _generatedTimeframes.FirstOrDefault(
+            t => string.Equals(t.Timeframe, _selectedTimeframe, StringComparison.OrdinalIgnoreCase));
+        if (existing is not null && !_regenerateWarning)
+        {
+            _regenerateWarning = true;
+            return; // Show warning, user clicks again to proceed
+        }
+
+        _isGenerating = true;
+        _regenerateWarning = false;
+        StateHasChanged();
+
+        try
+        {
+            _cts = new CancellationTokenSource();
+            await TimeframeGenerator.GenerateTimeframeAsync(ImportId, _selectedTimeframe, null, _cts.Token);
+            await LoadGeneratedTimeframes();
+            Snackbar.Add($"Generated {_selectedTimeframe} bars successfully.", Severity.Success);
+        }
+        catch (InvalidOperationException ex)
+        {
+            _generationError = ex.Message;
+        }
+        catch (ArgumentException ex)
+        {
+            _generationError = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            _generationError = $"Generation failed: {ex.Message}";
+        }
+        finally
+        {
+            _isGenerating = false;
+            _cts?.Dispose();
+            _cts = null;
+            StateHasChanged();
+        }
+    }
+
+    public void Dispose()
+    {
+        _cts?.Cancel();
+        _cts?.Dispose();
+    }
+}

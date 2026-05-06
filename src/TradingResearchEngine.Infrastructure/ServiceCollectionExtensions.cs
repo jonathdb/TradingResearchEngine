@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TradingResearchEngine.Application.AI;
 using TradingResearchEngine.Application.Configuration;
+using TradingResearchEngine.Application.TickImport;
 using TradingResearchEngine.Core.Configuration;
 using TradingResearchEngine.Core.DataHandling;
 using TradingResearchEngine.Core.Persistence;
@@ -13,6 +14,7 @@ using TradingResearchEngine.Infrastructure.AI;
 using TradingResearchEngine.Infrastructure.DataProviders;
 using TradingResearchEngine.Infrastructure.Persistence;
 using TradingResearchEngine.Infrastructure.Reporting;
+using TradingResearchEngine.Infrastructure.TickImport;
 using TradingResearchEngine.Application.PropFirm;
 using TradingResearchEngine.Application.Research;
 
@@ -184,6 +186,51 @@ public static class ServiceCollectionExtensions
         // V3: Strategy templates
         services.AddSingleton<IReadOnlyList<TradingResearchEngine.Application.Strategy.StrategyTemplate>>(
             TradingResearchEngine.Application.Strategy.DefaultStrategyTemplates.All);
+
+        // Tick Import: configuration binding
+        services.Configure<TickImportOptions>(configuration.GetSection(TickImportOptions.SectionName));
+
+        // Tick Import: cache service
+        services.AddSingleton<ITickCacheService, TickCacheService>();
+
+        // Tick Import: repositories
+        services.AddSingleton<ITickImportRepository>(sp =>
+        {
+            return new JsonTickImportRepository(
+                Path.Combine(Directory.GetCurrentDirectory(), "data", "tick-imports"));
+        });
+        services.AddSingleton<IGeneratedTimeframeRepository>(sp =>
+        {
+            return new JsonGeneratedTimeframeRepository(
+                Path.Combine(Directory.GetCurrentDirectory(), "data", "generated-timeframes"));
+        });
+
+        // Tick Import: downloader with named HttpClient
+        services.AddHttpClient("DukascopyTick", (sp, client) =>
+        {
+            var opts = sp.GetRequiredService<IOptions<TickImportOptions>>().Value;
+            client.Timeout = TimeSpan.FromSeconds(60);
+        }).ConfigurePrimaryHttpMessageHandler(sp =>
+        {
+            var opts = sp.GetRequiredService<IOptions<TickImportOptions>>().Value;
+            return new SocketsHttpHandler
+            {
+                MaxConnectionsPerServer = opts.MaxConnectionsPerServer
+            };
+        });
+
+        services.AddSingleton<ITickDownloader>(sp =>
+        {
+            var httpFactory = sp.GetRequiredService<IHttpClientFactory>();
+            var httpClient = httpFactory.CreateClient("DukascopyTick");
+            var logger = sp.GetRequiredService<ILogger<DukascopyTickDownloader>>();
+            var options = sp.GetRequiredService<IOptions<TickImportOptions>>();
+            return new DukascopyTickDownloader(httpClient, logger, options);
+        });
+
+        // Tick Import: application services
+        services.AddSingleton<TickImportService>();
+        services.AddSingleton<TimeframeGeneratorService>();
 
         return services;
     }
