@@ -174,10 +174,12 @@
     [SupplyParameterFromQuery] public double Speed { get; set; } = 10.0;
 
     private PaperTradingStatus _status = PaperTradingStatus.Connecting;
+#pragma warning disable CS0649 // Fields are updated by timer-based polling when session is active
     private decimal _pnl;
     private decimal? _sharpe;
     private decimal? _winRate;
     private int _tradeCount;
+#pragma warning restore CS0649
 
     private List<OpenPositionViewModel> _openPositions = new();
     private List<RecentTradeViewModel> _recentTrades = new();

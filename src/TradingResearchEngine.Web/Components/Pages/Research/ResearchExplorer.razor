@@ -50,7 +50,7 @@ else
 {
     <MudTable Items="FilteredStudies" Dense="true" Hover="true" Striped="true" Style="cursor:pointer"
               @bind-SelectedItem="_selectedRow"
-              OnRowClick="@((TableRowClickEventArgs<StudyRow> args) => Nav.NavigateTo($"/research/study/{args.Item.Study.StudyId}"))">
+              OnRowClick="@((TableRowClickEventArgs<StudyRow> args) => Nav.NavigateTo($"/research/study/{args.Item!.Study.StudyId}"))">
         <HeaderContent>
             <MudTh>Study</MudTh>
             <MudTh>Type</MudTh>
@@ -60,27 +60,28 @@ else
             <MudTh></MudTh>
         </HeaderContent>
         <RowTemplate>
-            <MudTd>@context.Study.StudyId[..Math.Min(8, context.Study.StudyId.Length)]…</MudTd>
+            <MudTd>@context!.Study.StudyId[..Math.Min(8, context.Study.StudyId.Length)]…</MudTd>
             <MudTd>
                 <MudChip T="string" Size="MudBlazor.Size.Small"
-                         Color="@GetStudyTypeColor(context.Study.Type)">
+                         Color="@GetStudyTypeColor(context!.Study.Type)">
                     @context.Study.Type
                 </MudChip>
             </MudTd>
-            <MudTd>@(context.StrategyName ?? "—")</MudTd>
+            <MudTd>@(context!.StrategyName ?? "—")</MudTd>
             <MudTd>
                 <MudChip T="string" Size="MudBlazor.Size.Small"
-                         Color="@GetStatusColor(context.Study.Status)">
+                         Color="@GetStatusColor(context!.Study.Status)">
                     @context.Study.Status
                 </MudChip>
             </MudTd>
-            <MudTd>@context.Study.CreatedAt.ToString("yyyy-MM-dd HH:mm")</MudTd>
-            <MudTd><MudIconButton Icon="@Icons.Material.Filled.OpenInNew" Size="MudBlazor.Size.Small" Href="@($"/research/study/{context.Study.StudyId}")" /></MudTd>
+            <MudTd>@context!.Study.CreatedAt.ToString("yyyy-MM-dd HH:mm")</MudTd>
+            <MudTd><MudIconButton Icon="@Icons.Material.Filled.OpenInNew" Size="MudBlazor.Size.Small" Href="@($"/research/study/{context!.Study.StudyId}")" /></MudTd>
         </RowTemplate>
     </MudTable>
 }
 
 @code {
+#nullable enable
     [SupplyParameterFromQuery] public string? StrategyId { get; set; }
 
     private readonly CancellationTokenSource _cts = new();

@@ -43,6 +43,20 @@ using (var scope = app.Services.CreateScope())
     await migration.MigrateIfNeededAsync();
 }
 
+// V6: Initialize SQLite index for backtest results
+try
+{
+    var indexRepo = app.Services.GetRequiredService<TradingResearchEngine.Application.Research.IBacktestResultRepository>();
+    if (indexRepo is TradingResearchEngine.Infrastructure.Persistence.SqliteIndexRepository sqliteRepo)
+    {
+        await sqliteRepo.InitializeAsync();
+    }
+}
+catch (Exception ex)
+{
+    app.Logger.LogWarning(ex, "SQLite index initialization failed on startup");
+}
+
 // Market Data: recover orphaned imports on startup
 try
 {

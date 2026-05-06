@@ -328,5 +328,4 @@ public static class ServiceCollectionExtensions
             => throw new InvalidOperationException(
                 "AI strategy assistant is disabled. Configure a valid Gemini API key in GeminiOptions to enable this feature.");
     }
-    }
 }

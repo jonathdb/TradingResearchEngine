@@ -182,6 +182,7 @@
 
             // In a real implementation, this would call PortfolioBacktestRunner
             // For now, generate a result ID to demonstrate navigation
+            await Task.CompletedTask;
             _resultId = $"portfolio-{DateTime.UtcNow:yyyyMMdd-HHmmss}";
             Snackbar.Add("Portfolio backtest completed", Severity.Success);
         }

@@ -132,7 +132,9 @@ else
     [Parameter] public string Id { get; set; } = "";
 
     private bool _loading = true;
+#pragma warning disable CS0649 // Field is assigned dynamically when repository is wired
     private PortfolioBacktestResult? _result;
+#pragma warning restore CS0649
 
     private PlotlyChart? _equityChart;
     private PlotlyChart? _correlationChart;

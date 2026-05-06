@@ -411,7 +411,9 @@ else
     private bool _researchReadiness; // V5: research readiness badge
     private bool _isOosAvailable; // V5: IS vs OOS comparison available
     private bool _isAIGenerated; // V8: whether the strategy was AI-generated
+#pragma warning disable CS0649 // Assigned when bar data loading is implemented
     private IReadOnlyList<TradingResearchEngine.Core.DataHandling.BarRecord>? _barRecords; // V8: bar data for indicator overlays
+#pragma warning restore CS0649
 
     private string SharpeColor => _result?.SharpeRatio switch
     {

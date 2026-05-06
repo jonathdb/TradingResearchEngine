@@ -34,6 +34,20 @@ var app = builder.Build();
 var jobExecutor = app.Services.GetRequiredService<JobExecutor>();
 await jobExecutor.RecoverOrphanedJobsAsync();
 
+// V6: Initialize SQLite index for backtest results
+try
+{
+    var indexRepo = app.Services.GetRequiredService<IBacktestResultRepository>();
+    if (indexRepo is TradingResearchEngine.Infrastructure.Persistence.SqliteIndexRepository sqliteRepo)
+    {
+        await sqliteRepo.InitializeAsync();
+    }
+}
+catch (Exception ex)
+{
+    app.Logger.LogWarning(ex, "SQLite index initialization failed on startup");
+}
+
 app.UseMiddleware<ErrorHandlingMiddleware>();
 app.UseCors();
 
