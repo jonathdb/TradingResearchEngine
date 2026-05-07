@@ -198,6 +198,12 @@ public sealed class TimeframeGeneratorService
             LastBar: bars[^1].Timestamp);
     }
 
+    /// <summary>
+    /// Standard forex lot size in units. Dukascopy tick volumes are in lots (e.g., 1.5 = 1.5 lots).
+    /// Multiplying by this constant converts to units so bar volume is comparable to fill quantities.
+    /// </summary>
+    private const decimal StandardLotUnits = 100_000m;
+
     private async Task<List<BarData>> AggregateToBarsAsync(
         string symbol, DateTime startDate, DateTime endDate,
         int intervalMinutes, CancellationToken ct)
@@ -209,6 +215,8 @@ public sealed class TimeframeGeneratorService
         await foreach (var tick in _cacheService.ReadTicksAsync(symbol, startDate, endDate, ct))
         {
             var windowStart = TruncateToInterval(tick.Timestamp, intervalMinutes);
+            // Convert tick volume from lots to units for comparability with fill quantities
+            var tickVolumeUnits = tick.BidVolume * StandardLotUnits;
 
             if (currentBar is null || windowStart != currentWindowStart)
             {
@@ -224,7 +232,7 @@ public sealed class TimeframeGeneratorService
                     High = tick.Bid,
                     Low = tick.Bid,
                     Close = tick.Bid,
-                    Volume = tick.BidVolume
+                    Volume = tickVolumeUnits
                 };
             }
             else
@@ -233,7 +241,7 @@ public sealed class TimeframeGeneratorService
                 if (tick.Bid > currentBar.High) currentBar.High = tick.Bid;
                 if (tick.Bid < currentBar.Low) currentBar.Low = tick.Bid;
                 currentBar.Close = tick.Bid;
-                currentBar.Volume += tick.BidVolume;
+                currentBar.Volume += tickVolumeUnits;
             }
         }
 
