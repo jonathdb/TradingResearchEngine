@@ -1,0 +1,122 @@
+@* Tier 1 — Decision metrics (above fold): Sharpe, Max Drawdown, Win Rate, K-Ratio, DSR, Trial # *@
+<MudGrid Class="mb-3">
+    <MudItem xs="6" sm="2">
+        <MudPaper Class="pa-4" Elevation="2"
+                  Style="@($"border-left: 3px solid {SharpeColor}")">
+            <MudText Typo="Typo.caption" Class="text-muted">Sharpe Ratio</MudText>
+            <MudText Typo="Typo.h4">@(Result.SharpeRatio?.ToString("F2") ?? "—")</MudText>
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="6" sm="2">
+        <MudPaper Class="pa-4" Elevation="2">
+            <MudText Typo="Typo.caption" Class="text-muted">Max Drawdown</MudText>
+            <MudText Typo="Typo.h4">@Result.MaxDrawdown.ToString("P1")</MudText>
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="6" sm="2">
+        <MudPaper Class="pa-4" Elevation="2">
+            <MudText Typo="Typo.caption" Class="text-muted">Win Rate</MudText>
+            <MudText Typo="Typo.h4">@(Result.WinRate?.ToString("P0") ?? "—")</MudText>
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="6" sm="2">
+        <MudPaper Class="pa-4" Elevation="2">
+            <MudText Typo="Typo.caption" Class="text-muted">K-Ratio</MudText>
+            <MudText Typo="Typo.h4">@(Result.EquityCurveSmoothness?.ToString("F3") ?? "—")</MudText>
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="6" sm="2">
+        <MudPaper Class="pa-4" Elevation="2"
+                  Style="@($"border-left: 3px solid {DsrColor}")"
+                  title="Deflated Sharpe Ratio — adjusts for multiple testing bias. Below 0.95 suggests possible overfitting.">
+            <MudText Typo="Typo.caption" Class="text-muted">DSR</MudText>
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                <MudText Typo="Typo.h4">@(Result.DeflatedSharpeRatio?.ToString("F2") ?? "—")</MudText>
+                @if (Result.DeflatedSharpeRatio < 0.95m)
+                {
+                    <MudChip T="string" Size="MudBlazor.Size.Small" Color="Color.Warning"
+                             aria-label="Possible overfitting: DSR below 0.95 — after adjusting for multiple trials, the observed Sharpe may not be statistically significant">⚠️</MudChip>
+                }
+            </MudStack>
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="6" sm="2">
+        <MudPaper Class="pa-4" Elevation="2">
+            <MudText Typo="Typo.caption" Class="text-muted">Trial #</MudText>
+            <MudText Typo="Typo.h4">@(Result.TrialCount?.ToString() ?? "—")</MudText>
+        </MudPaper>
+    </MudItem>
+</MudGrid>
+
+@* Tier 2 — Supporting metrics (tabs): Sortino, Calmar, Profit Factor, Expectancy, Recovery Factor, Avg Holding Period *@
+<MudTabs Elevation="1" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-3" Class="mb-3">
+    <MudTabPanel Text="Extended Metrics">
+        <MudGrid>
+            <MudItem xs="4" sm="2">
+                <MudPaper Class="pa-3" Elevation="1">
+                    <MudText Typo="Typo.caption" Class="text-muted">Sortino</MudText>
+                    <MudText Typo="Typo.h6">@(Result.SortinoRatio?.ToString("F2") ?? "—")</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="4" sm="2">
+                <MudPaper Class="pa-3" Elevation="1">
+                    <MudText Typo="Typo.caption" Class="text-muted">Calmar</MudText>
+                    <MudText Typo="Typo.h6">@(Result.CalmarRatio?.ToString("F2") ?? "—")</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="4" sm="2">
+                <MudPaper Class="pa-3" Elevation="1">
+                    <MudText Typo="Typo.caption" Class="text-muted">Profit Factor</MudText>
+                    <MudText Typo="Typo.h6">@(Result.ProfitFactor?.ToString("F2") ?? "—")</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="4" sm="2">
+                <MudPaper Class="pa-3" Elevation="1">
+                    <MudText Typo="Typo.caption" Class="text-muted">Expectancy</MudText>
+                    <MudText Typo="Typo.h6">@(Result.Expectancy?.ToString("F2") ?? "—")</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="4" sm="2">
+                <MudPaper Class="pa-3" Elevation="1">
+                    <MudText Typo="Typo.caption" Class="text-muted">Recovery</MudText>
+                    <MudText Typo="Typo.h6">@(Result.RecoveryFactor?.ToString("F2") ?? "—")</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="4" sm="2">
+                <MudPaper Class="pa-3" Elevation="1">
+                    <MudText Typo="Typo.caption" Class="text-muted">Avg Hold</MudText>
+                    <MudText Typo="Typo.h6">@(Result.AverageHoldingPeriod?.ToString(@"d\.hh\:mm") ?? "—")</MudText>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+    </MudTabPanel>
+    <MudTabPanel Text="Trade Stats">
+        <MudGrid>
+            <MudItem xs="4" sm="2"><MetricCard Label="RoMaD" Value="@($"{Result.ReturnOnMaxDrawdown?.ToString("F2") ?? "—"}")" /></MudItem>
+            <MudItem xs="4" sm="2"><MetricCard Label="Avg Win" Value="@($"${Result.AverageWin?.ToString("F2") ?? "—"}")" /></MudItem>
+            <MudItem xs="4" sm="2"><MetricCard Label="Avg Loss" Value="@($"${Result.AverageLoss?.ToString("F2") ?? "—"}")" /></MudItem>
+            <MudItem xs="4" sm="2"><MetricCard Label="Consec Wins" Value="@Result.MaxConsecutiveWins.ToString()" /></MudItem>
+            <MudItem xs="4" sm="2"><MetricCard Label="Consec Losses" Value="@Result.MaxConsecutiveLosses.ToString()" /></MudItem>
+            <MudItem xs="4" sm="2"><MetricCard Label="Trades" Value="@Result.TotalTrades.ToString()" /></MudItem>
+        </MudGrid>
+    </MudTabPanel>
+</MudTabs>
+
+@code {
+    [Parameter, EditorRequired]
+    public BacktestResult Result { get; set; } = default!;
+
+    private string SharpeColor => Result.SharpeRatio switch
+    {
+        > 1.5m => "#4CAF50",
+        > 0.5m => "#FF9800",
+        _ => "#F44336"
+    };
+
+    private string DsrColor => Result.DeflatedSharpeRatio switch
+    {
+        >= 0.95m => "#4CAF50",
+        >= 0.5m => "#FF9800",
+        _ => "#F44336"
+    };
+}

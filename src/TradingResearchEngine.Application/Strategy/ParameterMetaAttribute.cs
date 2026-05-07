@@ -1,8 +1,8 @@
 namespace TradingResearchEngine.Application.Strategy;
 
 /// <summary>
-/// Annotates a strategy constructor parameter with rich metadata for the builder,
-/// API discovery, and CLI. When absent, the schema provider falls back to
+/// Annotates a strategy constructor parameter with rich metadata for the strategy
+/// builder and parameter sweep UI. When absent, the schema provider falls back to
 /// constructor parameter name, inferred type, and default value.
 /// </summary>
 [AttributeUsage(AttributeTargets.Parameter)]

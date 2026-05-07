@@ -332,11 +332,11 @@ Long-running research workflows report progress via `IProgress<ProgressUpdate>`.
 
 ## ScenarioConfig Persistence
 
-`ScenarioConfig` implements `IHasId` (mapping `Id` to `ScenarioId`), which makes it a valid entity for `IRepository<ScenarioConfig>`. This enables save/load/delete of scenario configurations through the same `JsonFileRepository<T>` infrastructure used for `BacktestResult`. The CLI and API can persist configs for reuse, and the planned Blazor UI relies on this for its strategy editor and saved-config workflows.
+`ScenarioConfig` implements `IHasId` (mapping `Id` to `ScenarioId`), which makes it a valid entity for `IRepository<ScenarioConfig>`. This enables save/load/delete of scenario configurations through the same `JsonFileRepository<T>` infrastructure used for `BacktestResult`. The Web UI relies on this for its strategy editor and saved-config workflows.
 
 ## FirmRuleSet Persistence
 
-`FirmRuleSet` implements `IHasId` (mapping `Id` to `FirmName`), enabling CRUD via `IRepository<FirmRuleSet>` and `JsonFileRepository<T>`. This allows prop-firm rule sets to be saved, loaded, and managed through the same persistence infrastructure as `BacktestResult` and `ScenarioConfig`. The Blazor UI Rule Set Editor and the CLI/API can persist firm configurations for reuse across evaluations.
+`FirmRuleSet` implements `IHasId` (mapping `Id` to `FirmName`), enabling CRUD via `IRepository<FirmRuleSet>` and `JsonFileRepository<T>`. This allows prop-firm rule sets to be saved, loaded, and managed through the same persistence infrastructure as `BacktestResult` and `ScenarioConfig`. The Blazor UI Rule Set Editor can persist firm configurations for reuse across evaluations.
 
 ## V5 Persistence — BacktestJob, ConfigDraft, ConfigPreset
 
@@ -713,7 +713,7 @@ The concrete Web host is responsible for actually running studies on background 
 
 ### Startup Integration
 
-`MigrationService.MigrateIfNeededAsync` is called during application startup (after DI is built, before the host starts accepting requests). Both the CLI and Web hosts invoke it.
+`MigrationService.MigrateIfNeededAsync` is called during application startup (after DI is built, before the host starts accepting requests). The Web host invokes it.
 
 ## V5 Core Layer Changes
 
@@ -752,7 +752,7 @@ V5 added `Direction.Short` to the enum (`{ Long, Short, Flat }`) for exhaustive 
 
 ### Typed Strategy Parameter Schema
 
-V5 introduces a typed parameter schema system so that the builder UI, API discovery endpoints, and validation logic can introspect strategy parameters without hard-coding knowledge of each strategy.
+V5 introduces a typed parameter schema system so that the builder UI and validation logic can introspect strategy parameters without hard-coding knowledge of each strategy.
 
 - `SensitivityHint` (`Application/Strategy/`) — enum indicating overfitting risk for a parameter: `Low`, `Medium`, `High`. Surfaced in the builder UI as a visual badge.
 - `ParameterMetaAttribute` (`Application/Strategy/`) — optional attribute on strategy constructor parameters providing `DisplayName`, `Description`, `SensitivityHint`, `Group`, `IsAdvanced`, `DisplayOrder`, `Min`, `Max`. All 6 built-in strategies carry this attribute on every constructor parameter.

@@ -1,0 +1,76 @@
+@* Extracted from StrategyDetail.razor — Research/Studies tab content *@
+@* Displays study launch bar and studies table for a strategy version *@
+@using TradingResearchEngine.Application.Research
+
+@* Launch bar *@
+<MudPaper Outlined="true" Class="pa-3 mb-4">
+    <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap">
+        <MudText Typo="Typo.caption" Class="text-muted mr-2">LAUNCH STUDY</MudText>
+        @if (LatestRun is not null)
+        {
+            <MudButton Variant="Variant.Outlined" Size="MudBlazor.Size.Small" Href="@($"/research/montecarlo?result={LatestRun.Id}")">
+                Monte Carlo
+                @if (Descriptor?.SuggestedStudies?.Contains("MonteCarlo") == true)
+                { <MudIcon Icon="@Icons.Material.Filled.Star" Size="MudBlazor.Size.Small" Class="ml-1" Style="color: var(--mud-palette-warning)" /> }
+            </MudButton>
+            <MudButton Variant="Variant.Outlined" Size="MudBlazor.Size.Small" Href="@($"/research/walkforward?strategy={Strategy.StrategyType}")">
+                Walk-Forward
+                @if (Descriptor?.SuggestedStudies?.Contains("WalkForward") == true)
+                { <MudIcon Icon="@Icons.Material.Filled.Star" Size="MudBlazor.Size.Small" Class="ml-1" Style="color: var(--mud-palette-warning)" /> }
+            </MudButton>
+            <MudButton Variant="Variant.Outlined" Size="MudBlazor.Size.Small" Href="@($"/research/sweep?strategy={Strategy.StrategyType}")">
+                Sweep
+                @if (Descriptor?.SuggestedStudies?.Contains("Sensitivity") == true)
+                { <MudIcon Icon="@Icons.Material.Filled.Star" Size="MudBlazor.Size.Small" Class="ml-1" Style="color: var(--mud-palette-warning)" /> }
+            </MudButton>
+            <MudButton Variant="Variant.Outlined" Size="MudBlazor.Size.Small" Href="@($"/research/perturbation?result={LatestRun.Id}")">
+                Perturbation
+                @if (Descriptor?.SuggestedStudies?.Contains("Realism") == true)
+                { <MudIcon Icon="@Icons.Material.Filled.Star" Size="MudBlazor.Size.Small" Class="ml-1" Style="color: var(--mud-palette-warning)" /> }
+            </MudButton>
+            <MudButton Variant="Variant.Outlined" Size="MudBlazor.Size.Small" Href="@($"/research/benchmark?strategyId={Strategy.StrategyId}&versionId={SelectedVersion?.StrategyVersionId}")">
+                Benchmark
+            </MudButton>
+            <MudButton Variant="Variant.Outlined" Size="MudBlazor.Size.Small" Href="@($"/research/variance?strategyId={Strategy.StrategyId}&versionId={SelectedVersion?.StrategyVersionId}")">
+                Variance
+            </MudButton>
+        }
+        else
+        {
+            <MudText Typo="Typo.body2" Class="text-muted">Run a backtest first</MudText>
+        }
+    </MudStack>
+</MudPaper>
+
+@if (Studies.Count == 0)
+{
+    <MudStack AlignItems="AlignItems.Center" Class="pa-8">
+        <MudIcon Icon="@Icons.Material.Filled.Science" Size="MudBlazor.Size.Large" Class="text-faint mb-2" />
+        <MudText Typo="Typo.body1">No studies yet</MudText>
+    </MudStack>
+}
+else
+{
+    <MudTable Items="Studies" Dense="true" Hover="true">
+        <HeaderContent>
+            <MudTh>Type</MudTh>
+            <MudTh>Status</MudTh>
+            <MudTh>Created</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd><MudChip T="string" Size="MudBlazor.Size.Small">@context.Type</MudChip></MudTd>
+            <MudTd><MudChip T="string" Size="MudBlazor.Size.Small" Color="@(context.Status == StudyStatus.Completed ? Color.Success : Color.Warning)">@context.Status</MudChip></MudTd>
+            <MudTd>@context.CreatedAt.ToString("yyyy-MM-dd")</MudTd>
+            <MudTd><MudIconButton Icon="@Icons.Material.Filled.OpenInNew" Size="MudBlazor.Size.Small" Href="@($"/research/study/{context.StudyId}")" /></MudTd>
+        </RowTemplate>
+    </MudTable>
+}
+
+@code {
+    [Parameter, EditorRequired] public StrategyIdentity Strategy { get; set; } = default!;
+    [Parameter] public StrategyVersion? SelectedVersion { get; set; }
+    [Parameter] public BacktestResult? LatestRun { get; set; }
+    [Parameter] public List<StudyRecord> Studies { get; set; } = new();
+    [Parameter] public StrategyDescriptor? Descriptor { get; set; }
+}

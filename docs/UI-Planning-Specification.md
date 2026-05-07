@@ -6,24 +6,15 @@
 - Let the user create, edit, clone, and compare strategy configurations without touching JSON files
 - Support configuring and launching backtests, parameter sweeps, Monte Carlo simulations, walk-forward analyses, and prop-firm evaluations from the UI
 - Make scenario comparison a first-class workflow — not an afterthought
-- Keep the CLI fully relevant for fast testing, scripting, and batch usage
 - Sit cleanly on top of the existing Application layer — the UI is a presentation concern, not a rewrite
 - Target Blazor Server for V1 (single-user, local, server-side rendering)
 - Preserve the option to move to Blazor WASM or another frontend later
 
 ## 2. Architecture Fit
 
-### What stays in CLI
+### What the Web UI consumes
 
-- Fast single-run execution (`--scenario file.json`)
-- Batch scripting (loop over scenarios, pipe results)
-- Interactive scenario builder for quick ad-hoc runs
-- Markdown report generation (`--output`)
-- All CLI capabilities remain unchanged; the UI is additive
-
-### What the UI consumes
-
-The UI calls the same Application-layer services the CLI and API use:
+The Web UI calls Application-layer services directly via DI:
 
 - `RunScenarioUseCase` — single backtest
 - `ParameterSweepWorkflow` — parameter grid search
@@ -39,14 +30,14 @@ The UI calls the same Application-layer services the CLI and API use:
 - `IRepository<BacktestResult>` — saved results CRUD
 - `StrategyRegistry` — available strategy names
 
-The Blazor Server host injects these services directly via DI — no HTTP round-trip needed for V1. The API layer remains available for future decoupled clients.
+The Blazor Server host injects these services directly via DI — no HTTP round-trip needed.
 
 ### Avoiding UI-engine coupling
 
 - The UI never constructs `BacktestEngine` directly — always goes through `RunScenarioUseCase`
 - The UI never accesses `IDataProvider` or `IEventQueue` — those are engine internals
 - All UI state is derived from `BacktestResult`, `ScenarioConfig`, and research workflow result types
-- The UI builds `ScenarioConfig` objects and passes them to use cases — same contract as CLI and API
+- The UI builds `ScenarioConfig` objects and passes them to use cases
 
 > **V5 Note:** `ScenarioConfig` now supports a sub-object format (`Data`, `Strategy`, `Risk`, `Execution`, `Research` sub-objects) alongside the flat format. New UI code should use the sub-object format exclusively. The flat format is deprecated but functional. See `docs/V5-Migration-Guide.md` for details.
 - Long-running jobs use `CancellationToken` propagation and progress reporting via injected services, not SignalR-specific patterns
@@ -54,8 +45,8 @@ The Blazor Server host injects these services directly via DI — no HTTP round-
 ### New Blazor Server project
 
 ```
-src/TradingResearchEngine.Web/          ← Blazor Server host
-  Program.cs                            ← DI wiring (same as CLI/API) + MudBlazor registration
+src/TradingResearchEngine.Web/          ← Blazor Server host (sole application host)
+  Program.cs                            ← DI wiring + MudBlazor registration
   Components/
     Layout/                             ← MainLayout, NavMenu
     Pages/                              ← Routed Razor pages
@@ -67,7 +58,7 @@ src/TradingResearchEngine.Web/          ← Blazor Server host
 
 Component library: MudBlazor (as recommended in section 12).
 
-Dependency: `Web → Application + Infrastructure` (same as Cli and Api).
+Dependency: `Core ← Application ← Infrastructure ← Web`.
 
 ### Future multi-user note
 
@@ -456,7 +447,7 @@ Components:
 ### Saving / reloading scenarios
 - "Save Config" button persists the ScenarioConfig to `IRepository<ScenarioConfig>`
 - "Load Config" dropdown lists saved configs
-- "Export JSON" downloads the ScenarioConfig as a .json file (compatible with CLI `--scenario`)
+- "Export JSON" downloads the ScenarioConfig as a .json file
 
 ### Exporting markdown reports
 - "Export Report" button on any result detail page
@@ -694,9 +685,9 @@ Recommendation: MudBlazor for V1. It covers layout, navigation, forms, tables, d
 - Risk: Monte Carlo with 10,000 sims or a 50-combination sweep freezes the page
 - Mitigation: always run workflows on a background thread. Show progress. Allow cancel. Allow navigation away without losing the job.
 
-### Losing CLI parity
-- Risk: features added to the UI but not exposed via CLI, or vice versa
-- Mitigation: both CLI and UI consume the same Application-layer services. New workflows are added to Application first, then surfaced in both CLI and UI. The UI never contains business logic.
+### Keeping the UI focused on presentation
+- Risk: features added to the UI that embed business logic
+- Mitigation: the UI consumes Application-layer services. New workflows are added to Application first, then surfaced in the UI. The UI never contains business logic.
 
 ### Mixing prop-firm concerns into generic backtest screens
 - Risk: prop-firm fields (pass rate, payout split) appearing on the standard backtest form
@@ -719,8 +710,8 @@ Recommendation: MudBlazor for V1. It covers layout, navigation, forms, tables, d
 
 ### Key architectural decisions
 - Blazor Server for V1, single-user, local deployment
-- UI injects Application-layer services directly via DI (no HTTP for V1)
-- CLI remains first-class; UI is additive
+- Web UI injects Application-layer services directly via DI
+- Web project is the sole application host
 - Prop-firm module stays bounded — separate nav section, linked by result selection
 
 ### Pre-UI blocking work

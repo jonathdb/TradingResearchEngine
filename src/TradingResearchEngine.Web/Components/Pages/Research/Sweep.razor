@@ -1,7 +1,11 @@
 @page "/research/sweep"
 @inject TradingResearchEngine.Application.Research.ParameterSweepWorkflow SweepWorkflow
 @inject IStrategyRepository StrategyRepo
+@inject IStrategySchemaProvider SchemaProvider
 @inject ISnackbar Snackbar
+@inject ILogger<Sweep> Logger
+
+@using TradingResearchEngine.Web.Features.Research.Sweep
 
 <PageTitle>Parameter Sweep — TradingResearchEngine</PageTitle>
 
@@ -22,30 +26,21 @@
             <MudDivider Class="my-4" />
             <MudText Typo="Typo.h6" Class="mb-3">Parameter Grid</MudText>
             <MudText Typo="Typo.caption" Class="mb-2">
-                Add parameters to sweep. Values are comma-separated.
+                Add parameters to sweep. Define Low, High, and Increment for each parameter.
             </MudText>
 
-            @foreach (var entry in _gridEntries)
+            @foreach (var row in _rows)
             {
-                <MudGrid Class="mb-2">
-                    <MudItem xs="4">
-                        <MudTextField T="string" Label="Parameter" @bind-Value="entry.Name"
-                                      Variant="Variant.Outlined" />
-                    </MudItem>
-                    <MudItem xs="7">
-                        <MudTextField T="string" Label="Values (comma-separated)" @bind-Value="entry.Values"
-                                      Variant="Variant.Outlined" HelperText="e.g. 5,10,15,20" />
-                    </MudItem>
-                    <MudItem xs="1" Class="d-flex align-center">
-                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="MudBlazor.Color.Error"
-                                       OnClick="@(() => _gridEntries.Remove(entry))" />
-                    </MudItem>
-                </MudGrid>
+                <SweepParameterRow Schema="_schema"
+                                   UsedParametersByOtherRows="GetUsedParametersByOtherRows(row)"
+                                   Model="row"
+                                   OnChanged="OnRowChanged"
+                                   OnRemoved="@(() => RemoveRow(row))" />
             }
 
             <MudButton Variant="Variant.Text" Color="MudBlazor.Color.Primary"
                        StartIcon="@Icons.Material.Filled.Add"
-                       OnClick="@(() => _gridEntries.Add(new GridEntry()))">
+                       OnClick="AddRow">
                 Add Parameter
             </MudButton>
         </MudPaper>
@@ -108,25 +103,108 @@
     [SupplyParameterFromQuery] public string? VersionId { get; set; }
 
     private ScenarioConfigEditor? _configEditor;
-    private List<GridEntry> _gridEntries = new() { new() };
+    private List<SweepRowModel> _rows = new() { new() };
+    private IReadOnlyList<StrategyParameterSchema>? _schema;
 
     private void OnVersionSelected((StrategyIdentity Strategy, StrategyVersion Version, BacktestResult? LatestRun) selection)
     {
         _configEditor?.LoadFromConfig(selection.Version.BaseScenarioConfig);
+        LoadSchema(selection.Strategy.StrategyType);
+    }
+
+    /// <summary>
+    /// Loads the parameter schema for the selected strategy type.
+    /// On failure, sets schema to null which causes SweepParameterRow to fall back to free-text input.
+    /// </summary>
+    private void LoadSchema(string strategyType)
+    {
+        try
+        {
+            _schema = SchemaProvider.GetSchema(strategyType);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Failed to load schema for strategy type '{StrategyType}'. Falling back to free-text input.", strategyType);
+            _schema = null;
+        }
+    }
+
+    /// <summary>
+    /// Computes the set of parameter names used by all rows except the given row.
+    /// Used to prevent duplicate parameter selection across rows.
+    /// </summary>
+    private HashSet<string> GetUsedParametersByOtherRows(SweepRowModel currentRow)
+    {
+        return _rows
+            .Where(r => !ReferenceEquals(r, currentRow))
+            .Where(r => !string.IsNullOrWhiteSpace(r.ParameterName))
+            .Select(r => r.ParameterName)
+            .ToHashSet();
+    }
+
+    /// <summary>
+    /// Called when any row's parameter or range values change.
+    /// Triggers re-render so sibling rows update their available parameter dropdowns.
+    /// </summary>
+    private void OnRowChanged(SweepRowModel _)
+    {
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Adds a new row with the first unused parameter auto-selected via SweepParameterSelector.
+    /// </summary>
+    private void AddRow()
+    {
+        var newRow = new SweepRowModel();
+
+        if (_schema is not null && _schema.Count > 0)
+        {
+            var usedNames = _rows
+                .Where(r => !string.IsNullOrWhiteSpace(r.ParameterName))
+                .Select(r => r.ParameterName)
+                .ToHashSet();
+
+            var nextParam = SweepParameterSelector.SelectNext(_schema, usedNames);
+            if (nextParam is not null)
+            {
+                newRow.ParameterName = nextParam;
+            }
+        }
+
+        _rows.Add(newRow);
+    }
+
+    private void RemoveRow(SweepRowModel row)
+    {
+        _rows.Remove(row);
+        StateHasChanged();
     }
 
     private async Task<TradingResearchEngine.Application.Research.Results.SweepResult> ExecuteSweep(CancellationToken ct)
     {
+        // Validate all rows via SweepRangeGenerator before executing
+        var hasInvalidRows = _rows
+            .Where(r => !string.IsNullOrWhiteSpace(r.ParameterName))
+            .Any(r => SweepRangeGenerator.Generate(r.Low, r.High, r.Increment) is null);
+
+        if (hasInvalidRows)
+        {
+            throw new InvalidOperationException(
+                "One or more parameter rows have invalid range inputs. Please fix all validation errors before running the sweep.");
+        }
+
         var config = _configEditor!.BuildConfig();
 
-        // Build parameter grid from UI entries
+        // Build parameter grid from UI rows using range generation
         var grid = new Dictionary<string, object>();
-        foreach (var entry in _gridEntries.Where(e => !string.IsNullOrWhiteSpace(e.Name)))
+        foreach (var row in _rows.Where(r => !string.IsNullOrWhiteSpace(r.ParameterName)))
         {
-            var values = entry.Values.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                .Select(v => (object)(decimal.TryParse(v, out var d) ? d : int.TryParse(v, out var n) ? n : v))
-                .ToList();
-            grid[entry.Name] = values;
+            var values = SweepRangeGenerator.Generate(row.Low, row.High, row.Increment);
+            if (values is not null)
+            {
+                grid[row.ParameterName] = values.Cast<object>().ToList();
+            }
         }
 
         var configWithGrid = config with
@@ -136,11 +214,5 @@
 
         var options = new TradingResearchEngine.Application.Configuration.SweepOptions();
         return await SweepWorkflow.RunAsync(configWithGrid, options, ct);
-    }
-
-    private class GridEntry
-    {
-        public string Name { get; set; } = "";
-        public string Values { get; set; } = "";
     }
 }

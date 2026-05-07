@@ -29,6 +29,7 @@
     <ProjectReference Include="..\TradingResearchEngine.Core\TradingResearchEngine.Core.csproj" />
     <ProjectReference Include="..\TradingResearchEngine.Application\TradingResearchEngine.Application.csproj" />
     <ProjectReference Include="..\TradingResearchEngine.Infrastructure\TradingResearchEngine.Infrastructure.csproj" />
+    <ProjectReference Include="..\TradingResearchEngine.Web\TradingResearchEngine.Web.csproj" />
   </ItemGroup>
 
 </Project>

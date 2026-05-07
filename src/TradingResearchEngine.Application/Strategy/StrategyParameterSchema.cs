@@ -2,7 +2,7 @@ namespace TradingResearchEngine.Application.Strategy;
 
 /// <summary>
 /// Typed parameter descriptor for a strategy constructor parameter.
-/// Consumed by the builder, API discovery endpoints, and CLI to render
+/// Consumed by the strategy builder and parameter sweep UI to render
 /// informed parameter editors without hard-coding knowledge of each strategy.
 /// </summary>
 public sealed record StrategyParameterSchema(

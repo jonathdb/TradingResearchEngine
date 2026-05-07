@@ -86,7 +86,7 @@ When `[ParameterMeta]` is absent, `StrategySchemaProvider` falls back to the con
 
 ### Step 2: Register the Assembly
 
-The strategy is auto-discovered at startup. In `Program.cs` of the Api or Cli host, the assembly containing your strategy must be registered:
+The strategy is auto-discovered at startup. In `Program.cs` of the Web host, the assembly containing your strategy must be registered:
 
 ```csharp
 services.AddTradingResearchEngine(config)
@@ -222,31 +222,11 @@ public PreflightResult Validate(ScenarioConfig config)
 
 ## Adding a Discovery Endpoint
 
-Discovery endpoints live in `TradingResearchEngine.Api.Endpoints.DiscoveryEndpoints`. They use ASP.NET Core minimal API style.
+> **Note:** The standalone API project (`TradingResearchEngine.Api`) has been removed. Discovery data is now served directly within the Blazor Web host via Application-layer services (e.g., `IStrategySchemaProvider`, `StrategyRegistry`). The information below is retained as historical reference for the endpoint design pattern.
 
-### Example: Adding a New Discovery Endpoint
+Discovery endpoints previously lived in `TradingResearchEngine.Api.Endpoints.DiscoveryEndpoints` and used ASP.NET Core minimal API style. In the current Web-only architecture, equivalent data is accessed through injected services in Razor components.
 
-```csharp
-// In DiscoveryEndpoints.cs, add to MapDiscoveryEndpoints:
-app.MapGet("/my-resource", ListMyResource)
-    .WithName("ListMyResource")
-    .WithTags("Discovery")
-    .Produces<IReadOnlyList<MyDto>>();
-
-// Handler method:
-private static IResult ListMyResource(/* inject dependencies */)
-{
-    var items = /* build response */;
-    return Results.Ok(items);
-}
-```
-
-Every discovery endpoint must have:
-- `.WithName()` for OpenAPI operation ID
-- `.WithTags("Discovery")` for grouping
-- `.Produces<T>()` for response type annotation
-
-### Existing Discovery Endpoints
+### Historical Discovery Endpoints
 
 | Method | Path | Returns |
 |--------|------|---------|

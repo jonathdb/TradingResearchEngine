@@ -1,0 +1,30 @@
+@* Extracted trade log panel — renders the trades table with pagination *@
+
+<MudTable Items="Trades" Dense="true" Hover="true" Striped="true">
+    <HeaderContent>
+        <MudTh>Symbol</MudTh>
+        <MudTh>Entry</MudTh>
+        <MudTh>Exit</MudTh>
+        <MudTh>Qty</MudTh>
+        <MudTh>Entry $</MudTh>
+        <MudTh>Exit $</MudTh>
+        <MudTh>Net P&amp;L</MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd>@context.Symbol</MudTd>
+        <MudTd>@context.EntryTime.ToString("yyyy-MM-dd")</MudTd>
+        <MudTd>@context.ExitTime.ToString("yyyy-MM-dd")</MudTd>
+        <MudTd>@context.Quantity</MudTd>
+        <MudTd>$@context.EntryPrice.ToString("F2")</MudTd>
+        <MudTd>$@context.ExitPrice.ToString("F2")</MudTd>
+        <MudTd Class="@(context.NetPnl >= 0 ? "mud-success-text" : "mud-error-text")">
+            $@context.NetPnl.ToString("F2")
+        </MudTd>
+    </RowTemplate>
+    <PagerContent><MudTablePager /></PagerContent>
+</MudTable>
+
+@code {
+    [Parameter, EditorRequired]
+    public IReadOnlyList<ClosedTrade> Trades { get; set; } = default!;
+}

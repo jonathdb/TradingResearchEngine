@@ -5,7 +5,7 @@ namespace TradingResearchEngine.Core.Configuration;
 
 /// <summary>
 /// The sole input required to initialise and execute a simulation run.
-/// Deserialised from a JSON file (CLI) or request body (API).
+/// Deserialised from a JSON scenario file or constructed via the Web UI.
 /// Implements <see cref="IHasId"/> for persistence via <c>IRepository&lt;ScenarioConfig&gt;</c>.
 /// </summary>
 public sealed record ScenarioConfig(

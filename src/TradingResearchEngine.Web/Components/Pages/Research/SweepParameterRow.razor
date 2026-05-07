@@ -1,0 +1,154 @@
+@using TradingResearchEngine.Web.Features.Research.Sweep
+
+<MudGrid Class="mb-2" Spacing="2">
+    <MudItem xs="12" sm="4">
+        @if (Schema is not null && Schema.Count > 0)
+        {
+            <MudSelect T="string" Label="Parameter" Value="@Model.ParameterName"
+                       ValueChanged="OnParameterNameChanged"
+                       Variant="Variant.Outlined" Dense="true">
+                @foreach (var param in AvailableParameters)
+                {
+                    <MudSelectItem T="string" Value="@param.Name">@param.DisplayName</MudSelectItem>
+                }
+            </MudSelect>
+
+            @if (_selectedSchema is not null)
+            {
+                <MudText Typo="Typo.caption" Color="MudBlazor.Color.Secondary" Class="mt-1">
+                    @_selectedSchema.Description
+                    @if (_selectedSchema.SensitivityHint != SensitivityHint.Low)
+                    {
+                        <text> — Sensitivity: @_selectedSchema.SensitivityHint</text>
+                    }
+                </MudText>
+            }
+        }
+        else
+        {
+            <MudTextField T="string" Label="Parameter" Value="@Model.ParameterName"
+                          ValueChanged="OnParameterNameChanged"
+                          Variant="Variant.Outlined" />
+        }
+    </MudItem>
+
+    <MudItem xs="3" sm="2">
+        <MudNumericField T="decimal" Label="Low" Value="@Model.Low"
+                         ValueChanged="OnLowChanged"
+                         Variant="Variant.Outlined" />
+    </MudItem>
+
+    <MudItem xs="3" sm="2">
+        <MudNumericField T="decimal" Label="High" Value="@Model.High"
+                         ValueChanged="OnHighChanged"
+                         Variant="Variant.Outlined" />
+    </MudItem>
+
+    <MudItem xs="3" sm="2">
+        <MudNumericField T="decimal" Label="Increment" Value="@Model.Increment"
+                         ValueChanged="OnIncrementChanged"
+                         Variant="Variant.Outlined" />
+    </MudItem>
+
+    <MudItem xs="3" sm="2" Class="d-flex align-center">
+        <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="MudBlazor.Color.Error"
+                       OnClick="@(() => OnRemoved.InvokeAsync())" />
+    </MudItem>
+</MudGrid>
+
+@if (_validationError is not null)
+{
+    <MudAlert Severity="Severity.Error" Dense="true" Class="mb-2">@_validationError</MudAlert>
+}
+
+@code {
+    [Parameter] public IReadOnlyList<StrategyParameterSchema>? Schema { get; set; }
+    [Parameter] public HashSet<string> UsedParametersByOtherRows { get; set; } = new();
+    [Parameter] public EventCallback<SweepRowModel> OnChanged { get; set; }
+    [Parameter] public EventCallback OnRemoved { get; set; }
+    [Parameter] public SweepRowModel Model { get; set; } = new();
+
+    private StrategyParameterSchema? _selectedSchema;
+    private string? _validationError;
+
+    /// <summary>
+    /// Returns schema parameters available for this row's dropdown.
+    /// Includes the row's own currently-selected parameter and excludes parameters used by other rows.
+    /// </summary>
+    private IEnumerable<StrategyParameterSchema> AvailableParameters
+    {
+        get
+        {
+            if (Schema is null) return Enumerable.Empty<StrategyParameterSchema>();
+
+            return Schema.Where(p =>
+                string.Equals(p.Name, Model.ParameterName, StringComparison.Ordinal) ||
+                !UsedParametersByOtherRows.Contains(p.Name));
+        }
+    }
+
+    protected override void OnParametersSet()
+    {
+        UpdateSelectedSchema();
+        Validate();
+    }
+
+    private void UpdateSelectedSchema()
+    {
+        _selectedSchema = Schema?.FirstOrDefault(s =>
+            string.Equals(s.Name, Model.ParameterName, StringComparison.Ordinal));
+    }
+
+    private void Validate()
+    {
+        if (string.IsNullOrWhiteSpace(Model.ParameterName))
+        {
+            _validationError = null;
+            return;
+        }
+
+        var result = SweepRangeGenerator.Generate(Model.Low, Model.High, Model.Increment);
+        if (result is null)
+        {
+            if (Model.Increment <= 0m)
+                _validationError = "Increment must be greater than 0.";
+            else if (Model.Low > Model.High)
+                _validationError = "Low must be ≤ High.";
+            else
+                _validationError = "Invalid range configuration.";
+        }
+        else
+        {
+            _validationError = null;
+        }
+    }
+
+    private async Task OnParameterNameChanged(string value)
+    {
+        Model.ParameterName = value;
+        UpdateSelectedSchema();
+        Validate();
+        await OnChanged.InvokeAsync(Model);
+    }
+
+    private async Task OnLowChanged(decimal value)
+    {
+        Model.Low = value;
+        Validate();
+        await OnChanged.InvokeAsync(Model);
+    }
+
+    private async Task OnHighChanged(decimal value)
+    {
+        Model.High = value;
+        Validate();
+        await OnChanged.InvokeAsync(Model);
+    }
+
+    private async Task OnIncrementChanged(decimal value)
+    {
+        Model.Increment = value;
+        Validate();
+        await OnChanged.InvokeAsync(Model);
+    }
+}

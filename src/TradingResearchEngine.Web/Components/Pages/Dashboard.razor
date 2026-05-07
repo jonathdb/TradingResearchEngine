@@ -51,9 +51,15 @@ else
             </MudPaper>
         </MudItem>
         <MudItem xs="6" sm="3">
-            <MudPaper Class="pa-3" Elevation="1">
+            <MudPaper Class="pa-3" Elevation="1"
+                      Style="@(GetLastSharpeNavigationTarget() is not null ? "cursor:pointer" : "")"
+                      @onclick="@(() => { if (GetLastSharpeNavigationTarget() is { } target) Nav.NavigateTo(target); })">
                 <MudText Typo="Typo.caption" Class="text-muted">Last Sharpe</MudText>
                 <MudText Typo="Typo.h5">@(_latestRun?.SharpeRatio?.ToString("F2") ?? "—")</MudText>
+                @if (GetLastSharpeStrategyName() is { } stratName)
+                {
+                    <MudText Typo="Typo.caption" Class="text-muted">@stratName</MudText>
+                }
             </MudPaper>
         </MudItem>
         <MudItem xs="6" sm="3">
@@ -231,6 +237,9 @@ else
                 .GroupBy(s => s.StrategyType)
                 .ToDictionary(g => g.Key, g => g.First().StrategyId);
 
+            // _runs is ordered by descending RunId (format: yyyyMMdd-HHmmss-...), which is the
+            // application's canonical recency ordering. This satisfies Requirement 11: robustness
+            // warnings evaluate the 10 most recent completed runs by run date.
             foreach (var run in _runs.Where(r => r.Status == BacktestStatus.Completed).Take(10))
             {
                 var w = RobustnessService.GetWarnings(run);
@@ -256,6 +265,23 @@ else
     {
         _cts.Cancel();
         _cts.Dispose();
+    }
+
+    private string? GetLastSharpeStrategyName()
+    {
+        if (_latestRun is null) return null;
+        var strategyType = _latestRun.ScenarioConfig.StrategyType;
+        var match = _strategies.FirstOrDefault(s => s.StrategyType == strategyType);
+        return match?.StrategyName ?? strategyType;
+    }
+
+    private string? GetLastSharpeNavigationTarget()
+    {
+        if (_latestRun is null) return null;
+        var strategyType = _latestRun.ScenarioConfig.StrategyType;
+        if (_strategyIdByType.TryGetValue(strategyType, out var strategyId))
+            return $"/strategies/{strategyId}";
+        return "/backtests/history";
     }
 
     private static string GetSharpeClass(decimal? sharpe) => sharpe switch

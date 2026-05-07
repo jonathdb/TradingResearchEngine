@@ -143,10 +143,11 @@ All new fields are trailing parameters with defaults. Existing JSON files deseri
 
 ## Deprecated Patterns
 
+> **Note:** The standalone API project (`TradingResearchEngine.Api`) has been removed. The application is now Web-only (Blazor Server). The deprecation notes below are retained as historical context for the config format migration, which still applies to the internal engine layer.
+
 ### Flat ScenarioConfig Format
 
 - **Status:** Deprecated in V5. Fully functional, will be removed in V6.
-- **Detection:** API returns `X-Deprecation` header: `"Flat ScenarioConfig format is deprecated; use sub-object format. See /docs/migration."`
 - **Action:** Migrate to sub-object format. The `Effective*` properties ensure identical behavior during the transition.
 - **Timeline:** V5 — deprecated with header. V6 — flat format support removed.
 
@@ -154,11 +155,12 @@ All new fields are trailing parameters with defaults. Existing JSON files deseri
 
 Engine code should read from `Effective*` computed properties, not directly from top-level fields like `StrategyType`, `SlippageModelType`, etc. Direct access still works but bypasses sub-object precedence.
 
-### Bare ScenarioConfig Body on Workflow Endpoints
+### Bare ScenarioConfig Body on Workflow Endpoints (Historical)
 
-- **Status:** Deprecated in V5.1. Fully functional, will be removed in V6.
-- **Affected endpoints:** `POST /scenarios/sweep`, `POST /scenarios/montecarlo`, `POST /scenarios/walkforward`.
-- **Detection:** API returns `X-Deprecation` header: `"Bare ScenarioConfig body is deprecated. Wrap in { \"Config\": ... }."`
+> **Note:** These endpoints existed in the now-removed `TradingResearchEngine.Api` project. The typed request wrapper pattern is retained here as historical reference for the config format design.
+
+- **Status:** Deprecated in V5.1. The API project has since been removed entirely.
+- **Affected endpoints (historical):** `POST /scenarios/sweep`, `POST /scenarios/montecarlo`, `POST /scenarios/walkforward`.
 - **Action:** Wrap the `ScenarioConfig` in a typed request wrapper that includes an optional `Options` object for workflow-specific settings.
 - **New request format:**
 
@@ -182,25 +184,16 @@ Engine code should read from `Effective*` computed properties, not directly from
 }
 ```
 
-- **Wrapper types:** `SweepRequest`, `MonteCarloRequest`, `WalkForwardRequest` (defined in `TradingResearchEngine.Api.Dtos`).
-- **Omitting `Options`:** When `Options` is null or absent, the endpoint uses default values for all workflow settings.
-- **`POST /scenarios/run`** is unchanged and continues to accept a bare `ScenarioConfig` body.
+- **Wrapper types (historical):** `SweepRequest`, `MonteCarloRequest`, `WalkForwardRequest` were defined in the removed API project.
+- **Omitting `Options`:** When `Options` is null or absent, default values are used for all workflow settings.
 
 ---
 
-## API Versioning Approach
+## API Versioning Approach (Historical)
 
-V5 does not introduce URL-based API versioning. All changes are additive and backward-compatible:
+> **Note:** The standalone API project has been removed. The application is now Web-only. This section is retained as historical context.
 
-- Existing endpoints (`POST /scenarios/run`, `/sweep`, `/montecarlo`, `/walkforward`) continue to work. Workflow endpoints now prefer typed request wrappers (`SweepRequest`, `MonteCarloRequest`, `WalkForwardRequest`) but still accept a bare `ScenarioConfig` body with an `X-Deprecation` header.
-- New endpoints are added at new paths: `/jobs/*`, `/strategies/*`, `/workflows`, `/presets`, `/execution-models`, `/scenarios/resolve`.
-- The `X-Deprecation` header signals deprecated patterns without breaking existing clients.
-- Discovery endpoints include `SchemaVersion` (semver-like `"1.0"`) for programmatic schema evolution detection.
+V5 did not introduce URL-based API versioning. All changes were additive and backward-compatible:
 
-### Recommended Migration Steps
-
-1. Update JSON payloads to use sub-object format (see before/after examples above).
-2. Wrap workflow endpoint bodies in typed request wrappers (`SweepRequest`, `MonteCarloRequest`, `WalkForwardRequest`) to pass workflow-specific options and avoid the `X-Deprecation` header.
-3. Adopt async job endpoints (`POST /jobs`) for long-running workflows instead of synchronous endpoints.
-4. Use discovery endpoints to dynamically query available strategies, presets, and execution models.
-5. Check for `X-Deprecation` headers in API responses and address flagged patterns.
+- Existing endpoints (`POST /scenarios/run`, `/sweep`, `/montecarlo`, `/walkforward`) accepted typed request wrappers (`SweepRequest`, `MonteCarloRequest`, `WalkForwardRequest`) or a bare `ScenarioConfig` body with an `X-Deprecation` header.
+- Discovery endpoints included `SchemaVersion` (semver-like `"1.0"`) for programmatic schema evolution detection.

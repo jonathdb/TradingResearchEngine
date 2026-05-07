@@ -1,0 +1,44 @@
+@using TradingResearchEngine.Core.DataHandling
+
+@* Top equity curve chart — displayed above metrics when data is available *@
+@if (Result.EquityCurve.Count > 0)
+{
+    <TradingResearchEngine.Web.Components.Charts.EquityCurveChart
+        Curve="Result.EquityCurve"
+        Title="Equity Curve"
+        ShowDrawdown="true" />
+}
+
+@* Charts tab content — equity+drawdown, monthly returns, trade PnL, holding period *@
+<MudText Typo="Typo.subtitle2" Class="mb-3">Equity Curve with Drawdown</MudText>
+<TradingResearchEngine.Web.Components.Charts.EquityCurveChart
+    Curve="Result.EquityCurve"
+    Title="Equity Curve"
+    ShowDrawdown="true" />
+
+<MudDivider Class="my-4" />
+<MudText Typo="Typo.subtitle2" Class="mb-3">Monthly Returns</MudText>
+<TradingResearchEngine.Web.Components.Charts.MonthlyReturnsHeatmap
+    Curve="Result.EquityCurve" />
+
+<MudDivider Class="my-4" />
+<MudGrid>
+    <MudItem xs="12" md="6">
+        <MudText Typo="Typo.subtitle2" Class="mb-3">Trade P&amp;L Distribution</MudText>
+        <TradingResearchEngine.Web.Components.Charts.TradePnlHistogram
+            Trades="Result.Trades" />
+    </MudItem>
+    <MudItem xs="12" md="6">
+        <MudText Typo="Typo.subtitle2" Class="mb-3">Holding Period Distribution</MudText>
+        <TradingResearchEngine.Web.Components.Charts.HoldingPeriodHistogram
+            Trades="Result.Trades" />
+    </MudItem>
+</MudGrid>
+
+@code {
+    [Parameter, EditorRequired]
+    public BacktestResult Result { get; set; } = default!;
+
+    [Parameter]
+    public IReadOnlyList<BarRecord>? BarRecords { get; set; }
+}

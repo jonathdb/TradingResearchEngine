@@ -102,3 +102,6 @@ app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
 app.Run();
+
+// Enable WebApplicationFactory<Program> access from integration tests
+public partial class Program { }

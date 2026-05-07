@@ -1,0 +1,196 @@
+@using TradingResearchEngine.Application.Research
+
+@* Latest Run Summary *@
+@if (LatestRun is not null)
+{
+    <MudPaper Outlined="true" Class="pa-3 mb-3">
+        <MudText Typo="Typo.caption" Class="text-muted mb-1">LATEST RUN</MudText>
+        <MudStack Row="true" Spacing="4" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap">
+            <MudStack Spacing="0">
+                <MudText Typo="Typo.caption" Class="text-muted">Sharpe</MudText>
+                <MudText Typo="Typo.h6" Class="@GetSharpeClass(LatestRun.SharpeRatio)">@(LatestRun.SharpeRatio?.ToString("F2") ?? "—")</MudText>
+            </MudStack>
+            <MudStack Spacing="0">
+                <MudText Typo="Typo.caption" Class="text-muted">Max DD</MudText>
+                <MudText Typo="Typo.h6">@LatestRun.MaxDrawdown.ToString("P1")</MudText>
+            </MudStack>
+            <MudStack Spacing="0">
+                <MudText Typo="Typo.caption" Class="text-muted">Trades</MudText>
+                <MudText Typo="Typo.h6">@LatestRun.TotalTrades</MudText>
+            </MudStack>
+            <MudStack Spacing="0">
+                <MudText Typo="Typo.caption" Class="text-muted">Win Rate</MudText>
+                <MudText Typo="Typo.h6">@(LatestRun.WinRate?.ToString("P0") ?? "—")</MudText>
+            </MudStack>
+            @if (LatestRun.DeflatedSharpeRatio.HasValue)
+            {
+                <MudStack Spacing="0">
+                    <MudText Typo="Typo.caption" Class="text-muted">DSR</MudText>
+                    <MudText Typo="Typo.h6">@LatestRun.DeflatedSharpeRatio.Value.ToString("F2")</MudText>
+                </MudStack>
+            }
+            <MudSpacer />
+            <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Text" Color="Color.Primary"
+                       Href="@($"/backtests/{LatestRun.Id}")" aria-label="View latest run details">View Details</MudButton>
+        </MudStack>
+    </MudPaper>
+
+    @* vs Buy & Hold chip *@
+    @if (BenchmarkExcessSharpe.HasValue)
+    {
+        <MudChip T="string" Size="MudBlazor.Size.Small"
+                 Color="@(BenchmarkExcessSharpe.Value >= 0 ? Color.Success : Color.Error)"
+                 aria-label="@($"Excess Sharpe vs Buy and Hold: {BenchmarkExcessSharpe.Value:+0.00;-0.00}")">
+            vs Buy &amp; Hold: @(BenchmarkExcessSharpe.Value >= 0 ? "▲" : "▼") @BenchmarkExcessSharpe.Value.ToString("+0.00;-0.00")
+        </MudChip>
+    }
+    else
+    {
+        <MudTooltip Text="Run a Benchmark Comparison study to see excess Sharpe vs Buy &amp; Hold">
+            <MudChip T="string" Size="MudBlazor.Size.Small" Color="Color.Default"
+                     aria-label="Excess Sharpe vs Buy and Hold: not available">
+                vs Buy &amp; Hold: —
+            </MudChip>
+        </MudTooltip>
+    }
+
+    @* Key Warnings from latest run *@
+    <RobustnessWarnings Result="LatestRun" Class="mt-3 mb-3" />
+
+    @* Equity Curve Chart *@
+    <TradingResearchEngine.Web.Components.Charts.EquityCurveChart
+        Curve="LatestRun.EquityCurve"
+        Title="Latest Run — Equity Curve"
+        ShowDrawdown="true" />
+}
+else
+{
+    <MudPaper Outlined="true" Class="pa-4 mb-3">
+        <MudStack AlignItems="AlignItems.Center" Spacing="2">
+            <MudIcon Icon="@Icons.Material.Filled.PlayArrow" Size="MudBlazor.Size.Large" Class="text-faint" />
+            <MudText Typo="Typo.body1">No runs yet</MudText>
+            <MudText Typo="Typo.body2" Class="text-muted">Run a backtest to see the equity curve</MudText>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="MudBlazor.Size.Small"
+                       OnClick="@(() => OnRunRequested.InvokeAsync())"
+                       Disabled="@(SelectedVersion is null)"
+                       aria-label="Run first backtest">Run Backtest</MudButton>
+        </MudStack>
+    </MudPaper>
+}
+
+@* Development Stage & Research Checklist Progress *@
+<MudGrid Class="mb-3">
+    <MudItem xs="12" sm="6">
+        <MudPaper Outlined="true" Class="pa-3">
+            <MudText Typo="Typo.caption" Class="text-muted mb-1">DEVELOPMENT STAGE</MudText>
+            <MudChip T="string" Size="MudBlazor.Size.Small" Color="@StageColor"
+                     aria-label="@($"Development stage: {Strategy.Stage}")">@Strategy.Stage</MudChip>
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="12" sm="6">
+        <MudPaper Outlined="true" Class="pa-3">
+            <MudText Typo="Typo.caption" Class="text-muted mb-1">RESEARCH PROGRESS</MudText>
+            @if (Checklist is not null)
+            {
+                <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                    <MudProgressLinear Value="@((double)Checklist.PassedCount / Checklist.TotalChecks * 100)"
+                                       Color="@(Checklist.ConfidenceLevel == "HIGH" ? Color.Success : Checklist.ConfidenceLevel == "MEDIUM" ? Color.Warning : Color.Error)"
+                                       Rounded="true" Size="MudBlazor.Size.Medium" Style="flex:1"
+                                       aria-label="@($"Research progress: {Checklist.PassedCount} of {Checklist.TotalChecks} checks passed")" />
+                    <MudText Typo="Typo.caption">@Checklist.PassedCount / @Checklist.TotalChecks</MudText>
+                </MudStack>
+            }
+            else
+            {
+                <MudText Typo="Typo.body2" Class="text-muted">No checklist data</MudText>
+            }
+        </MudPaper>
+    </MudItem>
+</MudGrid>
+
+@* Recommended Next Study *@
+@if (Checklist?.NextAction is not null)
+{
+    <MudPaper Outlined="true" Class="pa-3 mb-3" Style="@(Checklist.NextAction.IsWarning ? "border-color: var(--mud-palette-warning)" : "")">
+        <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+            <MudIcon Icon="@(Checklist.NextAction.IsWarning ? Icons.Material.Filled.Warning : Icons.Material.Filled.Lightbulb)"
+                     Color="@(Checklist.NextAction.IsWarning ? Color.Warning : Color.Info)"
+                     Size="MudBlazor.Size.Small" />
+            <MudStack Spacing="0" Style="flex:1">
+                <MudText Typo="Typo.subtitle2">@Checklist.NextAction.ActionLabel</MudText>
+                <MudText Typo="Typo.body2" Class="text-muted">@Checklist.NextAction.Description</MudText>
+            </MudStack>
+            @if (Checklist.NextAction.SuggestedStudyType.HasValue && LatestRun is not null)
+            {
+                <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Filled" Color="Color.Primary"
+                           Href="@GetStudyLaunchUrl(Checklist.NextAction.SuggestedStudyType.Value)"
+                           aria-label="@($"Launch {Checklist.NextAction.ActionLabel}")">Launch</MudButton>
+            }
+        </MudStack>
+    </MudPaper>
+}
+
+@* Quick Actions *@
+<MudPaper Outlined="true" Class="pa-3 mb-3">
+    <MudText Typo="Typo.caption" Class="text-muted mb-2">QUICK ACTIONS</MudText>
+    <MudStack Row="true" Spacing="2" Wrap="Wrap.Wrap">
+        <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Outlined" Color="Color.Primary"
+                   StartIcon="@Icons.Material.Filled.Edit"
+                   Href="@($"/strategies/builder?fromStrategyId={Strategy.StrategyId}&fromVersionId={SelectedVersion?.StrategyVersionId}")"
+                   aria-label="Edit strategy assumptions">Edit Assumptions</MudButton>
+        @if (LatestRun is not null)
+        {
+            <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Outlined" Color="Color.Primary"
+                       StartIcon="@Icons.Material.Filled.Science"
+                       Href="@($"/research/montecarlo?result={LatestRun.Id}")"
+                       aria-label="Launch a research study">Launch Study</MudButton>
+        }
+    </MudStack>
+</MudPaper>
+
+@code {
+    [Parameter, EditorRequired] public StrategyIdentity Strategy { get; set; } = default!;
+    [Parameter] public BacktestResult? LatestRun { get; set; }
+    [Parameter] public TradingResearchEngine.Application.Research.ResearchChecklist? Checklist { get; set; }
+    [Parameter] public StrategyDescriptor? Descriptor { get; set; }
+    [Parameter] public decimal? BenchmarkExcessSharpe { get; set; }
+    [Parameter] public EventCallback OnRunRequested { get; set; }
+    [Parameter] public StrategyVersion? SelectedVersion { get; set; }
+
+    private Color StageColor => Strategy.Stage switch
+    {
+        DevelopmentStage.Hypothesis => Color.Default,
+        DevelopmentStage.Exploring => Color.Info,
+        DevelopmentStage.Optimizing => Color.Warning,
+        DevelopmentStage.Validating => Color.Primary,
+        DevelopmentStage.FinalTest => Color.Success,
+        DevelopmentStage.Retired => Color.Dark,
+        _ => Color.Default
+    };
+
+    private static string GetSharpeClass(decimal? sharpe) => sharpe switch
+    {
+        >= 1.5m => "mud-success-text",
+        >= 0.8m => "mud-warning-text",
+        _ => "mud-error-text"
+    };
+
+    private string GetStudyLaunchUrl(StudyType studyType)
+    {
+        var resultParam = LatestRun is not null ? $"?result={LatestRun.Id}" : "";
+        var stratParam = $"?strategy={Strategy.StrategyType}";
+        var versionParam = $"?strategyId={Strategy.StrategyId}&versionId={SelectedVersion?.StrategyVersionId}";
+        return studyType switch
+        {
+            StudyType.MonteCarlo => $"/research/montecarlo{resultParam}",
+            StudyType.WalkForward => $"/research/walkforward{versionParam}",
+            StudyType.Sensitivity => $"/research/sweep{versionParam}",
+            StudyType.ParameterSweep => $"/research/sweep{versionParam}",
+            StudyType.RegimeSegmentation => $"/research/perturbation{resultParam}",
+            StudyType.Realism => $"/research/perturbation{resultParam}",
+            StudyType.BenchmarkComparison => $"/research/benchmark{versionParam}",
+            StudyType.Variance => $"/research/variance{versionParam}",
+            _ => $"/research/montecarlo{resultParam}"
+        };
+    }
+}

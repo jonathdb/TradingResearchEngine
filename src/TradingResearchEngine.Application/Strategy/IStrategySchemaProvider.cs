@@ -2,7 +2,7 @@ namespace TradingResearchEngine.Application.Strategy;
 
 /// <summary>
 /// Returns typed parameter schemas for registered strategies.
-/// Consumed by the builder, API discovery endpoints, and CLI.
+/// Consumed by the strategy builder and parameter sweep UI.
 /// </summary>
 public interface IStrategySchemaProvider
 {

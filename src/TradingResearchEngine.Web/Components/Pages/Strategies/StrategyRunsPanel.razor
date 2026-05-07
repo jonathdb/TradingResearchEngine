@@ -1,0 +1,81 @@
+@* Extracted from StrategyDetail.razor — Runs tab content *@
+@* Displays KPI summary bar and runs table for a strategy version *@
+
+@if (Runs.Count == 0)
+{
+    <MudStack AlignItems="AlignItems.Center" Class="pa-8">
+        <MudIcon Icon="@Icons.Material.Filled.PlayArrow" Size="MudBlazor.Size.Large" Class="text-faint mb-2" />
+        <MudText Typo="Typo.body1">No runs yet</MudText>
+        <MudText Typo="Typo.body2" Class="text-muted mb-4">Click Run to launch a backtest</MudText>
+    </MudStack>
+}
+else
+{
+    @* KPI summary *@
+    <MudPaper Outlined="true" Class="pa-3 mb-4">
+        <MudStack Row="true" Spacing="6">
+            <MudStack Spacing="0">
+                <MudText Typo="Typo.caption" Class="text-muted">Best Sharpe</MudText>
+                <MudText Typo="Typo.h5" Color="Color.Success">@(Runs.Where(r => r.SharpeRatio.HasValue).Max(r => r.SharpeRatio)?.ToString("F2") ?? "—")</MudText>
+            </MudStack>
+            <MudStack Spacing="0">
+                <MudText Typo="Typo.caption" Class="text-muted">Latest</MudText>
+                <MudText Typo="Typo.h5">@(LatestRun?.SharpeRatio?.ToString("F2") ?? "—")</MudText>
+            </MudStack>
+            <MudStack Spacing="0">
+                <MudText Typo="Typo.caption" Class="text-muted">Runs</MudText>
+                <MudText Typo="Typo.h5">@Runs.Count</MudText>
+            </MudStack>
+        </MudStack>
+    </MudPaper>
+
+    <MudTable Items="Runs" Dense="true" Hover="true">
+        <HeaderContent>
+            <MudTh>Scenario</MudTh>
+            <MudTh>Sharpe</MudTh>
+            <MudTh>Max DD</MudTh>
+            <MudTh>Trades</MudTh>
+            <MudTh>Status</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.ScenarioConfig.ScenarioId</MudTd>
+            <MudTd Class="@GetSharpeClass(context.SharpeRatio)">@(context.SharpeRatio?.ToString("F2") ?? "—")</MudTd>
+            <MudTd>@context.MaxDrawdown.ToString("P1")</MudTd>
+            <MudTd>@context.TotalTrades</MudTd>
+            <MudTd>
+                @{
+                    var statusColor = context.Status switch
+                    {
+                        BacktestStatus.Completed => Color.Success,
+                        BacktestStatus.Failed => Color.Error,
+                        BacktestStatus.Cancelled => Color.Warning,
+                        _ => Color.Default
+                    };
+                    var statusIcon = context.Status switch
+                    {
+                        BacktestStatus.Completed => "✅",
+                        BacktestStatus.Failed => "❌",
+                        BacktestStatus.Cancelled => "⚠️",
+                        _ => ""
+                    };
+                }
+                <MudChip T="string" Size="MudBlazor.Size.Small" Color="@statusColor"
+                         aria-label="@($"Status: {context.Status}")">@statusIcon @context.Status</MudChip>
+            </MudTd>
+            <MudTd><MudIconButton Icon="@Icons.Material.Filled.OpenInNew" Size="MudBlazor.Size.Small" Href="@($"/backtests/{context.Id}")" /></MudTd>
+        </RowTemplate>
+    </MudTable>
+}
+
+@code {
+    [Parameter, EditorRequired] public List<BacktestResult> Runs { get; set; } = new();
+    [Parameter] public BacktestResult? LatestRun { get; set; }
+
+    private static string GetSharpeClass(decimal? sharpe) => sharpe switch
+    {
+        >= 1.5m => "mud-success-text",
+        >= 0.8m => "mud-warning-text",
+        _ => "mud-error-text"
+    };
+}

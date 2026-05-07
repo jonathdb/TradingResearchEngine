@@ -1,0 +1,49 @@
+@* Realism Assumptions card + Robustness Warnings + IS vs OOS panel *@
+
+@* V5: Realism Assumptions card — always visible *@
+<MudPaper Outlined="true" Class="pa-3 mb-3">
+    <MudText Typo="Typo.caption" Class="text-muted mb-2">REALISM ASSUMPTIONS</MudText>
+    <MudStack Row="true" Spacing="4" Wrap="Wrap.Wrap">
+        <MudStack Spacing="0">
+            <MudText Typo="Typo.caption" Class="text-muted">Profile</MudText>
+            <MudText Typo="Typo.body2">@Result.ScenarioConfig.EffectiveExecutionConfig.RealismProfile</MudText>
+        </MudStack>
+        <MudStack Spacing="0">
+            <MudText Typo="Typo.caption" Class="text-muted">Fill Mode</MudText>
+            <MudText Typo="Typo.body2">@Result.ScenarioConfig.EffectiveFillMode</MudText>
+        </MudStack>
+        <MudStack Spacing="0">
+            <MudText Typo="Typo.caption" Class="text-muted">Slippage</MudText>
+            <MudText Typo="Typo.body2">@Result.ScenarioConfig.SlippageModelType</MudText>
+        </MudStack>
+        <MudStack Spacing="0">
+            <MudText Typo="Typo.caption" Class="text-muted">Commission</MudText>
+            <MudText Typo="Typo.body2">@Result.ScenarioConfig.CommissionModelType</MudText>
+        </MudStack>
+        <MudStack Spacing="0">
+            <MudText Typo="Typo.caption" Class="text-muted">Session</MudText>
+            <MudText Typo="Typo.body2">@(Result.ScenarioConfig.EffectiveExecutionConfig.SessionOptions?.SessionCalendarType ?? "None")</MudText>
+        </MudStack>
+    </MudStack>
+</MudPaper>
+
+@* V5: IS vs OOS comparison panel (when available) *@
+@if (_isOosAvailable)
+{
+    <MudPaper Outlined="true" Class="pa-3 mb-3">
+        <MudText Typo="Typo.caption" Class="text-muted mb-2">IN-SAMPLE vs OUT-OF-SAMPLE</MudText>
+        <MudText Typo="Typo.body2" Class="text-muted">IS vs OOS comparison data available from walk-forward studies. View the study for detailed breakdown.</MudText>
+    </MudPaper>
+}
+
+@* Robustness warnings — V5: enhanced with explanations *@
+<RobustnessWarnings Result="Result" />
+
+@code {
+    [Parameter, EditorRequired]
+    public BacktestResult Result { get; set; } = default!;
+
+    // V5: Check if IS vs OOS data is available (walk-forward results)
+    // Currently a placeholder — will be wired when walk-forward study linking is implemented
+    private bool _isOosAvailable => false;
+}
