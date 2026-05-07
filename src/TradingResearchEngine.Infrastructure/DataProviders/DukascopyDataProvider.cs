@@ -233,6 +233,8 @@ public sealed class DukascopyDataProvider : IDataProvider
     {
         var pointSize = DukascopyHelpers.PointSizes.TryGetValue(symbol, out var ps) ? ps : 100_000m;
         var dates = DukascopyHelpers.BuildTradingDays(from.Date, to.Date);
+        var cacheHits = 0;
+        var cacheMisses = 0;
 
         _logger.LogInformation("Dukascopy ticks: fetching {Symbol} — {Count} trading days ({From:yyyy-MM-dd} to {To:yyyy-MM-dd})",
             symbol, dates.Count, from, to);
@@ -241,26 +243,40 @@ public sealed class DukascopyDataProvider : IDataProvider
         {
             ct.ThrowIfCancellationRequested();
 
-            // Build hour tasks for all 24 hours of the day
-            var hourTasks = Enumerable.Range(0, 24)
-                .Select(h => FetchHourTicksAsync(symbol, date, h, pointSize, ct))
-                .ToArray();
+            var cachePath = DukascopyHelpers.GetTickCachePath(_cacheDir, symbol, date);
+            List<TickRecord>? dayTicks = null;
 
-            // Process in batches of 4 concurrent downloads (same as candle batches)
-            var batches = hourTasks.Chunk(4);
-            foreach (var batch in batches)
+            if (DukascopyHelpers.IsCacheFileValid(cachePath))
             {
-                var results = await Task.WhenAll(batch);
-                foreach (var hourTicks in results)
+                dayTicks = DukascopyHelpers.LoadTicksFromCsv(cachePath, symbol);
+                if (dayTicks.Count == 0)
                 {
-                    foreach (var tick in hourTicks)
-                    {
-                        if (tick.Timestamp >= from && tick.Timestamp <= to)
-                            yield return tick;
-                    }
+                    // Empty list from cache means all rows were malformed — treat as cache miss
+                    dayTicks = await FetchAndCacheDayTicksAsync(symbol, date, pointSize, ct);
+                    cacheMisses++;
+                }
+                else
+                {
+                    cacheHits++;
                 }
             }
+            else
+            {
+                dayTicks = await FetchAndCacheDayTicksAsync(symbol, date, pointSize, ct);
+                cacheMisses++;
+            }
+
+            foreach (var tick in dayTicks)
+            {
+                if (tick.Timestamp >= from && tick.Timestamp <= to)
+                    yield return tick;
+            }
+
+            // Release day's ticks for GC before loading next day
+            dayTicks = null;
         }
+
+        _logger.LogInformation("Dukascopy tick cache stats: {Hits} hits, {Misses} misses", cacheHits, cacheMisses);
     }
 
     private async Task<List<TickRecord>> FetchHourTicksAsync(
@@ -289,6 +305,50 @@ public sealed class DukascopyDataProvider : IDataProvider
 
         var hourStart = new DateTime(date.Year, date.Month, date.Day, hour, 0, 0, DateTimeKind.Utc);
         return DukascopyHelpers.ParseTicks(decompressed, hourStart, symbol, pointSize);
+    }
+
+    /// <summary>
+    /// Downloads all 24 hours of tick data for a single day in batches of 4 concurrent requests,
+    /// merges and sorts the results by timestamp, persists to the per-day tick cache if non-empty,
+    /// and returns the sorted list. Returns an empty list without writing a cache file if all hours
+    /// return empty data.
+    /// </summary>
+    private async Task<List<TickRecord>> FetchAndCacheDayTicksAsync(
+        string symbol, DateTime date, decimal pointSize, CancellationToken ct)
+    {
+        var allHourTicks = new List<TickRecord>();
+
+        // Download all 24 hours in batches of 4 concurrent requests
+        var hourBatches = Enumerable.Range(0, 24).Chunk(4);
+        foreach (var batch in hourBatches)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            var tasks = batch.Select(h => FetchHourTicksAsync(symbol, date, h, pointSize, ct)).ToArray();
+            var results = await Task.WhenAll(tasks);
+
+            foreach (var hourTicks in results)
+                allHourTicks.AddRange(hourTicks);
+        }
+
+        // Sort merged ticks by timestamp (non-decreasing order)
+        allHourTicks.Sort((a, b) => a.Timestamp.CompareTo(b.Timestamp));
+
+        // Persist to cache only if we have data
+        if (allHourTicks.Count > 0)
+        {
+            var cachePath = DukascopyHelpers.GetTickCachePath(_cacheDir, symbol, date);
+            try
+            {
+                DukascopyHelpers.SaveTicksToCsv(cachePath, allHourTicks);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug("Failed to cache day ticks: {Message}", ex.Message);
+            }
+        }
+
+        return allHourTicks;
     }
 
     private async Task<List<BarRecord>> FetchAndCacheDayAsync(

@@ -219,6 +219,21 @@ public static class DukascopyHelpers
     }
 
     /// <summary>
+    /// Returns the per-day tick cache file path for a symbol and date.
+    /// Path convention: <c>{cacheDir}/{symbol}/ticks/{year:D4}/{month:D2}/{day:D2}.csv</c>.
+    /// Creates the directory structure if it does not exist.
+    /// </summary>
+    public static string GetTickCachePath(string cacheDir, string symbol, DateTime date)
+    {
+        var path = Path.Combine(cacheDir, symbol, "ticks",
+            date.Year.ToString("D4"), date.Month.ToString("D2"), $"{date.Day:D2}.csv");
+        var dir = Path.GetDirectoryName(path)!;
+        if (!Directory.Exists(dir))
+            Directory.CreateDirectory(dir);
+        return path;
+    }
+
+    /// <summary>
     /// Returns the per-day cache file path for a symbol, price type, and date.
     /// Creates the directory structure if it does not exist.
     /// </summary>
@@ -246,6 +261,34 @@ public static class DukascopyHelpers
         return info.Length > 60;
     }
 
+    /// <summary>
+    /// Writes tick records to a CSV file in canonical engine format.
+    /// Columns: Timestamp, BidPrice, BidSize, AskPrice, AskSize, LastPrice, LastSize.
+    /// All decimal values use <see cref="CultureInfo.InvariantCulture"/> formatting.
+    /// Timestamps use ISO 8601 round-trip format (<c>O</c> specifier).
+    /// </summary>
+    /// <param name="path">The file path to write the CSV to. Directory is created if it does not exist.</param>
+    /// <param name="ticks">The list of tick records to serialize.</param>
+    public static void SaveTicksToCsv(string path, List<TickRecord> ticks)
+    {
+        var dir = Path.GetDirectoryName(path);
+        if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+            Directory.CreateDirectory(dir);
+
+        using var writer = new StreamWriter(path);
+        writer.WriteLine("Timestamp,BidPrice,BidSize,AskPrice,AskSize,LastPrice,LastSize");
+        foreach (var tick in ticks)
+        {
+            writer.WriteLine(string.Format(
+                CultureInfo.InvariantCulture,
+                "{0:O},{1},{2},{3},{4},{5},{6}",
+                tick.Timestamp,
+                tick.BidLevels[0].Price, tick.BidLevels[0].Size,
+                tick.AskLevels[0].Price, tick.AskLevels[0].Size,
+                tick.LastTrade.Price, tick.LastTrade.Volume));
+        }
+    }
+
     /// <summary>Writes bars to a CSV file in canonical engine format.</summary>
     public static void SaveToCsv(string path, List<BarRecord> bars)
     {
@@ -262,6 +305,48 @@ public static class DukascopyHelpers
                 "{0:O},{1},{2},{3},{4},{5}",
                 b.Timestamp, b.Open, b.High, b.Low, b.Close, b.Volume));
         }
+    }
+
+    /// <summary>
+    /// Loads tick records from a canonical tick CSV file.
+    /// Columns: Timestamp, BidPrice, BidSize, AskPrice, AskSize, LastPrice, LastSize.
+    /// Rows with fewer than 7 columns or unparseable values are silently skipped.
+    /// All parsing uses <see cref="CultureInfo.InvariantCulture"/>.
+    /// </summary>
+    /// <param name="path">The file path of the tick CSV to read.</param>
+    /// <param name="symbol">The symbol to assign to each loaded <see cref="TickRecord"/>.</param>
+    /// <returns>A list of parsed tick records; empty if the file is entirely malformed.</returns>
+    public static List<TickRecord> LoadTicksFromCsv(string path, string symbol)
+    {
+        var ticks = new List<TickRecord>();
+        using var reader = new StreamReader(path);
+        reader.ReadLine(); // skip header
+
+        string? line;
+        while ((line = reader.ReadLine()) is not null)
+        {
+            var parts = line.Split(',');
+            if (parts.Length < 7) continue;
+            try
+            {
+                var timestamp = DateTimeOffset.Parse(parts[0], CultureInfo.InvariantCulture);
+                var bidPrice = decimal.Parse(parts[1], CultureInfo.InvariantCulture);
+                var bidSize = decimal.Parse(parts[2], CultureInfo.InvariantCulture);
+                var askPrice = decimal.Parse(parts[3], CultureInfo.InvariantCulture);
+                var askSize = decimal.Parse(parts[4], CultureInfo.InvariantCulture);
+                var lastPrice = decimal.Parse(parts[5], CultureInfo.InvariantCulture);
+                var lastSize = decimal.Parse(parts[6], CultureInfo.InvariantCulture);
+
+                ticks.Add(new TickRecord(
+                    symbol,
+                    new[] { new BidLevel(bidPrice, bidSize) },
+                    new[] { new AskLevel(askPrice, askSize) },
+                    new LastTrade(lastPrice, lastSize, timestamp),
+                    timestamp));
+            }
+            catch { /* skip malformed rows */ }
+        }
+        return ticks;
     }
 
     /// <summary>Loads bars from a canonical CSV file.</summary>

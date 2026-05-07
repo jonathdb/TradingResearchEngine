@@ -203,8 +203,10 @@ public sealed class TickImportService : IDisposable
     {
         try
         {
-            // Track ticks per day for batched writes
+            // Track ticks per day — flush each day to disk as soon as all 24 hours arrive
+            // to keep memory bounded to a small number of in-flight days.
             var dayTicks = new Dictionary<DateTime, List<TickCsvRow>>();
+            var dayHourCounts = new Dictionary<DateTime, int>();
             var progressState = new Progress<(int current, int total)>(p =>
             {
                 lock (_lock)
@@ -233,15 +235,35 @@ public sealed class TickImportService : IDisposable
                     }
                     list.AddRange(item.Ticks);
                 }
+
+                // Track hour completion per day
+                dayHourCounts.TryGetValue(item.Date, out var hourCount);
+                dayHourCounts[item.Date] = hourCount + 1;
+
+                // Flush to disk when all 24 hours for a day have arrived
+                if (dayHourCounts[item.Date] == 24)
+                {
+                    if (dayTicks.TryGetValue(item.Date, out var dayList) && dayList.Count > 0)
+                    {
+                        dayList.Sort((a, b) => a.Timestamp.CompareTo(b.Timestamp));
+                        await _cacheService.WriteDayTicksAsync(symbol, item.Date, dayList, ct);
+                    }
+                    // Release memory for this day
+                    dayTicks.Remove(item.Date);
+                    dayHourCounts.Remove(item.Date);
+                }
             }
 
-            // Write all accumulated day ticks to cache
+            // Flush any remaining partial days (e.g., if downloader skipped some hours)
             foreach (var (date, ticks) in dayTicks)
             {
-                // Sort ticks by timestamp before writing
-                ticks.Sort((a, b) => a.Timestamp.CompareTo(b.Timestamp));
-                await _cacheService.WriteDayTicksAsync(symbol, date, ticks, ct);
+                if (ticks.Count > 0)
+                {
+                    ticks.Sort((a, b) => a.Timestamp.CompareTo(b.Timestamp));
+                    await _cacheService.WriteDayTicksAsync(symbol, date, ticks, ct);
+                }
             }
+            dayTicks.Clear();
 
             // Get total tick count for the full range
             var totalTickCount = await _cacheService.GetTickCountAsync(symbol, startDate, endDate, ct);
