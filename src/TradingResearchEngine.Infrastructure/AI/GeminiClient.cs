@@ -9,11 +9,15 @@ namespace TradingResearchEngine.Infrastructure.AI;
 /// <summary>
 /// Concrete implementation of <see cref="IGeminiClient"/> using the Mscc.GenerativeAI library.
 /// Uses structured JSON output mode for reliable parsing.
+/// Includes exponential backoff retry for transient failures and rate limiting (HTTP 429).
 /// </summary>
 public sealed class GeminiClient : IGeminiClient
 {
     private readonly GeminiOptions _options;
     private readonly ILogger<GeminiClient> _logger;
+
+    /// <summary>Base delay for exponential backoff on rate-limited or transient failures.</summary>
+    private static readonly TimeSpan BaseRetryDelay = TimeSpan.FromSeconds(2);
 
     public GeminiClient(IOptions<GeminiOptions> options, ILogger<GeminiClient> logger)
     {
@@ -44,14 +48,40 @@ public sealed class GeminiClient : IGeminiClient
 
         ct.ThrowIfCancellationRequested();
 
-        var response = await model.GenerateContent(request);
+        // Retry with exponential backoff for transient/rate-limit failures
+        var maxAttempts = _options.MaxRetries + 1;
+        for (var attempt = 1; attempt <= maxAttempts; attempt++)
+        {
+            try
+            {
+                var response = await model.GenerateContent(request);
 
-        ct.ThrowIfCancellationRequested();
+                ct.ThrowIfCancellationRequested();
 
-        var text = response.Text
-            ?? throw new InvalidOperationException("Gemini API returned an empty response.");
+                var text = response.Text
+                    ?? throw new InvalidOperationException("Gemini API returned an empty response.");
 
-        _logger.LogDebug("Gemini API response received ({Length} chars).", text.Length);
-        return text;
+                _logger.LogDebug("Gemini API response received ({Length} chars).", text.Length);
+                return text;
+            }
+            catch (HttpRequestException ex) when (attempt < maxAttempts && IsTransientOrRateLimited(ex))
+            {
+                var delay = BaseRetryDelay * Math.Pow(2, attempt - 1);
+                _logger.LogWarning(
+                    "Gemini API request failed (attempt {Attempt}/{MaxAttempts}): {Message}. Retrying in {Delay}s.",
+                    attempt, maxAttempts, ex.Message, delay.TotalSeconds);
+                await Task.Delay(delay, ct);
+            }
+        }
+
+        // Should not reach here, but just in case
+        throw new InvalidOperationException("Gemini API request failed after all retry attempts.");
+    }
+
+    private static bool IsTransientOrRateLimited(HttpRequestException ex)
+    {
+        // HTTP 429 Too Many Requests or 5xx server errors
+        return ex.StatusCode == System.Net.HttpStatusCode.TooManyRequests
+            || (ex.StatusCode.HasValue && (int)ex.StatusCode.Value >= 500);
     }
 }

@@ -164,13 +164,28 @@ public sealed class GeminiStrategyAssistant : IAIStrategyAssistant
         ct.ThrowIfCancellationRequested();
 
         var path = _options.SystemPromptFilePath;
-        if (!File.Exists(path))
+
+        // Try the path as-is first (works when launched from repo root)
+        if (File.Exists(path))
+            return await File.ReadAllTextAsync(path, ct);
+
+        // Try relative to the application base directory
+        var baseDirPath = Path.Combine(AppContext.BaseDirectory, path);
+        if (File.Exists(baseDirPath))
+            return await File.ReadAllTextAsync(baseDirPath, ct);
+
+        // Walk up from the current directory to find the repo root containing the Prompts folder
+        var dir = new DirectoryInfo(Directory.GetCurrentDirectory());
+        while (dir != null)
         {
-            throw new InvalidOperationException(
-                $"System prompt file not found at '{path}'. Ensure GeminiOptions.SystemPromptFilePath points to a valid file.");
+            var candidate = Path.Combine(dir.FullName, path);
+            if (File.Exists(candidate))
+                return await File.ReadAllTextAsync(candidate, ct);
+            dir = dir.Parent;
         }
 
-        return await File.ReadAllTextAsync(path, ct);
+        throw new InvalidOperationException(
+            $"System prompt file not found at '{path}'. Ensure GeminiOptions.SystemPromptFilePath points to a valid file relative to the repository root.");
     }
 
     private bool IsKnownStrategyType(string strategyType)

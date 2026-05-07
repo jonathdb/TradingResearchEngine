@@ -84,6 +84,7 @@ When `DataProviderType` is `csv`, the `DataProviderFactory` resolves relative fi
 | `BuildDayUrl(string, DateTime)` | Constructs the Dukascopy datafeed URL for a day's BID minute candles (0-indexed months); delegates to the 3-arg overload with `DukascopyPriceType.Bid` |
 | `BuildDayUrl(string, DateTime, DukascopyPriceType)` | Constructs the Dukascopy datafeed URL for a day's minute candles for the given price type — `Bid` → `BID_candles_min_1.bi5`, `Ask` → `ASK_candles_min_1.bi5` |
 | `GetDayCachePath(string, string, string, DateTime)` | Returns the per-day cache file path for a symbol, price type, and date (`{cacheDir}/{symbol}/{priceType}/{YYYY}/{MM}/{DD}.csv`); creates the directory structure if it does not exist |
+| `GetTickCachePath(string, string, DateTime)` | Returns the per-day tick cache file path for a symbol and date (`{cacheDir}/{symbol}/ticks/{YYYY}/{MM}/{DD}.csv`); creates the directory structure if it does not exist |
 | `IsCacheFileValid(string)` | Returns true if a cache file exists and contains data beyond a header row; zero-byte or header-only files (≤60 bytes) are treated as missing |
 | `SaveToCsv(string, List<BarRecord>)` | Writes bars to canonical CSV format (`Timestamp,Open,High,Low,Close,Volume`) |
 | `LoadFromCsv(string, string, string)` | Loads bars from a canonical CSV file |

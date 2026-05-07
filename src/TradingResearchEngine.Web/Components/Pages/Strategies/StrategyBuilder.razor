@@ -295,7 +295,8 @@
         1 => (_vm.SourceType == SourceType.Template && _vm.TemplateId is not null) ||
              _vm.SourceType == SourceType.Manual ||
              _vm.SourceType == SourceType.Fork ||
-             _vm.SourceType == SourceType.Import,
+             _vm.SourceType == SourceType.Import ||
+             _vm.SourceType == SourceType.AIGenerated,
         2 => !string.IsNullOrWhiteSpace(_vm.DataFilePath),
         3 => SchemaValidator.ValidateParameters(_vm.Parameters, _schemas).Count == 0,
         4 => SchemaValidator.ValidateRiskProfile(_vm.PresetOverrides, _vm.StopLoss).Count == 0,

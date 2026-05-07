@@ -44,6 +44,36 @@ Strategies are discovered via the `[StrategyName]` registry. Use the name in `Sc
 | `macro-regime-rotation` | `MacroRegimeRotationStrategy` | Multi-regime rotation using volatility, trend, and momentum indicators; rebalances monthly with 4-tier allocation |
 | `baseline-buy-and-hold` | `BaselineBuyAndHoldStrategy` | Passive buy-and-hold benchmark for comparing active strategy performance |
 
+## Environment Setup
+
+### Google Gemini API Key (AI Strategy Assistant)
+
+The AI Strategy Assistant (V8) requires a Google Gemini API key. Set it via environment variable or appsettings:
+
+**PowerShell (current session):**
+```powershell
+$env:Gemini__ApiKey = "your-api-key-here"
+```
+
+**PowerShell (permanent, user-level):**
+```powershell
+[Environment]::SetEnvironmentVariable("Gemini__ApiKey", "your-api-key-here", "User")
+```
+
+**Or via `appsettings.json` (local development only — do not commit):**
+```json
+{
+  "Gemini": {
+    "ApiKey": "your-api-key-here",
+    "ModelName": "gemini-2.5-flash"
+  }
+}
+```
+
+> **Important:** The config section is `"Gemini"` (not `"GeminiOptions"`). The legacy `"LlmProvider"` section is disabled and no longer needed — all AI features use the V8 Gemini assistant.
+
+If the key is not set, AI assistant features are disabled gracefully without crashing the application.
+
 ## Getting Started
 
 ```bash
