@@ -24,8 +24,8 @@ Thumbs.db
 .DS_Store
 
 # Dukascopy cache (downloaded data — regenerated on first run)
-# Uncomment the next line if you don't want to commit cached data
-# **/DukascopyCache/
+**/dukascopy-cache/
+src/TradingResearchEngine.Web/data/
 
 # Auto-saved backtest results (local user data)
 # These are in %LOCALAPPDATA%/TradingResearchEngine/ so not in the repo
