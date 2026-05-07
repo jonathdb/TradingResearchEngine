@@ -1,12 +1,13 @@
 @rendermode InteractiveServer
 @using Plotly.Blazor
 @using Plotly.Blazor.Traces
+@using Plotly.Blazor.LayoutLib
 @using TradingResearchEngine.Application.Helpers
 
 @if (Curve is not null && Curve.Count > 0)
 {
     <PlotlyChart @ref="_chart" Config="_config" Layout="_layout" Data="_data"
-                 style="width:100%; height:320px;" />
+                 style="@($"width:100%; height:{_chartHeight}px;")" />
 }
 
 @code {
@@ -17,6 +18,7 @@
     private Config _config = new() { Responsive = true, DisplayModeBar = Plotly.Blazor.ConfigLib.DisplayModeBarEnum.Hover };
     private Layout _layout = new();
     private IList<ITrace> _data = new List<ITrace>();
+    private int _chartHeight = 320;
 
     private static readonly string[] MonthLabels = { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
 
@@ -31,6 +33,9 @@
         var yLabels = years.Select(y => (object)y.ToString()).ToList();
         var xLabels = MonthLabels.Select(m => (object)m).ToList();
 
+        // Compute dynamic chart height based on year count
+        _chartHeight = ChartComputationHelpers.ComputeHeatmapHeight(years.Count);
+
         // Build Z matrix: rows = years, columns = months
         var z = new List<object>();
         foreach (var year in years)
@@ -43,6 +48,11 @@
             }
             z.Add(row);
         }
+
+        // Compute actual data min/max for color scale normalisation
+        var allValues = monthly.Select(m => m.ReturnPercent).ToList();
+        var dataMin = allValues.Min();
+        var dataMax = allValues.Max();
 
         _data = new List<ITrace>
         {
@@ -57,15 +67,40 @@
                     new object[] { 0.5, "#FFFFFF" },
                     new object[] { 1, "#66BB6A" }
                 } as IList<object>,
+                ZMin = dataMin,
+                ZMax = dataMax,
                 ZMid = 0m,
-                HoverTemplate = "%{y} %{x}: %{z:.2f}%<extra></extra>"
+                HoverTemplate = "Year: %{y}<br>Month: %{x}<br>Return: %{z:.2f}%<extra></extra>"
             }
         };
+
+        // Generate text annotations for each cell
+        var annotations = ChartComputationHelpers.ComputeHeatmapAnnotations(monthly);
+        var plotlyAnnotations = annotations.Select(a => new Plotly.Blazor.LayoutLib.Annotation
+        {
+            X = (object)MonthLabels[a.Month - 1],
+            Y = (object)a.Year.ToString(),
+            Text = a.Text,
+            ShowArrow = false,
+            Font = new Plotly.Blazor.LayoutLib.AnnotationLib.Font
+            {
+                Size = 10m,
+                Color = "rgba(255,255,255,0.9)"
+            }
+        }).ToList();
 
         _layout = new Layout
         {
             Title = new Plotly.Blazor.LayoutLib.Title { Text = "Monthly Returns (%)" },
-            Margin = new Plotly.Blazor.LayoutLib.Margin { L = 60, R = 40, T = 40, B = 40 }
+            Margin = new Plotly.Blazor.LayoutLib.Margin { L = 60, R = 40, T = 40, B = 40 },
+            YAxis = new List<Plotly.Blazor.LayoutLib.YAxis>
+            {
+                new()
+                {
+                    TickFont = new Plotly.Blazor.LayoutLib.YAxisLib.TickFont { Size = 12m }
+                }
+            },
+            Annotations = new List<Plotly.Blazor.LayoutLib.Annotation>(plotlyAnnotations)
         };
     }
 }

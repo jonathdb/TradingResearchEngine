@@ -4,6 +4,7 @@
 @using Plotly.Blazor.Traces.ScatterLib
 @using Plotly.Blazor.LayoutLib
 @using Plotly.Blazor.LayoutLib.YAxisLib
+@using TradingResearchEngine.Application.Helpers
 
 @if (Curve is not null && Curve.Count > 0)
 {
@@ -33,30 +34,14 @@
         var timestamps = Curve.Select(p => (object)p.Timestamp.DateTime).ToList();
         var equities = Curve.Select(p => (object)p.TotalEquity).ToList();
 
-        _data = new List<ITrace>
-        {
-            new Scatter
-            {
-                X = timestamps,
-                Y = equities,
-                Name = "Total Equity",
-                Mode = ModeFlag.Lines,
-                Line = new Line { Color = "#42A5F5", Width = 2m },
-                HoverTemplate = "Date: %{x}<br>Equity: $%{y:,.0f}<extra></extra>"
-            }
-        };
+        // Compute tight Y-axis bounds with ±1% padding
+        var minEquity = Curve.Min(p => p.TotalEquity);
+        var maxEquity = Curve.Max(p => p.TotalEquity);
+        var (yLower, yUpper) = ChartComputationHelpers.ComputeYAxisRange(minEquity, maxEquity);
 
-        _layout = new Layout
-        {
-            Title = new Plotly.Blazor.LayoutLib.Title { Text = Title },
-            Margin = new Plotly.Blazor.LayoutLib.Margin { L = 60, R = 60, T = 40, B = 40 },
-            HoverMode = Plotly.Blazor.LayoutLib.HoverModeEnum.XUnified,
-            ShowLegend = true,
-            Legend = new List<Plotly.Blazor.LayoutLib.Legend> { new() { Orientation = Plotly.Blazor.LayoutLib.LegendLib.OrientationEnum.H, Y = -0.15m } },
-            XAxis = new[] { new Plotly.Blazor.LayoutLib.XAxis { Title = new Plotly.Blazor.LayoutLib.XAxisLib.Title { Text = "" } } }.ToList(),
-            YAxis = new[] { new YAxis { Title = new Plotly.Blazor.LayoutLib.YAxisLib.Title { Text = "Equity ($)" } } }.ToList()
-        };
+        _data = new List<ITrace>();
 
+        // Add drawdown trace first so equity line renders above it (higher z-order)
         if (ShowDrawdown)
         {
             var drawdowns = ComputeDrawdownPercent(Curve);
@@ -69,12 +54,46 @@
                 Name = "Drawdown %",
                 Mode = ModeFlag.Lines,
                 Fill = FillEnum.ToZeroY,
-                Line = new Line { Color = "rgba(244,67,54,0.6)", Width = 1m },
+                Line = new Line { Color = "rgba(244,67,54,0.4)", Width = 1m },
                 FillColor = "rgba(244,67,54,0.15)",
                 YAxis = "y2",
                 HoverTemplate = "Drawdown: %{y:.1f}%<extra></extra>"
             });
+        }
 
+        // Equity line added after drawdown so it renders on top
+        _data.Add(new Scatter
+        {
+            X = timestamps,
+            Y = equities,
+            Name = "Total Equity",
+            Mode = ModeFlag.Lines,
+            Line = new Line { Color = "#42A5F5", Width = 2m },
+            HoverTemplate = "Date: %{x}<br>Equity: $%{y:,.0f}<extra></extra>"
+        });
+
+        _layout = new Layout
+        {
+            Title = new Plotly.Blazor.LayoutLib.Title { Text = Title },
+            Margin = new Plotly.Blazor.LayoutLib.Margin { L = 60, R = 60, T = 40, B = 40 },
+            HoverMode = Plotly.Blazor.LayoutLib.HoverModeEnum.XUnified,
+            ShowLegend = true,
+            Legend = new List<Plotly.Blazor.LayoutLib.Legend> { new() { Orientation = Plotly.Blazor.LayoutLib.LegendLib.OrientationEnum.H, Y = -0.15m } },
+            XAxis = new[] { new Plotly.Blazor.LayoutLib.XAxis
+            {
+                Title = new Plotly.Blazor.LayoutLib.XAxisLib.Title { Text = "" },
+                ShowSpikes = true,
+                SpikeMode = Plotly.Blazor.LayoutLib.XAxisLib.SpikeModeFlag.Across,
+                SpikeColor = "rgba(255,255,255,0.3)",
+                SpikeThickness = 1m,
+                SpikeDash = "dot",
+                SpikeSnap = Plotly.Blazor.LayoutLib.XAxisLib.SpikeSnapEnum.Cursor
+            } }.ToList(),
+            YAxis = new[] { new YAxis { Title = new Plotly.Blazor.LayoutLib.YAxisLib.Title { Text = "Equity ($)" }, Range = new List<object> { (decimal)yLower, (decimal)yUpper } } }.ToList()
+        };
+
+        if (ShowDrawdown)
+        {
             _layout.YAxis.Add(new YAxis
             {
                 Title = new Plotly.Blazor.LayoutLib.YAxisLib.Title { Text = "Drawdown %" },

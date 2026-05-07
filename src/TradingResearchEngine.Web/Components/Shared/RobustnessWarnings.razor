@@ -1,18 +1,16 @@
-@* Displays automatic robustness warnings based on backtest metrics *@
+@* Displays automatic robustness warnings as a full-width horizontal banner above the equity chart *@
 
-@if (Result is not null)
+@if (Result is not null && GetWarnings() is { Count: > 0 } warnings)
 {
-    var warnings = GetWarnings();
-    @if (warnings.Count > 0)
-    {
-        <MudAlert Severity="Severity.Warning" Dense="true" Class="@Class">
-            <MudText Typo="Typo.subtitle2">⚠️ Robustness Warnings</MudText>
+    <MudAlert Severity="Severity.Warning" Dense="true" Class="@Class" Style="width: 100%;">
+        <MudStack Row="true" Spacing="3" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap">
+            <MudText Typo="Typo.subtitle2" Style="white-space: nowrap;">⚠️ Robustness Warnings</MudText>
             @foreach (var w in warnings)
             {
-                <MudText Typo="Typo.body2">@w</MudText>
+                <MudText Typo="Typo.body2" Style="white-space: nowrap;">@w</MudText>
             }
-        </MudAlert>
-    }
+        </MudStack>
+    </MudAlert>
 }
 
 @code {

@@ -2,7 +2,7 @@
 
 <MudNavMenu Dense="true">
     <MudText Typo="Typo.overline" Class="px-4 pt-3 pb-1 text-faint">DASHBOARD</MudText>
-    <MudNavLink Href="/" Match="NavLinkMatch.All"
+    <MudNavLink Href="/" Match="NavLinkMatch.All" Class="pl-4"
                 Icon="@Icons.Material.Filled.Dashboard">Dashboard</MudNavLink>
 
     <MudNavGroup Title="STRATEGIES" @bind-Expanded="_strategiesExpanded"
@@ -32,13 +32,13 @@
     </MudNavGroup>
 
     <MudText Typo="Typo.overline" Class="px-4 pt-3 pb-1 text-faint">BACKTESTS</MudText>
-    <MudNavLink Href="/backtests"
+    <MudNavLink Href="/backtests" Class="pl-4"
                 Icon="@Icons.Material.Filled.History">Backtests</MudNavLink>
 
     <MudText Typo="Typo.overline" Class="px-4 pt-3 pb-1 text-faint">PROP FIRM LAB</MudText>
-    <MudNavLink Href="/propfirm/evaluate"
+    <MudNavLink Href="/propfirm/evaluate" Class="pl-4"
                 Icon="@Icons.Material.Filled.AccountBalance">Prop Firm Lab</MudNavLink>
-    <MudNavLink Href="/paper-trading"
+    <MudNavLink Href="/paper-trading" Class="pl-4"
                 Icon="@Icons.Material.Filled.PlayCircle">Paper Trading 🧪</MudNavLink>
 
     <MudNavGroup Title="DATA" @bind-Expanded="_dataExpanded"
@@ -50,7 +50,7 @@
     </MudNavGroup>
 
     <MudText Typo="Typo.overline" Class="px-4 pt-3 pb-1 text-faint">SETTINGS</MudText>
-    <MudNavLink Href="/settings"
+    <MudNavLink Href="/settings" Class="pl-4"
                 Icon="@Icons.Material.Filled.Settings">Settings</MudNavLink>
 </MudNavMenu>
 

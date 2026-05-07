@@ -1,18 +1,26 @@
 @using TradingResearchEngine.Application.Research
+@using TradingResearchEngine.Application.Helpers
 
 <MudPaper Outlined="true" Class="pa-4">
     <MudText Typo="Typo.subtitle2" Class="text-muted mb-3">RESEARCH PROGRESS</MudText>
 
+    <MudProgressLinear Value="@ProgressPercent"
+                       Color="@(ProgressPercent >= 100 ? Color.Success : Color.Primary)"
+                       Rounded="true"
+                       Size="MudBlazor.Size.Medium"
+                       Class="mb-2" />
+    <MudText Typo="Typo.caption" Class="text-muted mb-3">@ProgressText</MudText>
+
     <MudStack Spacing="1">
-        @CheckItem(Checklist.InitialBacktest, "Initial backtest completed")
-        @CheckItem(Checklist.MonteCarloRobustness, "Monte Carlo robustness")
-        @CheckItem(Checklist.WalkForwardValidation, "Walk-forward validation")
-        @CheckItem(Checklist.RegimeSensitivity, "Regime sensitivity checked")
-        @CheckItem(Checklist.RealismImpact, "Execution realism impact measured")
-        @CheckItem(Checklist.ParameterSurface, "Parameter surface mapped")
-        @CheckItem(Checklist.FinalHeldOutTest, "Final held-out test")
-        @CheckItem(Checklist.PropFirmEvaluation, "Prop firm evaluation")
-        @CheckItem(Checklist.CpcvDone, "CPCV overfitting assessment")
+        @CheckItem("InitialBacktest", Checklist.InitialBacktest, "Initial backtest completed")
+        @CheckItem("MonteCarloRobustness", Checklist.MonteCarloRobustness, "Monte Carlo robustness")
+        @CheckItem("WalkForwardValidation", Checklist.WalkForwardValidation, "Walk-forward validation")
+        @CheckItem("RegimeSensitivity", Checklist.RegimeSensitivity, "Regime sensitivity checked")
+        @CheckItem("RealismImpact", Checklist.RealismImpact, "Execution realism impact measured")
+        @CheckItem("ParameterSurface", Checklist.ParameterSurface, "Parameter surface mapped")
+        @CheckItem("FinalHeldOutTest", Checklist.FinalHeldOutTest, "Final held-out test")
+        @CheckItem("PropFirmEvaluation", Checklist.PropFirmEvaluation, "Prop firm evaluation")
+        @CheckItem("CpcvDone", Checklist.CpcvDone, "CPCV overfitting assessment")
     </MudStack>
 
     <MudDivider Class="my-3" />
@@ -27,9 +35,23 @@
     </MudStack>
 </MudPaper>
 
+<style>
+    @@keyframes pulse-icon {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.4; }
+    }
+    .research-step-pulse {
+        animation: pulse-icon 1.5s ease-in-out infinite;
+    }
+</style>
+
 @code {
     [Parameter, EditorRequired]
     public TradingResearchEngine.Application.Research.ResearchChecklist Checklist { get; set; } = default!;
+
+    private double ProgressPercent => ChartComputationHelpers.ComputeProgressPercent(GetStepStatuses());
+
+    private string ProgressText => ChartComputationHelpers.ComputeProgressText(GetStepStatuses());
 
     private Color ConfidenceColor => Checklist.ConfidenceLevel switch
     {
@@ -38,11 +60,101 @@
         _ => Color.Error
     };
 
-    private RenderFragment CheckItem(bool Done, string Label) => __builder =>
+    private IReadOnlyList<ResearchStepStatus> GetStepStatuses()
     {
+        var booleans = new[]
+        {
+            Checklist.InitialBacktest,
+            Checklist.MonteCarloRobustness,
+            Checklist.WalkForwardValidation,
+            Checklist.RegimeSensitivity,
+            Checklist.RealismImpact,
+            Checklist.ParameterSurface,
+            Checklist.FinalHeldOutTest,
+            Checklist.PropFirmEvaluation,
+            Checklist.CpcvDone
+        };
+
+        return booleans.Select((b, i) => MapToStatus(b, i, booleans)).ToList();
+    }
+
+    /// <summary>
+    /// Maps a boolean step value to a ResearchStepStatus.
+    /// true → Completed, false → InProgress if it's the first uncompleted step after all completed ones, otherwise NotStarted.
+    /// </summary>
+    private static ResearchStepStatus MapToStatus(bool value, int index, bool[] allSteps)
+    {
+        if (value)
+            return ResearchStepStatus.Completed;
+
+        // The first uncompleted step (after all preceding completed steps) is InProgress
+        bool allPreviousCompleted = true;
+        for (int i = 0; i < index; i++)
+        {
+            if (!allSteps[i])
+            {
+                allPreviousCompleted = false;
+                break;
+            }
+        }
+
+        return allPreviousCompleted ? ResearchStepStatus.InProgress : ResearchStepStatus.NotStarted;
+    }
+
+    private ResearchStepStatus GetStepStatus(bool value, string stepKey)
+    {
+        var booleans = new[]
+        {
+            Checklist.InitialBacktest,
+            Checklist.MonteCarloRobustness,
+            Checklist.WalkForwardValidation,
+            Checklist.RegimeSensitivity,
+            Checklist.RealismImpact,
+            Checklist.ParameterSurface,
+            Checklist.FinalHeldOutTest,
+            Checklist.PropFirmEvaluation,
+            Checklist.CpcvDone
+        };
+
+        var keys = new[]
+        {
+            "InitialBacktest", "MonteCarloRobustness", "WalkForwardValidation",
+            "RegimeSensitivity", "RealismImpact", "ParameterSurface",
+            "FinalHeldOutTest", "PropFirmEvaluation", "CpcvDone"
+        };
+
+        int index = Array.IndexOf(keys, stepKey);
+        return MapToStatus(value, index, booleans);
+    }
+
+    private string GetStepDescription(string stepKey)
+    {
+        return ChartComputationHelpers.StepDescriptions.TryGetValue(stepKey, out var desc) ? desc : string.Empty;
+    }
+
+    private RenderFragment CheckItem(string StepKey, bool Done, string Label) => __builder =>
+    {
+        var status = GetStepStatus(Done, StepKey);
+        var icon = status switch
+        {
+            ResearchStepStatus.Completed => Icons.Material.Filled.CheckCircle,
+            ResearchStepStatus.InProgress => Icons.Material.Filled.Pending,
+            _ => Icons.Material.Outlined.Circle
+        };
+        var iconColor = status switch
+        {
+            ResearchStepStatus.Completed => Color.Success,
+            ResearchStepStatus.InProgress => Color.Warning,
+            _ => Color.Default
+        };
+        var iconClass = status == ResearchStepStatus.InProgress ? "research-step-pulse" : "";
+        var textOpacity = status == ResearchStepStatus.NotStarted ? "opacity: 0.5;" : "";
+
         <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
-            <MudText Typo="Typo.body2">@(Done ? "✅" : "⬜")</MudText>
-            <MudText Typo="Typo.body2" Class="@(Done ? "" : "text-muted")">@Label</MudText>
+            <MudIcon Icon="@icon" Color="@iconColor" Size="MudBlazor.Size.Small" Class="@iconClass" />
+            <MudTooltip Text="@GetStepDescription(StepKey)" Placement="Placement.Right">
+                <MudText Typo="Typo.body2" Style="@textOpacity">@Label</MudText>
+            </MudTooltip>
         </MudStack>;
     };
 }

@@ -1,38 +1,50 @@
 @using TradingResearchEngine.Application.Research
 
+@* Confidence Badge — rendered at 1.5x size in strategy header area *@
+@if (Checklist is not null)
+{
+    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-3">
+        <MudChip T="string" Size="MudBlazor.Size.Large"
+                 Color="@ConfidenceBadgeColor"
+                 Style="font-size: 1.5rem; font-weight: 600;"
+                 aria-label="@($"Confidence level: {Checklist.ConfidenceLevel}, {Checklist.PassedCount} of {Checklist.TotalChecks} checks passed")">
+            @Checklist.ConfidenceLevel (@Checklist.PassedCount / @Checklist.TotalChecks)
+        </MudChip>
+    </MudStack>
+}
+
 @* Latest Run Summary *@
 @if (LatestRun is not null)
 {
     <MudPaper Outlined="true" Class="pa-3 mb-3">
-        <MudText Typo="Typo.caption" Class="text-muted mb-1">LATEST RUN</MudText>
-        <MudStack Row="true" Spacing="4" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap">
-            <MudStack Spacing="0">
-                <MudText Typo="Typo.caption" Class="text-muted">Sharpe</MudText>
-                <MudText Typo="Typo.h6" Class="@GetSharpeClass(LatestRun.SharpeRatio)">@(LatestRun.SharpeRatio?.ToString("F2") ?? "—")</MudText>
-            </MudStack>
-            <MudStack Spacing="0">
-                <MudText Typo="Typo.caption" Class="text-muted">Max DD</MudText>
-                <MudText Typo="Typo.h6">@LatestRun.MaxDrawdown.ToString("P1")</MudText>
-            </MudStack>
-            <MudStack Spacing="0">
-                <MudText Typo="Typo.caption" Class="text-muted">Trades</MudText>
-                <MudText Typo="Typo.h6">@LatestRun.TotalTrades</MudText>
-            </MudStack>
-            <MudStack Spacing="0">
-                <MudText Typo="Typo.caption" Class="text-muted">Win Rate</MudText>
-                <MudText Typo="Typo.h6">@(LatestRun.WinRate?.ToString("P0") ?? "—")</MudText>
-            </MudStack>
-            @if (LatestRun.DeflatedSharpeRatio.HasValue)
-            {
-                <MudStack Spacing="0">
-                    <MudText Typo="Typo.caption" Class="text-muted">DSR</MudText>
-                    <MudText Typo="Typo.h6">@LatestRun.DeflatedSharpeRatio.Value.ToString("F2")</MudText>
-                </MudStack>
-            }
+        <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center" Class="mb-2">
+            <MudText Typo="Typo.caption" Class="text-muted">LATEST RUN</MudText>
             <MudSpacer />
             <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Text" Color="Color.Primary"
                        Href="@($"/backtests/{LatestRun.Id}")" aria-label="View latest run details">View Details</MudButton>
         </MudStack>
+
+        @* KPI Cards — Sharpe as primary, others as standard *@
+        <MudGrid Spacing="2">
+            <MudItem xs="12" sm="4">
+                <MetricCard Label="Sharpe" Value="@(LatestRun.SharpeRatio?.ToString("F2") ?? "—")" IsPrimary="true" />
+            </MudItem>
+            <MudItem xs="6" sm="2">
+                <MetricCard Label="Max DD" Value="@LatestRun.MaxDrawdown.ToString("P1")" />
+            </MudItem>
+            <MudItem xs="6" sm="2">
+                <MetricCard Label="Trades" Value="@LatestRun.TotalTrades.ToString()" />
+            </MudItem>
+            <MudItem xs="6" sm="2">
+                <MetricCard Label="Win Rate" Value="@(LatestRun.WinRate?.ToString("P0") ?? "—")" />
+            </MudItem>
+            @if (LatestRun.DeflatedSharpeRatio.HasValue)
+            {
+                <MudItem xs="6" sm="2">
+                    <MetricCard Label="DSR" Value="@LatestRun.DeflatedSharpeRatio.Value.ToString("F2")" />
+                </MudItem>
+            }
+        </MudGrid>
     </MudPaper>
 
     @* vs Buy & Hold chip *@
@@ -54,14 +66,22 @@
         </MudTooltip>
     }
 
-    @* Key Warnings from latest run *@
+    @* Key Warnings from latest run — positioned above chart *@
     <RobustnessWarnings Result="LatestRun" Class="mt-3 mb-3" />
 
-    @* Equity Curve Chart *@
+    @* Equity Curve Chart with drawdown toggle *@
+    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-2">
+        <MudText Typo="Typo.caption" Class="text-muted">EQUITY CURVE</MudText>
+        <MudSpacer />
+        <MudSwitch T="bool" @bind-Value="_showDrawdown"
+                   Color="Color.Primary" Size="MudBlazor.Size.Small"
+                   Label="Show Drawdown"
+                   aria-label="Toggle drawdown overlay" />
+    </MudStack>
     <TradingResearchEngine.Web.Components.Charts.EquityCurveChart
         Curve="LatestRun.EquityCurve"
         Title="Latest Run — Equity Curve"
-        ShowDrawdown="true" />
+        ShowDrawdown="@_showDrawdown" />
 }
 else
 {
@@ -156,6 +176,15 @@ else
     [Parameter] public decimal? BenchmarkExcessSharpe { get; set; }
     [Parameter] public EventCallback OnRunRequested { get; set; }
     [Parameter] public StrategyVersion? SelectedVersion { get; set; }
+
+    private bool _showDrawdown = true;
+
+    private Color ConfidenceBadgeColor => Checklist?.ConfidenceLevel switch
+    {
+        "HIGH" => Color.Success,
+        "MEDIUM" => Color.Warning,
+        _ => Color.Error
+    };
 
     private Color StageColor => Strategy.Stage switch
     {

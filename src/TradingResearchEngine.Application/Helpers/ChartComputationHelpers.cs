@@ -1,3 +1,4 @@
+using TradingResearchEngine.Application.Research;
 using TradingResearchEngine.Core.Portfolio;
 
 namespace TradingResearchEngine.Application.Helpers;
@@ -103,6 +104,90 @@ public static class ChartComputationHelpers
 
         return output;
     }
+
+    /// <summary>
+    /// Computes tight Y-axis bounds with ±1% padding around the data range.
+    /// </summary>
+    /// <param name="minEquity">The minimum equity value in the curve.</param>
+    /// <param name="maxEquity">The maximum equity value in the curve.</param>
+    /// <returns>A tuple of (Lower, Upper) bounds for the Y-axis.</returns>
+    public static (decimal Lower, decimal Upper) ComputeYAxisRange(decimal minEquity, decimal maxEquity)
+    {
+        var lower = minEquity * 0.99m;
+        var upper = maxEquity * 1.01m;
+        return (lower, upper);
+    }
+
+    /// <summary>
+    /// Generates formatted annotation strings for all monthly return cells.
+    /// Each annotation displays the return percentage to one decimal place.
+    /// </summary>
+    /// <param name="returns">The collection of monthly return values.</param>
+    /// <returns>A list of heatmap annotations with formatted text.</returns>
+    public static IReadOnlyList<HeatmapAnnotation> ComputeHeatmapAnnotations(IReadOnlyList<MonthlyReturn> returns)
+    {
+        if (returns is null || returns.Count == 0)
+            return Array.Empty<HeatmapAnnotation>();
+
+        return returns
+            .Select(r => new HeatmapAnnotation(r.Year, r.Month, $"{r.ReturnPercent:F1}%"))
+            .ToList();
+    }
+
+    /// <summary>
+    /// Computes the dynamic chart height for the heatmap based on the number of years displayed.
+    /// Ensures at least 30 pixels per year row for readability.
+    /// </summary>
+    /// <param name="yearCount">The number of distinct calendar years in the data.</param>
+    /// <returns>The minimum chart height in pixels.</returns>
+    public static int ComputeHeatmapHeight(int yearCount)
+    {
+        return yearCount * 30;
+    }
+
+    /// <summary>
+    /// Computes the progress percentage for the research checklist based on completed steps.
+    /// </summary>
+    /// <param name="steps">The collection of research step statuses.</param>
+    /// <returns>The percentage of completed steps (0–100).</returns>
+    public static double ComputeProgressPercent(IReadOnlyList<ResearchStepStatus> steps)
+    {
+        if (steps is null || steps.Count == 0)
+            return 0.0;
+
+        var completedCount = steps.Count(s => s == ResearchStepStatus.Completed);
+        return (double)completedCount / steps.Count * 100.0;
+    }
+
+    /// <summary>
+    /// Computes the progress text for the research checklist showing completed count.
+    /// </summary>
+    /// <param name="steps">The collection of research step statuses.</param>
+    /// <returns>A string in the format "{X} of 9 completed".</returns>
+    public static string ComputeProgressText(IReadOnlyList<ResearchStepStatus> steps)
+    {
+        if (steps is null || steps.Count == 0)
+            return "0 of 9 completed";
+
+        var completedCount = steps.Count(s => s == ResearchStepStatus.Completed);
+        return $"{completedCount} of 9 completed";
+    }
+
+    /// <summary>
+    /// Descriptions for all 9 research checklist steps, keyed by step identifier.
+    /// </summary>
+    public static readonly IReadOnlyDictionary<string, string> StepDescriptions = new Dictionary<string, string>
+    {
+        ["InitialBacktest"] = "Runs the strategy on historical data to establish baseline performance metrics.",
+        ["MonteCarloRobustness"] = "Resamples trade sequences to assess whether results are robust to ordering effects.",
+        ["WalkForwardValidation"] = "Tests the strategy on sequential out-of-sample windows to detect overfitting.",
+        ["RegimeSensitivity"] = "Evaluates performance across different market regimes (trending, ranging, volatile).",
+        ["RealismImpact"] = "Measures how execution costs (slippage, commissions) degrade theoretical performance.",
+        ["ParameterSurface"] = "Maps strategy performance across parameter variations to identify fragile optima.",
+        ["FinalHeldOutTest"] = "Runs the strategy on a sealed test set never used during development.",
+        ["PropFirmEvaluation"] = "Evaluates whether the strategy meets prop firm challenge rules and economics.",
+        ["CpcvDone"] = "Applies combinatorial purged cross-validation to quantify probability of overfitting."
+    };
 }
 
 /// <summary>A single monthly return entry.</summary>
@@ -110,3 +195,6 @@ public sealed record MonthlyReturn(int Year, int Month, decimal ReturnPercent);
 
 /// <summary>A single histogram bin with lower/upper bounds and count.</summary>
 public sealed record HistogramBin(decimal LowerBound, decimal UpperBound, int Count);
+
+/// <summary>A text annotation for a heatmap cell.</summary>
+public sealed record HeatmapAnnotation(int Year, int Month, string Text);
