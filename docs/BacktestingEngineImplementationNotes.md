@@ -646,6 +646,18 @@ The 9 checklist items:
 
 Confidence level: HIGH (≥8 passed), MEDIUM (≥5), LOW (<5).
 
+### ResearchStepStatus Enum
+
+`ResearchStepStatus` (`Application/Research/ResearchStepStatus.cs`) defines the visual state of a research checklist step for UI rendering:
+
+| Value | Description |
+|---|---|
+| `NotStarted` | The research step has not been started |
+| `InProgress` | The research step is currently in progress |
+| `Completed` | The research step has been completed |
+
+The `ResearchChecklist.razor` component uses this enum to render three distinct visual states: grey outline icon with reduced opacity (NotStarted), amber pulsing icon (InProgress), and green checkmark (Completed). The `ResearchChecklistService` backend logic determines which steps are completed; the enum provides the UI with a richer state model than the previous boolean representation.
+
 ### FinalValidationUseCase
 
 `FinalValidationUseCase` (`Application/Engine/`) runs a single backtest against the sealed held-out test set. This is a one-time action that marks the strategy as `DevelopmentStage.FinalTest`. Registered as scoped in DI.
