@@ -322,14 +322,14 @@
 
                 case "quick-sanity":
                     var (_, version) = await SaveDraftAndVersion();
-                    var quickConfig = BuildQuickSanityConfig();
+                    var quickConfig = BuildQuickSanityConfig() with { StrategyVersionId = version.StrategyVersionId };
                     var quickJobId = await JobExecutor.SubmitAsync(JobType.SingleRun, quickConfig);
                     Nav.NavigateTo($"/backtests/job/{quickJobId}");
                     break;
 
                 case "standard-backtest":
                     var (_, sv) = await SaveDraftAndVersion();
-                    var stdConfig = _vm.ToScenarioConfig();
+                    var stdConfig = _vm.ToScenarioConfig() with { StrategyVersionId = sv.StrategyVersionId };
                     var stdJobId = await JobExecutor.SubmitAsync(JobType.SingleRun, stdConfig);
                     Nav.NavigateTo($"/backtests/job/{stdJobId}");
                     break;

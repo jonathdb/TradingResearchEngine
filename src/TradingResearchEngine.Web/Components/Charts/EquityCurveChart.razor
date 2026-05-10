@@ -31,12 +31,17 @@
     {
         if (Curve is null || Curve.Count == 0) return;
 
-        var timestamps = Curve.Select(p => (object)p.Timestamp.DateTime).ToList();
-        var equities = Curve.Select(p => (object)p.TotalEquity).ToList();
+        // Downsample large datasets to prevent dense oscillating appearance
+        var displayCurve = Curve.Count > MaxDisplayPoints
+            ? Downsample(Curve, MaxDisplayPoints)
+            : Curve;
+
+        var timestamps = displayCurve.Select(p => (object)p.Timestamp.DateTime).ToList();
+        var equities = displayCurve.Select(p => (object)p.TotalEquity).ToList();
 
         // Compute tight Y-axis bounds with ±1% padding
-        var minEquity = Curve.Min(p => p.TotalEquity);
-        var maxEquity = Curve.Max(p => p.TotalEquity);
+        var minEquity = displayCurve.Min(p => p.TotalEquity);
+        var maxEquity = displayCurve.Max(p => p.TotalEquity);
         var (yLower, yUpper) = ChartComputationHelpers.ComputeYAxisRange(minEquity, maxEquity);
 
         _data = new List<ITrace>();
@@ -44,7 +49,7 @@
         // Add drawdown trace first so equity line renders above it (higher z-order)
         if (ShowDrawdown)
         {
-            var drawdowns = ComputeDrawdownPercent(Curve);
+            var drawdowns = ComputeDrawdownPercent(displayCurve);
             var ddValues = drawdowns.Select(d => (object)d).ToList();
 
             _data.Add(new Scatter
@@ -104,6 +109,9 @@
         }
     }
 
+    /// <summary>Maximum number of data points to display. Beyond this, LTTB downsampling is applied.</summary>
+    private const int MaxDisplayPoints = 800;
+
     private static List<decimal> ComputeDrawdownPercent(IReadOnlyList<EquityCurvePoint> curve)
     {
         var result = new List<decimal>(curve.Count);
@@ -114,6 +122,68 @@
             var dd = peak > 0 ? (p.TotalEquity - peak) / peak * 100m : 0m;
             result.Add(dd);
         }
+        return result;
+    }
+
+    /// <summary>
+    /// Largest-Triangle-Three-Buckets (LTTB) downsampling algorithm.
+    /// Preserves visual shape of the curve while reducing point count.
+    /// Always keeps first and last points.
+    /// </summary>
+    private static IReadOnlyList<EquityCurvePoint> Downsample(IReadOnlyList<EquityCurvePoint> data, int targetCount)
+    {
+        if (data.Count <= targetCount) return data;
+        if (targetCount < 3) return new[] { data[0], data[^1] };
+
+        var result = new List<EquityCurvePoint>(targetCount) { data[0] };
+        double bucketSize = (double)(data.Count - 2) / (targetCount - 2);
+
+        int prevIndex = 0;
+        for (int i = 0; i < targetCount - 2; i++)
+        {
+            int bucketStart = (int)Math.Floor((i + 1) * bucketSize) + 1;
+            int bucketEnd = (int)Math.Floor((i + 2) * bucketSize) + 1;
+            if (bucketEnd >= data.Count) bucketEnd = data.Count - 1;
+
+            // Compute average of next bucket for the triangle area calculation
+            int nextBucketStart = bucketEnd;
+            int nextBucketEnd = (int)Math.Floor((i + 3) * bucketSize) + 1;
+            if (nextBucketEnd >= data.Count) nextBucketEnd = data.Count - 1;
+
+            double avgX = 0, avgY = 0;
+            int nextCount = nextBucketEnd - nextBucketStart;
+            if (nextCount <= 0) { nextCount = 1; nextBucketEnd = nextBucketStart + 1; }
+            for (int j = nextBucketStart; j < nextBucketEnd && j < data.Count; j++)
+            {
+                avgX += j;
+                avgY += (double)data[j].TotalEquity;
+            }
+            avgX /= nextCount;
+            avgY /= nextCount;
+
+            // Find point in current bucket with largest triangle area
+            double maxArea = -1;
+            int maxIndex = bucketStart;
+            double prevX = prevIndex;
+            double prevY = (double)data[prevIndex].TotalEquity;
+
+            for (int j = bucketStart; j < bucketEnd && j < data.Count; j++)
+            {
+                double area = Math.Abs(
+                    (prevX - avgX) * ((double)data[j].TotalEquity - prevY) -
+                    (prevX - j) * (avgY - prevY));
+                if (area > maxArea)
+                {
+                    maxArea = area;
+                    maxIndex = j;
+                }
+            }
+
+            result.Add(data[maxIndex]);
+            prevIndex = maxIndex;
+        }
+
+        result.Add(data[^1]);
         return result;
     }
 }

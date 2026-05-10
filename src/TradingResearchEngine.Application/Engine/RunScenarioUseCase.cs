@@ -138,6 +138,12 @@ public sealed class RunScenarioUseCase
         var metadata = BuildMetadata(config);
         result = result with { Metadata = metadata };
 
+        // V8: Link result to strategy version if specified in config
+        if (config.StrategyVersionId is not null && result.StrategyVersionId is null)
+        {
+            result = result with { StrategyVersionId = config.StrategyVersionId };
+        }
+
         // V4: Enrich with trial count and DSR if linked to a strategy version
         result = await EnrichWithTrialCountAndDsrAsync(result, ct);
 

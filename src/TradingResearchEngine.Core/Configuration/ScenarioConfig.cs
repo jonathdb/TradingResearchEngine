@@ -42,7 +42,9 @@ public sealed record ScenarioConfig(
     /// <summary>V5: Execution realism sub-object. When present, takes precedence over top-level execution fields.</summary>
     ExecutionConfig? Execution = null,
     /// <summary>V5: Research workflow sub-object. When present, takes precedence over top-level research fields.</summary>
-    ResearchConfig? Research = null) : IHasId
+    ResearchConfig? Research = null,
+    /// <summary>V8: Strategy version ID for linking results to strategy versions.</summary>
+    string? StrategyVersionId = null) : IHasId
 {
     /// <inheritdoc/>
     public string Id => ScenarioId;
