@@ -1,0 +1,34 @@
+@using TradingResearchEngine.Application.Research
+@using TradingResearchEngine.Application.Research.Results
+@using System.Text.Json
+
+@if (_result is not null)
+{
+    <MudGrid>
+        <MudItem xs="4"><MetricCard Label="P10 Equity" Value="@($"${_result.P10EndEquity:F0}")" /></MudItem>
+        <MudItem xs="4"><MetricCard Label="P50 Equity" Value="@($"${_result.P50EndEquity:F0}")" /></MudItem>
+        <MudItem xs="4"><MetricCard Label="P90 Equity" Value="@($"${_result.P90EndEquity:F0}")" /></MudItem>
+        <MudItem xs="4"><MetricCard Label="Ruin Prob" Value="@($"{_result.RuinProbability:P1}")" /></MudItem>
+        <MudItem xs="4"><MetricCard Label="Median Max DD" Value="@($"{_result.MedianMaxDrawdown:P2}")" /></MudItem>
+    </MudGrid>
+    @if (_result.PercentileBands.Count > 0)
+    {
+        <MonteCarloFanChart Bands="_result.PercentileBands"
+                            StartEquity="100_000m"
+                            RuinProbability="_result.RuinProbability" />
+    }
+    <EquityDistributionChart Data="_result.EndEquityDistribution" />
+}
+
+@code {
+    [Parameter] public StudyRecord Study { get; set; } = default!;
+    [Parameter] public string ResultJson { get; set; } = "";
+
+    private MonteCarloResult? _result;
+
+    protected override void OnParametersSet()
+    {
+        if (!string.IsNullOrEmpty(ResultJson))
+            _result = JsonSerializer.Deserialize<MonteCarloResult>(ResultJson);
+    }
+}

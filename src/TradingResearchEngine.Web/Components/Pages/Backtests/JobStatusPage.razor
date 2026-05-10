@@ -1,0 +1,119 @@
+@page "/backtests/job/{JobId}"
+@using TradingResearchEngine.Application.Research
+@inject JobExecutor JobExecutor
+@inject NavigationManager Nav
+@implements IDisposable
+
+<PageTitle>Job Status</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="mt-6">
+    @if (_job is null)
+    {
+        <MudProgressCircular Indeterminate="true" />
+    }
+    else
+    {
+        <MudPaper Class="pa-6" Elevation="2">
+            <MudStack Spacing="3">
+                <MudText Typo="Typo.h5">Backtest Job</MudText>
+                <MudText Typo="Typo.caption" Class="text-muted">@JobId</MudText>
+
+                <MudChip T="string" Color="@GetStatusColor(_job.Status)" Size="MudBlazor.Size.Small">
+                    @_job.Status.ToString()
+                </MudChip>
+
+                @if (_job.Status == JobStatus.Running || _job.Status == JobStatus.Queued)
+                {
+                    @if (_job.Progress is not null && _job.Progress.Total > 0)
+                    {
+                        <MudProgressLinear Value="@((double)_job.Progress.Percentage)" Color="Color.Primary" Rounded="true" Size="MudBlazor.Size.Large">
+                            <MudText Typo="Typo.caption">@_job.Progress.Stage — @_job.Progress.Current / @_job.Progress.Total</MudText>
+                        </MudProgressLinear>
+                    }
+                    else
+                    {
+                        <MudProgressLinear Indeterminate="true" Color="Color.Primary" Rounded="true" Size="MudBlazor.Size.Large" />
+                    }
+                }
+
+                @if (_job.Status == JobStatus.Failed)
+                {
+                    <MudAlert Severity="Severity.Error" Class="mt-2">
+                        @(_job.ErrorMessage ?? "An unexpected error occurred during execution.")
+                    </MudAlert>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Primary"
+                               StartIcon="@Icons.Material.Filled.Edit"
+                               Href="/strategies/builder">
+                        Edit &amp; Retry
+                    </MudButton>
+                }
+
+                @if (_job.Status == JobStatus.Completed && _completedCountdown > 0)
+                {
+                    <MudAlert Severity="Severity.Success">
+                        Backtest completed. Redirecting in @_completedCountdown second(s)...
+                    </MudAlert>
+                }
+            </MudStack>
+        </MudPaper>
+    }
+</MudContainer>
+
+@code {
+    [Parameter] public string JobId { get; set; } = "";
+
+    private BacktestJob? _job;
+    private PeriodicTimer? _timer;
+    private CancellationTokenSource _cts = new();
+    private int _completedCountdown;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _job = await JobExecutor.GetJobAsync(JobId, _cts.Token);
+        _ = PollStatusAsync();
+    }
+
+    private async Task PollStatusAsync()
+    {
+        _timer = new PeriodicTimer(TimeSpan.FromSeconds(2));
+        try
+        {
+            while (await _timer.WaitForNextTickAsync(_cts.Token))
+            {
+                _job = await JobExecutor.GetJobAsync(JobId, _cts.Token);
+                await InvokeAsync(StateHasChanged);
+
+                if (_job?.Status == JobStatus.Completed)
+                {
+                    _completedCountdown = 1;
+                    await InvokeAsync(StateHasChanged);
+                    await Task.Delay(1000, _cts.Token);
+                    if (_job.ResultId is not null)
+                        Nav.NavigateTo($"/backtests/{_job.ResultId}");
+                    break;
+                }
+
+                if (_job?.Status is JobStatus.Failed or JobStatus.Cancelled)
+                    break;
+            }
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    private static Color GetStatusColor(JobStatus status) => status switch
+    {
+        JobStatus.Queued => Color.Default,
+        JobStatus.Running => Color.Info,
+        JobStatus.Completed => Color.Success,
+        JobStatus.Failed => Color.Error,
+        JobStatus.Cancelled => Color.Warning,
+        _ => Color.Default
+    };
+
+    public void Dispose()
+    {
+        _cts.Cancel();
+        _cts.Dispose();
+        _timer?.Dispose();
+    }
+}

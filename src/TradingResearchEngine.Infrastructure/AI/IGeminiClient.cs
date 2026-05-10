@@ -14,4 +14,13 @@ public interface IGeminiClient
     /// <param name="ct">Cancellation token propagated to the API call.</param>
     /// <returns>Raw JSON string from the model response.</returns>
     Task<string> GenerateJsonAsync(string systemPrompt, string userMessage, CancellationToken ct);
+
+    /// <summary>
+    /// Streams text chunks from the Gemini model token by token.
+    /// </summary>
+    /// <param name="systemPrompt">System prompt to guide model behaviour.</param>
+    /// <param name="userMessage">User message/prompt to generate content for.</param>
+    /// <param name="ct">Cancellation token propagated to the API call.</param>
+    /// <returns>An async enumerable of text chunks.</returns>
+    IAsyncEnumerable<string> StreamGenerateAsync(string systemPrompt, string userMessage, CancellationToken ct);
 }

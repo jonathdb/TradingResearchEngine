@@ -95,6 +95,21 @@ public sealed class SensitivityAnalysisWorkflow
             }
         }
 
+        // Fill delay perturbations (0, 1, 2 bars via ExecutionConfig.FillDelayBars)
+        foreach (var delayBars in new[] { 0, 1, 2 })
+        {
+            if (delayBars == 0) continue; // Base already covers 0-delay
+            var execConfig = baseConfig.EffectiveExecutionConfig with { FillDelayBars = delayBars };
+            var config = baseConfig with { Execution = execConfig };
+            var result = await RunSafe(config, ct);
+            if (result is not null)
+            {
+                rows.Add(ToRow($"Delay {delayBars} bar{(delayBars > 1 ? "s" : "")}", result));
+                delayDegradation += baseSharpe - (result.SharpeRatio ?? 0m);
+                delayCount++;
+            }
+        }
+
         decimal costSensitivity = costCount > 0 ? costDegradation / costCount : 0m;
         decimal delaySensitivity = delayCount > 0 ? delayDegradation / delayCount : 0m;
 

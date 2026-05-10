@@ -67,6 +67,19 @@
             </MudChip>
         </MudStack>
 
+        <MudDivider Class="my-3" />
+        <MudText Typo="Typo.subtitle2" Class="mb-2">Fill Delay</MudText>
+
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-2">
+            <MudNumericField T="int" @bind-Value="Model.FillDelayBars" Label="Fill Delay (bars)"
+                             Min="0" Max="5" Step="1" Style="flex: 1;"
+                             aria-label="Fill delay in bars" />
+            <MudChip T="string" Size="MudBlazor.Size.Small" Color="Color.Default"
+                     Variant="Variant.Text" aria-label="Fill delay provenance">
+                Custom
+            </MudChip>
+        </MudStack>
+
         @if (HasOverrides)
         {
             <MudAlert Severity="Severity.Info" Dense="true" Class="mt-2" aria-label="Custom overrides active">

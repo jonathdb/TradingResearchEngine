@@ -313,6 +313,9 @@ public static class ServiceCollectionExtensions
     {
         public Task<string> GenerateJsonAsync(string systemPrompt, string userMessage, CancellationToken ct)
             => throw new InvalidOperationException("Gemini client is not configured.");
+
+        public IAsyncEnumerable<string> StreamGenerateAsync(string systemPrompt, string userMessage, CancellationToken ct)
+            => throw new InvalidOperationException("Gemini client is not configured.");
     }
 
     /// <summary>Disabled AI assistant fallback for Infrastructure layer.</summary>
@@ -325,6 +328,15 @@ public static class ServiceCollectionExtensions
         public Task<Application.AI.AIStrategyDraft> RefineStrategyAsync(
             Application.AI.AIStrategyDraft current, Core.Results.BacktestResult lastResult,
             string refinementPrompt, CancellationToken ct)
+            => throw new InvalidOperationException(
+                "AI strategy assistant is disabled. Configure a valid Gemini API key in GeminiOptions to enable this feature.");
+
+        public IAsyncEnumerable<string> StreamGenerateAsync(string prompt, CancellationToken ct)
+            => throw new InvalidOperationException(
+                "AI strategy assistant is disabled. Configure a valid Gemini API key in GeminiOptions to enable this feature.");
+
+        public IAsyncEnumerable<string> StreamRefineAsync(
+            Application.AI.AIStrategyDraft current, string refinementPrompt, CancellationToken ct)
             => throw new InvalidOperationException(
                 "AI strategy assistant is disabled. Configure a valid Gemini API key in GeminiOptions to enable this feature.");
     }

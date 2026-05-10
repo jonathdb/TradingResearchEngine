@@ -53,6 +53,12 @@ public static class MetricsCalculator
     /// Downside deviation uses period returns below the risk-free rate.
     /// Returns <c>null</c> when the curve has fewer than 2 points.
     /// </summary>
+    /// <summary>
+    /// Sortino Ratio: (mean return - risk-free) / downside deviation, annualized.
+    /// Downside deviation uses ALL returns, zeroing out upside deviations:
+    /// <c>downsideDev = sqrt(mean(min(r - threshold, 0)^2 for all r))</c>.
+    /// Returns <c>null</c> when there are fewer than 2 equity points or downside deviation is zero.
+    /// </summary>
     public static decimal? ComputeSortinoRatio(
         IReadOnlyList<EquityCurvePoint> curve, decimal annualRiskFreeRate, int barsPerYear)
     {
@@ -64,10 +70,13 @@ public static class MetricsCalculator
         decimal periodRiskFree = annualRiskFreeRate / barsPerYear;
         decimal meanReturn = returns.Average();
 
-        var downsideReturns = returns.Where(r => r < periodRiskFree).ToList();
-        if (downsideReturns.Count == 0) return null;
-
-        decimal downsideDev = StdDev(downsideReturns);
+        // Downside deviation: uses ALL returns, zeros out upside deviations
+        decimal sumSquared = returns.Sum(r =>
+        {
+            decimal diff = Math.Min(r - periodRiskFree, 0m);
+            return diff * diff;
+        });
+        decimal downsideDev = (decimal)Math.Sqrt((double)(sumSquared / returns.Count));
         if (downsideDev == 0m) return null;
 
         return (meanReturn - periodRiskFree) / downsideDev * (decimal)Math.Sqrt(barsPerYear);
@@ -148,20 +157,21 @@ public static class MetricsCalculator
 
     /// <summary>
     /// Calmar Ratio: annualized return / max drawdown.
+    /// Annualizes using <paramref name="barsPerYear"/> (mean return per bar × barsPerYear).
     /// Returns <c>null</c> when max drawdown is zero or there are fewer than 2 equity points.
     /// </summary>
     public static decimal? ComputeCalmarRatio(
-        IReadOnlyList<EquityCurvePoint> curve, decimal startEquity, decimal endEquity)
+        IReadOnlyList<EquityCurvePoint> curve, decimal startEquity, decimal endEquity, int barsPerYear)
     {
         if (curve.Count < 2 || startEquity == 0m) return null;
         decimal maxDd = ComputeMaxDrawdown(curve);
         if (maxDd == 0m) return null;
 
-        var days = (curve[^1].Timestamp - curve[0].Timestamp).TotalDays;
-        if (days <= 0) return null;
+        var returns = GetPeriodReturns(curve);
+        if (returns.Count == 0) return null;
 
-        decimal totalReturn = (endEquity - startEquity) / startEquity;
-        decimal annualizedReturn = totalReturn * (252m / (decimal)days);
+        decimal meanReturn = returns.Average();
+        decimal annualizedReturn = meanReturn * barsPerYear;
         return annualizedReturn / maxDd;
     }
 
@@ -264,20 +274,28 @@ public static class MetricsCalculator
         decimal netProfit = endEquity - startEquity;
         return netProfit / (maxDd * startEquity);
     }
-    /// <summary>Historical Value at Risk at the given confidence level (e.g. 0.95).</summary>
+    /// <summary>
+    /// Historical Value at Risk at the given confidence level (e.g. 0.95).
+    /// Returns <c>null</c> when there are fewer than 30 period returns (insufficient sample).
+    /// </summary>
     public static decimal? ComputeHistoricalVaR(IReadOnlyList<EquityCurvePoint> curve, decimal confidence)
     {
-            if (curve.Count < 2) return null;
-            var returns = GetPeriodReturns(curve).OrderBy(r => r).ToList();
-            int idx = (int)Math.Floor((1 - confidence) * returns.Count);
-            return -returns[Math.Max(0, idx)]; // positive number = loss
+        if (curve.Count < 2) return null;
+        var returns = GetPeriodReturns(curve).OrderBy(r => r).ToList();
+        if (returns.Count < 30) return null; // insufficient sample for meaningful VaR
+        int idx = (int)Math.Floor((1 - confidence) * returns.Count);
+        return -returns[Math.Max(0, idx)]; // positive number = loss
     }
 
-    /// <summary>Historical CVaR (Expected Shortfall) at the given confidence level.</summary>
+    /// <summary>
+    /// Historical CVaR (Expected Shortfall) at the given confidence level.
+    /// Returns <c>null</c> when there are fewer than 30 period returns (insufficient sample).
+    /// </summary>
     public static decimal? ComputeHistoricalCVaR(IReadOnlyList<EquityCurvePoint> curve, decimal confidence)
     {
         if (curve.Count < 2) return null;
         var returns = GetPeriodReturns(curve).OrderBy(r => r).ToList();
+        if (returns.Count < 30) return null; // insufficient sample for meaningful CVaR
         int cutoff = (int)Math.Floor((1 - confidence) * returns.Count);
         var tail = returns.Take(Math.Max(1, cutoff)).ToList();
         return -tail.Average();

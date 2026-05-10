@@ -467,7 +467,7 @@ public sealed class PortfolioBacktestRunner
             MaxDrawdown: MetricsCalculator.ComputeMaxDrawdown(mergedCurve),
             SharpeRatio: MetricsCalculator.ComputeSharpeRatio(mergedCurve, 0m, barsPerYear),
             SortinoRatio: MetricsCalculator.ComputeSortinoRatio(mergedCurve, 0m, barsPerYear),
-            CalmarRatio: MetricsCalculator.ComputeCalmarRatio(mergedCurve, startEquity, endEquity),
+            CalmarRatio: MetricsCalculator.ComputeCalmarRatio(mergedCurve, startEquity, endEquity, barsPerYear),
             ReturnOnMaxDrawdown: MetricsCalculator.ComputeReturnOnMaxDrawdown(mergedCurve, startEquity, endEquity),
             TotalTrades: allTrades.Count,
             WinRate: MetricsCalculator.ComputeWinRate(allTrades),

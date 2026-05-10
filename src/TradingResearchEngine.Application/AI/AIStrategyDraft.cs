@@ -21,6 +21,7 @@ namespace TradingResearchEngine.Application.AI;
 /// <c>"composite"</c>; must be null for compiled strategy types.
 /// </param>
 /// <param name="SourceType">Provenance tag; defaults to <see cref="Strategy.SourceType.AIGenerated"/>.</param>
+/// <param name="RefinementHistory">History of refinement prompts applied to this draft.</param>
 public sealed record AIStrategyDraft(
     string StrategyName,
     string Hypothesis,
@@ -30,4 +31,9 @@ public sealed record AIStrategyDraft(
     string Rationale,
     IReadOnlyList<string> Caveats,
     CompositeStrategyConfig? CompositeConfig = null,
-    SourceType SourceType = SourceType.AIGenerated);
+    SourceType SourceType = SourceType.AIGenerated,
+    IReadOnlyList<string> RefinementHistory = null!)
+{
+    /// <summary>History of refinement prompts applied to this draft.</summary>
+    public IReadOnlyList<string> RefinementHistory { get; init; } = RefinementHistory ?? Array.Empty<string>();
+}

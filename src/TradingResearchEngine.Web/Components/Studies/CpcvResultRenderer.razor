@@ -1,0 +1,73 @@
+@using TradingResearchEngine.Application.Research
+@using TradingResearchEngine.Application.Research.Results
+@using System.Text.Json
+
+@if (_result is not null)
+{
+    <MudGrid Class="mb-4">
+        <MudItem xs="4"><MetricCard Label="Median OOS Sharpe" Value="@_result.MedianOosSharpe.ToString("F3")" /></MudItem>
+        <MudItem xs="4"><MetricCard Label="P(Overfit)" Value="@($"{_result.ProbabilityOfOverfitting:P1}")" /></MudItem>
+        <MudItem xs="4"><MetricCard Label="Perf Degradation" Value="@($"{_result.PerformanceDegradation:P1}")" /></MudItem>
+    </MudGrid>
+
+    @if (_result.OosSharpeDistribution.Count > 0)
+    {
+        <CpcvDistributionChart OosSharpeDistribution="_result.OosSharpeDistribution" />
+
+        @* Percentile table *@
+        <MudTable Items="_percentiles" Dense="true" Hover="true" Class="mt-4" Style="max-width:500px">
+            <HeaderContent>
+                <MudTh>Percentile</MudTh>
+                <MudTh>OOS Sharpe</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.Label</MudTd>
+                <MudTd>@context.Value.ToString("F3")</MudTd>
+            </RowTemplate>
+        </MudTable>
+    }
+}
+
+@code {
+    [Parameter] public StudyRecord Study { get; set; } = default!;
+    [Parameter] public string ResultJson { get; set; } = "";
+
+    private CpcvResult? _result;
+    private List<PercentileRow> _percentiles = new();
+
+    protected override void OnParametersSet()
+    {
+        if (!string.IsNullOrEmpty(ResultJson))
+        {
+            _result = JsonSerializer.Deserialize<CpcvResult>(ResultJson);
+            if (_result?.OosSharpeDistribution.Count > 0)
+                ComputePercentiles();
+        }
+    }
+
+    private void ComputePercentiles()
+    {
+        var sorted = _result!.OosSharpeDistribution.OrderBy(v => v).ToList();
+        _percentiles = new List<PercentileRow>
+        {
+            new("P10", GetPercentile(sorted, 0.10)),
+            new("P25", GetPercentile(sorted, 0.25)),
+            new("P50 (Median)", GetPercentile(sorted, 0.50)),
+            new("P75", GetPercentile(sorted, 0.75)),
+            new("P90", GetPercentile(sorted, 0.90)),
+        };
+    }
+
+    private static decimal GetPercentile(List<decimal> sorted, double p)
+    {
+        if (sorted.Count == 0) return 0m;
+        double idx = p * (sorted.Count - 1);
+        int lower = (int)Math.Floor(idx);
+        int upper = (int)Math.Ceiling(idx);
+        if (lower == upper) return sorted[lower];
+        decimal frac = (decimal)(idx - lower);
+        return sorted[lower] * (1m - frac) + sorted[upper] * frac;
+    }
+
+    private sealed record PercentileRow(string Label, decimal Value);
+}

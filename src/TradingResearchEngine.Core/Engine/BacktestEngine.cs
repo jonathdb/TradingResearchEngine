@@ -57,7 +57,8 @@ public sealed class BacktestEngine : IBacktestEngine
             loggerFactory.CreateLogger<Portfolio.Portfolio>());
         var queue = new EventQueue();
         var dataHandler = new DataHandler(_dataProvider, config, loggerFactory.CreateLogger<DataHandler>(), _barDataPool);
-        var state = new RunState(config.EffectiveFillMode, config.EnableEventTrace);
+        var state = new RunState(config.EffectiveFillMode, config.EnableEventTrace,
+            config.EffectiveExecutionConfig.FillDelayBars);
 
         try
         {
@@ -109,6 +110,28 @@ public sealed class BacktestEngine : IBacktestEngine
     private void ProcessBar(MarketDataEvent mde, IEventQueue queue, Portfolio.Portfolio portfolio, RunState state)
     {
         state.LastMarketEvent = mde;
+
+        // Process fill delay queue: decrement bars remaining, promote to pending when ready
+        if (state.DelayQueue.Count > 0)
+        {
+            var promoted = new List<int>();
+            for (int i = 0; i < state.DelayQueue.Count; i++)
+            {
+                var (order, barsRemaining) = state.DelayQueue[i];
+                int newRemaining = barsRemaining - 1;
+                if (newRemaining <= 0)
+                {
+                    state.PendingOrders.Add(order);
+                    promoted.Add(i);
+                }
+                else
+                {
+                    state.DelayQueue[i] = (order, newRemaining);
+                }
+            }
+            for (int i = promoted.Count - 1; i >= 0; i--)
+                state.DelayQueue.RemoveAt(promoted[i]);
+        }
 
         // Step 1: Fill pending orders from previous bar
         if (state.FillMode == FillMode.NextBarOpen)
@@ -201,14 +224,21 @@ public sealed class BacktestEngine : IBacktestEngine
 
     /// <summary>
     /// Routes an approved order based on FillMode.
-    /// NextBarOpen: add to pending queue for next bar.
+    /// NextBarOpen: add to pending queue for next bar (or delay queue if FillDelayBars > 0).
     /// SameBarClose: enqueue for immediate execution (V1 compat).
     /// </summary>
     private void RouteApprovedOrder(OrderEvent order, IEventQueue queue, Portfolio.Portfolio portfolio, RunState state)
     {
         if (state.FillMode == FillMode.NextBarOpen)
         {
-            state.PendingOrders.Add(order);
+            if (state.FillDelayBars > 0)
+            {
+                state.DelayQueue.Add((order, state.FillDelayBars));
+            }
+            else
+            {
+                state.PendingOrders.Add(order);
+            }
         }
         else
         {
@@ -304,7 +334,12 @@ public sealed class BacktestEngine : IBacktestEngine
         return _executionHandler.Execute(order, openBar);
     }
 
-    /// <summary>Limit buy: fill if bar.Low &lt;= LimitPrice. Limit sell: fill if bar.High &gt;= LimitPrice.</summary>
+    /// <summary>
+    /// Limit fill logic:
+    /// Long buy: fill if bar.Low &lt;= LimitPrice (price drops to buy limit).
+    /// Short sell: fill if bar.High &gt;= LimitPrice (price rises to short entry limit).
+    /// Flat exit: fill if bar.High &gt;= LimitPrice (price rises to sell limit).
+    /// </summary>
     private ExecutionResult? TryFillLimit(OrderEvent order, BarEvent bar)
     {
         if (!order.LimitPrice.HasValue) return null;
@@ -312,18 +347,30 @@ public sealed class BacktestEngine : IBacktestEngine
 
         if (order.Direction == Direction.Long && bar.Low <= limitPrice)
             return CreateFillAtPrice(order, limitPrice, bar.Timestamp);
+        if (order.Direction == Direction.Short && bar.High >= limitPrice)
+            return CreateFillAtPrice(order, limitPrice, bar.Timestamp);
         if (order.Direction == Direction.Flat && bar.High >= limitPrice)
             return CreateFillAtPrice(order, limitPrice, bar.Timestamp);
         return null;
     }
 
-    /// <summary>Stop-market buy: fill if bar.High &gt;= StopPrice. Stop-market sell: fill if bar.Low &lt;= StopPrice.</summary>
+    /// <summary>
+    /// Stop-market fill logic:
+    /// Long buy stop: fill if bar.High &gt;= StopPrice (price rises to trigger).
+    /// Short sell stop: fill if bar.Low &lt;= StopPrice (price falls to trigger).
+    /// Flat exit stop: fill if bar.Low &lt;= StopPrice (price falls to trigger).
+    /// </summary>
     private ExecutionResult? TryFillStopMarket(OrderEvent order, BarEvent bar)
     {
         if (!order.StopPrice.HasValue) return null;
         decimal stopPrice = order.StopPrice.Value;
 
         if (order.Direction == Direction.Long && bar.High >= stopPrice)
+        {
+            var syntheticBar = bar with { Close = stopPrice };
+            return _executionHandler.Execute(order, syntheticBar);
+        }
+        if (order.Direction == Direction.Short && bar.Low <= stopPrice)
         {
             var syntheticBar = bar with { Close = stopPrice };
             return _executionHandler.Execute(order, syntheticBar);
@@ -337,7 +384,10 @@ public sealed class BacktestEngine : IBacktestEngine
     }
 
     /// <summary>
-    /// Stop-limit: trigger if stop condition met, then fill if limit condition met.
+    /// Stop-limit fill logic:
+    /// Long: trigger if bar.High &gt;= StopPrice, then fill if bar.Low &lt;= LimitPrice.
+    /// Short: trigger if bar.Low &lt;= StopPrice, then fill if bar.High &gt;= LimitPrice.
+    /// Flat: trigger if bar.Low &lt;= StopPrice, then fill if bar.High &gt;= LimitPrice.
     /// If triggered but not filled, converts to pending limit order.
     /// </summary>
     private ExecutionResult? TryFillStopLimit(OrderEvent order, BarEvent bar)
@@ -352,6 +402,8 @@ public sealed class BacktestEngine : IBacktestEngine
         {
             if (order.Direction == Direction.Long && bar.High >= stopPrice)
                 triggered = true;
+            else if (order.Direction == Direction.Short && bar.Low <= stopPrice)
+                triggered = true;
             else if (order.Direction == Direction.Flat && bar.Low <= stopPrice)
                 triggered = true;
         }
@@ -359,6 +411,8 @@ public sealed class BacktestEngine : IBacktestEngine
         if (!triggered) return null;
 
         if (order.Direction == Direction.Long && bar.Low <= limitPrice)
+            return CreateFillAtPrice(order, limitPrice, bar.Timestamp);
+        if (order.Direction == Direction.Short && bar.High >= limitPrice)
             return CreateFillAtPrice(order, limitPrice, bar.Timestamp);
         if (order.Direction == Direction.Flat && bar.High >= limitPrice)
             return CreateFillAtPrice(order, limitPrice, bar.Timestamp);
@@ -381,16 +435,20 @@ public sealed class BacktestEngine : IBacktestEngine
 
     private sealed class RunState
     {
-        public RunState(FillMode fillMode, bool enableTrace)
+        public RunState(FillMode fillMode, bool enableTrace, int fillDelayBars = 0)
         {
             FillMode = fillMode;
             TraceEnabled = enableTrace;
+            FillDelayBars = fillDelayBars;
             if (enableTrace) TraceRecords = new List<Results.EventTraceRecord>();
         }
         public BacktestStatus Status { get; set; } = BacktestStatus.Completed;
         public MarketDataEvent? LastMarketEvent { get; set; }
         public FillMode FillMode { get; }
+        public int FillDelayBars { get; }
         public List<OrderEvent> PendingOrders { get; } = new();
+        /// <summary>Orders waiting for fill delay to expire. Each entry tracks bars remaining.</summary>
+        public List<(OrderEvent Order, int BarsRemaining)> DelayQueue { get; } = new();
         public bool TraceEnabled { get; }
         public List<Results.EventTraceRecord>? TraceRecords { get; }
 
@@ -422,7 +480,7 @@ public sealed class BacktestEngine : IBacktestEngine
             MaxDrawdown: MetricsCalculator.ComputeMaxDrawdown(curve),
             SharpeRatio: MetricsCalculator.ComputeSharpeRatio(curve, config.AnnualRiskFreeRate, config.BarsPerYear),
             SortinoRatio: MetricsCalculator.ComputeSortinoRatio(curve, config.AnnualRiskFreeRate, config.BarsPerYear),
-            CalmarRatio: MetricsCalculator.ComputeCalmarRatio(curve, startEq, endEq),
+            CalmarRatio: MetricsCalculator.ComputeCalmarRatio(curve, startEq, endEq, config.BarsPerYear),
             ReturnOnMaxDrawdown: MetricsCalculator.ComputeReturnOnMaxDrawdown(curve, startEq, endEq),
             TotalTrades: trades.Count,
             WinRate: MetricsCalculator.ComputeWinRate(trades),

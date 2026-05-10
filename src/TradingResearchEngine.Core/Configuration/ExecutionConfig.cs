@@ -18,4 +18,9 @@ public sealed record ExecutionConfig(
     /// <summary>Session filtering and calendar configuration.</summary>
     SessionOptions? SessionOptions = null,
     /// <summary>V6: When true, a Short signal while Long (or vice versa) closes then opens. Default false.</summary>
-    bool AllowReversals = false);
+    bool AllowReversals = false,
+    /// <summary>
+    /// Number of bars to defer order submission. 0 = immediate (default).
+    /// Used by sensitivity analysis to measure fill-timing impact.
+    /// </summary>
+    int FillDelayBars = 0);

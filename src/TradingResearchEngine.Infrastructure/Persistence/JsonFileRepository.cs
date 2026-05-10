@@ -55,6 +55,27 @@ public sealed class JsonFileRepository<T> : IRepository<T> where T : IHasId
     }
 
     /// <inheritdoc/>
+    public async Task<IReadOnlyList<T>> ListRecentAsync(int count, CancellationToken ct = default)
+    {
+        if (!Directory.Exists(_baseDir)) return Array.Empty<T>();
+
+        // Order by file last-write time descending, take only the most recent N files
+        var files = new DirectoryInfo(_baseDir)
+            .GetFiles("*.json")
+            .OrderByDescending(f => f.LastWriteTimeUtc)
+            .Take(count);
+
+        var results = new List<T>();
+        foreach (var file in files)
+        {
+            var json = await File.ReadAllTextAsync(file.FullName, ct);
+            var entity = JsonSerializer.Deserialize<T>(json, JsonOptions);
+            if (entity is not null) results.Add(entity);
+        }
+        return results;
+    }
+
+    /// <inheritdoc/>
     public Task DeleteAsync(string id, CancellationToken ct = default)
     {
         var path = Path.Combine(_baseDir, $"{id}.json");

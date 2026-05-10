@@ -30,6 +30,14 @@ All events carry a `DateTimeOffset Timestamp`. Events are immutable records.
 
 Both modes use the identical heartbeat-loop and dispatch architecture. The only difference is the event subtype and the `IDataProvider` method called.
 
+## Strategy Lifecycle
+
+`IStrategy` exposes three methods:
+
+- `Initialize(StrategyConfig config)` — called once before the first bar of a new execution window. Default implementation is a no-op.
+- `Reset()` — clears all indicator state and internal tracking. After `Reset()`, the instance behaves identically to a freshly constructed one. Default implementation is a no-op. Used by walk-forward workflows to reuse instances between windows.
+- `OnMarketData(MarketDataEvent evt)` — called for every market data event during the heartbeat loop. Returns `IReadOnlyList<EngineEvent>` (signals, orders, or empty).
+
 ## Value Types
 
 - `BidLevel`, `AskLevel`: readonly record structs for order book depth

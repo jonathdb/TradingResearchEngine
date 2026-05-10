@@ -18,6 +18,14 @@ public interface IAIStrategyAssistant
     Task<AIStrategyDraft> GenerateStrategyAsync(string prompt, CancellationToken ct);
 
     /// <summary>
+    /// Streams the raw text response token by token for strategy generation.
+    /// </summary>
+    /// <param name="prompt">Natural-language description of the desired trading strategy.</param>
+    /// <param name="ct">Cancellation token propagated to all async calls.</param>
+    /// <returns>An async enumerable of text chunks.</returns>
+    IAsyncEnumerable<string> StreamGenerateAsync(string prompt, CancellationToken ct);
+
+    /// <summary>
     /// Refines an existing draft using backtest results and user feedback.
     /// Key metrics (Sharpe, MaxDrawdown, WinRate, TradeCount, DSR) from the
     /// backtest result are included in the refinement context.
@@ -32,4 +40,13 @@ public interface IAIStrategyAssistant
         BacktestResult lastResult,
         string refinementPrompt,
         CancellationToken ct);
+
+    /// <summary>
+    /// Streams the raw text response token by token for strategy refinement.
+    /// </summary>
+    /// <param name="current">The current strategy draft to refine.</param>
+    /// <param name="refinementPrompt">User feedback describing desired changes.</param>
+    /// <param name="ct">Cancellation token propagated to all async calls.</param>
+    /// <returns>An async enumerable of text chunks.</returns>
+    IAsyncEnumerable<string> StreamRefineAsync(AIStrategyDraft current, string refinementPrompt, CancellationToken ct);
 }

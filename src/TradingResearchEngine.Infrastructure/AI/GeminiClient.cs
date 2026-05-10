@@ -84,4 +84,31 @@ public sealed class GeminiClient : IGeminiClient
         return ex.StatusCode == System.Net.HttpStatusCode.TooManyRequests
             || (ex.StatusCode.HasValue && (int)ex.StatusCode.Value >= 500);
     }
+
+    /// <inheritdoc/>
+    public async IAsyncEnumerable<string> StreamGenerateAsync(
+        string systemPrompt, string userMessage,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+
+        var googleAi = new GoogleAI(apiKey: _options.ApiKey);
+        var systemInstruction = new Content(systemPrompt);
+        var model = googleAi.GenerativeModel(
+            model: _options.ModelName,
+            systemInstruction: systemInstruction);
+
+        var request = new GenerateContentRequest(userMessage);
+
+        ct.ThrowIfCancellationRequested();
+
+        // Use streaming API
+        var response = model.GenerateContentStream(request);
+        await foreach (var chunk in response.WithCancellation(ct))
+        {
+            var text = chunk?.Text;
+            if (!string.IsNullOrEmpty(text))
+                yield return text;
+        }
+    }
 }

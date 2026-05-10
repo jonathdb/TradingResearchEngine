@@ -1,3 +1,4 @@
+using TradingResearchEngine.Core.Configuration;
 using TradingResearchEngine.Core.Events;
 
 namespace TradingResearchEngine.Core.Strategy;
@@ -29,6 +30,19 @@ namespace TradingResearchEngine.Core.Strategy;
 /// </remarks>
 public interface IStrategy
 {
+    /// <summary>
+    /// Called once before the first bar of a new execution window.
+    /// Sets parameters from the provided configuration.
+    /// </summary>
+    void Initialize(StrategyConfig config) { }
+
+    /// <summary>
+    /// Resets all indicator state and internal tracking. After <c>Reset()</c>,
+    /// the instance behaves identically to a freshly constructed one.
+    /// Called between walk-forward windows to reuse the same instance without reconstruction overhead.
+    /// </summary>
+    void Reset() { }
+
     /// <summary>
     /// Called for every <see cref="MarketDataEvent"/> dequeued during the inner dispatch loop.
     /// Returns an empty list to produce no output.

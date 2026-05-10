@@ -27,8 +27,21 @@
 
         @if (_generating)
         {
-            <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="mb-3" />
-            <MudText Typo="Typo.body2" Class="text-muted">Generating strategy draft...</MudText>
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-3">
+                <MudProgressLinear Indeterminate="true" Color="Color.Primary" Style="flex:1" />
+                <MudButton Variant="Variant.Text" Color="Color.Error" Size="MudBlazor.Size.Small"
+                           OnClick="StopGeneration">Stop</MudButton>
+            </MudStack>
+            @if (!string.IsNullOrEmpty(_streamBuffer))
+            {
+                <MudPaper Class="pa-3 mb-3" Elevation="0" Style="font-family:monospace; white-space:pre-wrap; max-height:200px; overflow-y:auto; background:var(--mud-palette-background-grey)">
+                    @_streamBuffer<span class="blink-cursor">▌</span>
+                </MudPaper>
+            }
+            else
+            {
+                <MudText Typo="Typo.body2" Class="text-muted">Generating strategy draft...</MudText>
+            }
         }
 
         @if (_error is not null)
@@ -92,6 +105,7 @@
     private string _prompt = "";
     private bool _generating;
     private string? _error;
+    private string _streamBuffer = "";
     private AIStrategyDraft? _draft;
     private CancellationTokenSource? _cts;
 
@@ -100,11 +114,19 @@
         _generating = true;
         _error = null;
         _draft = null;
+        _streamBuffer = "";
         _cts = new CancellationTokenSource();
         StateHasChanged();
 
         try
         {
+            await foreach (var chunk in AIAssistant.StreamGenerateAsync(_prompt, _cts.Token))
+            {
+                _streamBuffer += chunk;
+                await InvokeAsync(StateHasChanged);
+            }
+
+            // Parse the completed stream as a strategy draft
             _draft = await AIAssistant.GenerateStrategyAsync(_prompt, _cts.Token);
         }
         catch (OperationCanceledException)
@@ -120,8 +142,13 @@
             _generating = false;
             _cts?.Dispose();
             _cts = null;
-            StateHasChanged();
+            await InvokeAsync(StateHasChanged);
         }
+    }
+
+    private void StopGeneration()
+    {
+        _cts?.Cancel();
     }
 
     private void ApplyDraft()

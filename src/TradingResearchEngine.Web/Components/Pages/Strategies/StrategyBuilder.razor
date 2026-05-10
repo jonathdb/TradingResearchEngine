@@ -4,6 +4,7 @@
 @using TradingResearchEngine.Web.Components.Builder
 @using TradingResearchEngine.Application.DataFiles
 @using TradingResearchEngine.Application.Engine
+@using TradingResearchEngine.Application.Research
 @using TradingResearchEngine.Core.Persistence
 @inject IReadOnlyList<StrategyTemplate> Templates
 @inject IStrategyRepository StrategyRepo
@@ -15,6 +16,7 @@
 @inject PreflightValidator PreflightValidator
 @inject ResolvedConfigService ResolvedConfigService
 @inject RunScenarioUseCase RunUseCase
+@inject JobExecutor JobExecutor
 @inject NavigationManager Nav
 @inject ISnackbar Snackbar
 
@@ -321,15 +323,15 @@
                 case "quick-sanity":
                     var (_, version) = await SaveDraftAndVersion();
                     var quickConfig = BuildQuickSanityConfig();
-                    var result = await RunUseCase.RunAsync(quickConfig);
-                    HandleRunResult(result, isQuickSanity: true);
+                    var quickJobId = await JobExecutor.SubmitAsync(JobType.SingleRun, quickConfig);
+                    Nav.NavigateTo($"/backtests/job/{quickJobId}");
                     break;
 
                 case "standard-backtest":
                     var (_, sv) = await SaveDraftAndVersion();
                     var stdConfig = _vm.ToScenarioConfig();
-                    var stdResult = await RunUseCase.RunAsync(stdConfig);
-                    HandleRunResult(stdResult);
+                    var stdJobId = await JobExecutor.SubmitAsync(JobType.SingleRun, stdConfig);
+                    Nav.NavigateTo($"/backtests/job/{stdJobId}");
                     break;
             }
         }

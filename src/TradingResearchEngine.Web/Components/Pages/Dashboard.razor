@@ -5,6 +5,7 @@
 @inject IStrategyRepository StrategyRepo
 @inject TradingResearchEngine.Application.Research.IStudyRepository StudyRepo
 @inject TradingResearchEngine.Application.Research.IRobustnessAdvisoryService RobustnessService
+@inject TradingResearchEngine.Application.Research.ResearchChecklistService ChecklistService
 @inject NavigationManager Nav
 
 <PageTitle>Dashboard — Research Engine</PageTitle>
@@ -29,6 +30,21 @@ else
                     Sharpe: @(lastRun?.SharpeRatio?.ToString("F2") ?? "—")
                 </MudText>
                 <MudText Typo="Typo.caption" Class="text-muted">@(lastRun is not null ? "Active" : "Untested")</MudText>
+                @{
+                    var checklist = _checklistMap.GetValueOrDefault(s.StrategyType);
+                }
+                @if (checklist is not null)
+                {
+                    <MudTooltip Text="@GetFailedChecksTooltip(checklist)">
+                        <MudText Typo="Typo.caption" Class="@GetChecklistClass(checklist)">
+                            ✓ @checklist.PassedCount/9 checks
+                        </MudText>
+                    </MudTooltip>
+                }
+                else
+                {
+                    <MudText Typo="Typo.caption" Class="text-muted">—</MudText>
+                }
                 <MudText Typo="Typo.caption" Style="font-size:0.7rem" Class="text-faint">@s.Stage</MudText>
             </MudPaper>
         }
@@ -86,14 +102,30 @@ else
             }
             else
             {
-                @* Fix 3+4: Strategy as hub link + Date column *@
-                <MudTable Items="_recentRuns" Dense="true" Hover="true" Class="mb-4">
+                @* Filtering controls *@
+                <MudStack Row="true" Spacing="2" Class="mb-2" AlignItems="AlignItems.Center">
+                    <MudStack Row="true" Spacing="1" Wrap="Wrap.Wrap">
+                        @foreach (var t in _allStrategyTypes)
+                        {
+                            <MudChip T="string" Size="MudBlazor.Size.Small"
+                                     Color="@(_selectedTypeFilter == t ? Color.Primary : Color.Default)"
+                                     Variant="@(_selectedTypeFilter == t ? Variant.Filled : Variant.Outlined)"
+                                     OnClick="@(() => ToggleTypeFilter(t))">@t</MudChip>
+                        }
+                    </MudStack>
+                    <MudSpacer />
+                    <MudSwitch T="bool" @bind-Value="_showFailedRuns" Label="Show failed" Color="Color.Warning" />
+                </MudStack>
+
+                @* Sortable table *@
+                <MudTable Items="FilteredRecentRuns" Dense="true" Hover="true" Class="mb-4"
+                          SortLabel="Sort By">
                     <HeaderContent>
                         <MudTh>Strategy</MudTh>
                         <MudTh>Date</MudTh>
-                        <MudTh>Sharpe</MudTh>
-                        <MudTh>Max DD</MudTh>
-                        <MudTh>Trades</MudTh>
+                        <MudTh><MudTableSortLabel SortBy="new Func<BacktestResult, object>(x => x.SharpeRatio ?? decimal.MinValue)">Sharpe</MudTableSortLabel></MudTh>
+                        <MudTh><MudTableSortLabel SortBy="new Func<BacktestResult, object>(x => x.MaxDrawdown)">Max DD</MudTableSortLabel></MudTh>
+                        <MudTh><MudTableSortLabel SortBy="new Func<BacktestResult, object>(x => x.TotalTrades)">Trades</MudTableSortLabel></MudTh>
                         <MudTh></MudTh>
                     </HeaderContent>
                     <RowTemplate>
@@ -139,7 +171,9 @@ else
                         <MudStack Row="true" Spacing="1" Wrap="Wrap.Wrap">
                             @foreach (var w in warnings)
                             {
-                                <MudChip T="string" Size="MudBlazor.Size.Small" Color="Color.Warning">@w</MudChip>
+                                <MudTooltip Text="@TradingResearchEngine.Application.Research.RobustnessWarningCatalog.GetExplanation(w)">
+                                    <MudChip T="string" Size="MudBlazor.Size.Small" Color="Color.Warning">@w</MudChip>
+                                </MudTooltip>
                             }
                         </MudStack>
                     </MudPaper>
@@ -213,9 +247,18 @@ else
     private int _activeStudies;
     private Dictionary<string, BacktestResult> _lastRunMap = new();
     private Dictionary<string, string> _strategyIdByType = new(); // Fix 2
+    private Dictionary<string, TradingResearchEngine.Application.Research.ResearchChecklist> _checklistMap = new();
     private List<(BacktestResult Run, List<string> Warnings)> _warningRuns = new();
     private List<(int Count, DevelopmentStage Stage)> _stageGroups = new(); // V4
+    private List<string> _allStrategyTypes = new();
+    private string? _selectedTypeFilter;
+    private bool _showFailedRuns;
     private bool _loading = true;
+
+    private List<BacktestResult> FilteredRecentRuns => _recentRuns
+        .Where(r => _showFailedRuns || r.Status != BacktestStatus.Failed)
+        .Where(r => _selectedTypeFilter is null || r.ScenarioConfig.StrategyType == _selectedTypeFilter)
+        .ToList();
 
     protected override async Task OnInitializedAsync()
     {
@@ -252,6 +295,29 @@ else
                 .OrderBy(g => g.Key)
                 .Select(g => (Count: g.Count(), Stage: g.Key))
                 .ToList();
+
+            // Strategy type filter options
+            _allStrategyTypes = _recentRuns
+                .Select(r => r.ScenarioConfig.StrategyType)
+                .Distinct()
+                .OrderBy(t => t)
+                .ToList();
+
+            // Compute checklist scores for each strategy's latest version
+            foreach (var strategy in _strategies)
+            {
+                try
+                {
+                    var versions = await StrategyRepo.GetVersionsAsync(strategy.StrategyId, _cts.Token);
+                    var latestVersion = versions.OrderByDescending(v => v.CreatedAt).FirstOrDefault();
+                    if (latestVersion is not null)
+                    {
+                        var checklist = await ChecklistService.ComputeAsync(latestVersion.StrategyVersionId, _cts.Token);
+                        _checklistMap[strategy.StrategyType] = checklist;
+                    }
+                }
+                catch { /* Non-critical — skip checklist for this strategy */ }
+            }
 
             _loading = false;
         }
@@ -290,6 +356,34 @@ else
         >= 0.8m => "mud-warning-text",
         _ => "mud-error-text"
     };
+
+    private static string GetChecklistClass(TradingResearchEngine.Application.Research.ResearchChecklist checklist) =>
+        checklist.PassedCount switch
+        {
+            >= 7 => "mud-success-text",
+            >= 5 => "mud-warning-text",
+            _ => "mud-error-text"
+        };
+
+    private static string GetFailedChecksTooltip(TradingResearchEngine.Application.Research.ResearchChecklist checklist)
+    {
+        var failed = new List<string>();
+        if (!checklist.InitialBacktest) failed.Add("Initial Backtest");
+        if (!checklist.MonteCarloRobustness) failed.Add("Monte Carlo");
+        if (!checklist.WalkForwardValidation) failed.Add("Walk-Forward");
+        if (!checklist.RegimeSensitivity) failed.Add("Regime Sensitivity");
+        if (!checklist.RealismImpact) failed.Add("Realism Impact");
+        if (!checklist.ParameterSurface) failed.Add("Parameter Surface");
+        if (!checklist.FinalHeldOutTest) failed.Add("Final Held-Out Test");
+        if (!checklist.PropFirmEvaluation) failed.Add("Prop Firm Evaluation");
+        if (!checklist.CpcvDone) failed.Add("CPCV");
+        return failed.Count > 0 ? $"Failed: {string.Join(", ", failed)}" : "All checks passed";
+    }
+
+    private void ToggleTypeFilter(string type)
+    {
+        _selectedTypeFilter = _selectedTypeFilter == type ? null : type;
+    }
 
     // Fix 4: Parse run date from RunId prefix
     private static DateTime? TryParseRunDate(string? runId)

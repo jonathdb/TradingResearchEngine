@@ -10,6 +10,7 @@ namespace TradingResearchEngine.Application.Strategy;
 /// </summary>
 /// <param name="DraftId">Unique identifier for this draft.</param>
 /// <param name="CurrentStep">The builder step the user has completed (1–5).</param>
+/// <param name="MaxVisitedStep">The highest step the user has visited. Navigation beyond this is prevented.</param>
 /// <param name="StrategyName">User-provided strategy name. Null until entered.</param>
 /// <param name="StrategyType">Strategy registry key. Null until selected.</param>
 /// <param name="TemplateId">Template ID when <see cref="SourceType"/> is Template.</param>
@@ -27,6 +28,8 @@ namespace TradingResearchEngine.Application.Strategy;
 public sealed record ConfigDraft(
     string DraftId,
     int CurrentStep,
+    /// <summary>The highest step the user has visited. Navigation beyond this is prevented.</summary>
+    int MaxVisitedStep,
     string? StrategyName,
     string? StrategyType,
     string? TemplateId,

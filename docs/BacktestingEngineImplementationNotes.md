@@ -23,6 +23,18 @@ The outer loop advances one data step. The inner loop drains all events before t
 | OrderEvent (approved) | IExecutionHandler.Execute | FillEvent |
 | FillEvent | Portfolio.Update | Position + cash update (no equity curve append) |
 
+## Strategy Lifecycle
+
+`IStrategy` defines three methods, two of which have default no-op implementations:
+
+| Method | When Called | Purpose |
+|---|---|---|
+| `Initialize(StrategyConfig config)` | Once before the first bar of a new execution window | Sets parameters from config; alternative to constructor injection |
+| `Reset()` | Between walk-forward windows (or any reuse scenario) | Clears all indicator state and internal tracking so the instance behaves like a fresh one |
+| `OnMarketData(MarketDataEvent evt)` | Every bar/tick during the heartbeat loop | Core signal generation; returns `IReadOnlyList<EngineEvent>` |
+
+`Initialize` and `Reset` are default interface methods (no-op if not overridden). Strategies that only use constructor injection for parameters can ignore both. Walk-forward workflows call `Reset()` between out-of-sample windows to reuse the same instance without reconstruction overhead. `IStrategyFactory.Create(config)` is the preferred mechanism for parallel workflows that need fully isolated instances.
+
 ## OrderEvent Fields
 
 `OrderEvent` carries the following fields:
@@ -261,8 +273,8 @@ Both tests use `TaskCompletionSource<ImportCompletionUpdate>` subscribed to `OnC
 | Metric | Input | Notes |
 |---|---|---|
 | MaxDrawdown | equity curve | Peak-to-trough percentage decline |
-| SharpeRatio | closed trades | Annualised, risk-free rate from config |
-| SortinoRatio | closed trades | Downside deviation only |
+| SharpeRatio | equity curve | Annualised, risk-free rate from config |
+| SortinoRatio | equity curve | Downside deviation over ALL returns (upside zeroed); annualised via `BarsPerYear` |
 | CalmarRatio | equity curve + start/end equity | Annualised return / max drawdown; null when drawdown is zero |
 | ReturnOnMaxDrawdown (RoMaD) | equity curve + start/end equity | Total return / max drawdown |
 | WinRate | closed trades | Wins / total trades |
@@ -273,8 +285,8 @@ Both tests use `TaskCompletionSource<ImportCompletionUpdate>` subscribed to `OnC
 | EquityCurveSmoothness (K-Ratio) | equity curve | OLS slope of log-equity / (standard error × √n); higher = more consistent growth |
 | MaxConsecutiveWins / Losses | closed trades | Longest streak |
 | RecoveryFactor | equity curve + start/end equity | Net profit / (max drawdown × start equity); null when drawdown is zero |
-| HistoricalVaR | equity curve + confidence | Value at Risk at a given confidence level (e.g. 0.95); returns the loss at the percentile cutoff as a positive number; null when fewer than 2 points |
-| HistoricalCVaR | equity curve + confidence | Conditional VaR (Expected Shortfall) — average of returns in the tail beyond the VaR cutoff; null when fewer than 2 points |
+| HistoricalVaR | equity curve + confidence | Value at Risk at a given confidence level (e.g. 0.95); returns the loss at the percentile cutoff as a positive number; null when fewer than 30 period returns |
+| HistoricalCVaR | equity curve + confidence | Conditional VaR (Expected Shortfall) — average of returns in the tail beyond the VaR cutoff; null when fewer than 30 period returns |
 | OmegaRatio | equity curve + threshold | Ratio of gains above threshold to losses below threshold (default θ = 0); null when losses are zero |
 | UlcerIndex | equity curve | RMS of percentage drawdown depth over the curve; lower = less drawdown pain; null when fewer than 2 points |
 | LongestFlatPeriod | closed trades + equity curve | Maximum number of bars between consecutive trades; 0 when fewer than 2 trades |

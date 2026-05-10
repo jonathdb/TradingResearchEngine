@@ -159,6 +159,46 @@ public sealed class GeminiStrategyAssistant : IAIStrategyAssistant
         return draft with { SourceType = SourceType.AIGenerated };
     }
 
+    /// <inheritdoc/>
+    public async IAsyncEnumerable<string> StreamGenerateAsync(
+        string prompt, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        var systemPrompt = await LoadSystemPromptAsync(ct);
+        var userMessage = $"Generate a trading strategy based on the following description:\n\n{prompt}";
+
+        await foreach (var chunk in _geminiClient.StreamGenerateAsync(systemPrompt, userMessage, ct))
+        {
+            yield return chunk;
+        }
+    }
+
+    /// <inheritdoc/>
+    public async IAsyncEnumerable<string> StreamRefineAsync(
+        AIStrategyDraft current, string refinementPrompt,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        var systemPrompt = await LoadSystemPromptAsync(ct);
+        var userMessage = $"""
+            Refine the following strategy based on user feedback.
+
+            Current Strategy:
+            - Name: {current.StrategyName}
+            - Type: {current.StrategyType}
+            - Hypothesis: {current.Hypothesis}
+            - Parameters: {JsonSerializer.Serialize(current.Parameters)}
+
+            User Feedback:
+            {refinementPrompt}
+            """;
+
+        await foreach (var chunk in _geminiClient.StreamGenerateAsync(systemPrompt, userMessage, ct))
+        {
+            yield return chunk;
+        }
+    }
+
     private async Task<string> LoadSystemPromptAsync(CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();

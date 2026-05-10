@@ -1,0 +1,28 @@
+@using TradingResearchEngine.Application.Research
+@using TradingResearchEngine.Application.Research.Results
+@using System.Text.Json
+
+@if (_result is not null)
+{
+    <MudGrid>
+        <MudItem xs="4"><MetricCard Label="Strategy Return" Value="@($"{_result.StrategyReturn:P2}")" /></MudItem>
+        <MudItem xs="4"><MetricCard Label="Benchmark Return" Value="@($"{_result.BenchmarkReturn:P2}")" /></MudItem>
+        <MudItem xs="4"><MetricCard Label="Alpha" Value="@($"{_result.Alpha:P2}")" /></MudItem>
+        <MudItem xs="4"><MetricCard Label="Beta" Value="@(_result.Beta?.ToString("F3") ?? "N/A")" /></MudItem>
+        <MudItem xs="4"><MetricCard Label="Info Ratio" Value="@(_result.InformationRatio?.ToString("F3") ?? "N/A")" /></MudItem>
+        <MudItem xs="4"><MetricCard Label="Tracking Error" Value="@($"{_result.TrackingError:F4}")" /></MudItem>
+    </MudGrid>
+}
+
+@code {
+    [Parameter] public StudyRecord Study { get; set; } = default!;
+    [Parameter] public string ResultJson { get; set; } = "";
+
+    private BenchmarkComparisonResult? _result;
+
+    protected override void OnParametersSet()
+    {
+        if (!string.IsNullOrEmpty(ResultJson))
+            _result = JsonSerializer.Deserialize<BenchmarkComparisonResult>(ResultJson);
+    }
+}

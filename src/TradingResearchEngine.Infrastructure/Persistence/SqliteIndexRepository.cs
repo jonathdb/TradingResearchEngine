@@ -171,6 +171,35 @@ public sealed class SqliteIndexRepository : IBacktestResultRepository
 }
 
     /// <inheritdoc/>
+    public async Task<IReadOnlyList<BacktestResult>> ListRecentAsync(int count, CancellationToken ct = default)
+    {
+        var results = new List<BacktestResult>();
+
+        await using var connection = new SqliteConnection($"Data Source={_indexDbPath};Pooling=True");
+        await connection.OpenAsync(ct);
+
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = "SELECT FilePath FROM BacktestResultIndex ORDER BY RunDate DESC LIMIT @count";
+        cmd.Parameters.AddWithValue("@count", count);
+
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            ct.ThrowIfCancellationRequested();
+            var filePath = reader.GetString(0);
+            if (!File.Exists(filePath))
+            {
+                _logger.LogWarning("SqliteIndex: stale index row — file {Path} not found", filePath);
+                continue;
+            }
+            var json = await File.ReadAllTextAsync(filePath, ct);
+            var entity = JsonSerializer.Deserialize<BacktestResult>(json, JsonOptions);
+            if (entity is not null) results.Add(entity);
+        }
+        return results;
+    }
+
+    /// <inheritdoc/>
     public async Task<IReadOnlyList<BacktestResult>> ListByVersionAsync(
         string versionId, CancellationToken ct = default)
     {

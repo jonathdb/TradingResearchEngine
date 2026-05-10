@@ -43,12 +43,52 @@
 }
 else if (FilteredStrategies.Count == 0)
 {
-    <MudStack AlignItems="AlignItems.Center" Class="pa-16">
-        <MudIcon Icon="@Icons.Material.Filled.Psychology" Size="MudBlazor.Size.Large" Class="text-faint mb-3" />
-        <MudText Typo="Typo.h6">No strategies yet</MudText>
-        <MudText Typo="Typo.body2" Class="text-muted mb-4">Create your first strategy to start backtesting</MudText>
-        <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="/strategies/builder">Create Strategy</MudButton>
-    </MudStack>
+    @if (_strategies.Count == 0)
+    {
+        @* Structured empty state for brand new users *@
+        <MudPaper Class="pa-8" Elevation="0" Style="text-align:center; max-width:600px; margin:0 auto;">
+            <MudIcon Icon="@Icons.Material.Filled.Psychology" Size="MudBlazor.Size.Large" Class="text-faint mb-3" Style="font-size:4rem" />
+            <MudText Typo="Typo.h5" Class="mb-2">Welcome to Strategy Research</MudText>
+            <MudText Typo="Typo.body1" Class="text-muted mb-4">
+                Build, backtest, and validate trading strategies through a structured research lifecycle:
+            </MudText>
+            <MudStack Spacing="2" Class="mb-6" Style="text-align:left; max-width:400px; margin:0 auto;">
+                <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                    <MudChip T="string" Size="MudBlazor.Size.Small" Color="Color.Primary">1</MudChip>
+                    <MudText Typo="Typo.body2">Define your hypothesis and choose a strategy template</MudText>
+                </MudStack>
+                <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                    <MudChip T="string" Size="MudBlazor.Size.Small" Color="Color.Primary">2</MudChip>
+                    <MudText Typo="Typo.body2">Run backtests and iterate on parameters</MudText>
+                </MudStack>
+                <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                    <MudChip T="string" Size="MudBlazor.Size.Small" Color="Color.Primary">3</MudChip>
+                    <MudText Typo="Typo.body2">Validate with Monte Carlo, walk-forward, and CPCV studies</MudText>
+                </MudStack>
+                <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                    <MudChip T="string" Size="MudBlazor.Size.Small" Color="Color.Primary">4</MudChip>
+                    <MudText Typo="Typo.body2">Evaluate against prop firm rules and deploy with confidence</MudText>
+                </MudStack>
+            </MudStack>
+            <MudStack Row="true" Spacing="3" Justify="Justify.Center">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="MudBlazor.Size.Large"
+                           StartIcon="@Icons.Material.Filled.Dashboard"
+                           Href="/strategies/builder">Start from Template</MudButton>
+                <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Size="MudBlazor.Size.Large"
+                           StartIcon="@Icons.Material.Filled.AutoAwesome"
+                           Href="/strategies/builder?useAI=true">Use AI Builder</MudButton>
+            </MudStack>
+        </MudPaper>
+    }
+    else
+    {
+        @* Filter produced no results *@
+        <MudStack AlignItems="AlignItems.Center" Class="pa-16">
+            <MudIcon Icon="@Icons.Material.Filled.SearchOff" Size="MudBlazor.Size.Large" Class="text-faint mb-3" />
+            <MudText Typo="Typo.h6">No strategies match your filters</MudText>
+            <MudText Typo="Typo.body2" Class="text-muted mb-4">Try adjusting your search or filter criteria</MudText>
+        </MudStack>
+    }
 }
 else
 {

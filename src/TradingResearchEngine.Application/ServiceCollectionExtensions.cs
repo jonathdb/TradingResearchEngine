@@ -51,6 +51,13 @@ public static class ServiceCollectionExtensions
             return registry;
         });
         services.Configure<StrategyRegistryOptions>(_ => { }); // ensure options exist
+
+        // IStrategyFactory: provides isolated strategy instances for parallel workflows
+        services.AddSingleton<IStrategyFactoryProvider>(sp =>
+        {
+            var registry = sp.GetRequiredService<StrategyRegistry>();
+            return new StrategyFactoryProvider(registry, sp);
+        });
         services.AddScoped<RunScenarioUseCase>();
         // BacktestEngine is constructed manually by RunScenarioUseCase — not registered in DI
         services.AddTransient<IRiskLayer, DefaultRiskLayer>();
@@ -158,4 +165,19 @@ internal sealed class DisabledAIStrategyAssistant : IAIStrategyAssistant
         string refinementPrompt, CancellationToken ct)
         => throw new InvalidOperationException(
             "AI strategy assistant is disabled. Configure a valid Gemini API key in GeminiOptions to enable this feature.");
+
+    public IAsyncEnumerable<string> StreamGenerateAsync(
+        string prompt, CancellationToken ct)
+    {
+        throw new InvalidOperationException(
+            "AI strategy assistant is disabled. Configure a valid Gemini API key in GeminiOptions to enable this feature.");
+    }
+
+    public IAsyncEnumerable<string> StreamRefineAsync(
+        AIStrategyDraft current, string refinementPrompt,
+        CancellationToken ct)
+    {
+        throw new InvalidOperationException(
+            "AI strategy assistant is disabled. Configure a valid Gemini API key in GeminiOptions to enable this feature.");
+    }
 }

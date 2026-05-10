@@ -326,7 +326,7 @@ public sealed class SimulatedPaperTradingSession : IPaperTradingSession, IDispos
             MaxDrawdown: MetricsCalculator.ComputeMaxDrawdown(curve),
             SharpeRatio: MetricsCalculator.ComputeSharpeRatio(curve, config.AnnualRiskFreeRate, config.BarsPerYear),
             SortinoRatio: MetricsCalculator.ComputeSortinoRatio(curve, config.AnnualRiskFreeRate, config.BarsPerYear),
-            CalmarRatio: MetricsCalculator.ComputeCalmarRatio(curve, _portfolio.StartEquity, _portfolio.TotalEquity),
+            CalmarRatio: MetricsCalculator.ComputeCalmarRatio(curve, _portfolio.StartEquity, _portfolio.TotalEquity, config.BarsPerYear),
             ReturnOnMaxDrawdown: MetricsCalculator.ComputeReturnOnMaxDrawdown(curve, _portfolio.StartEquity, _portfolio.TotalEquity),
             TotalTrades: trades.Count,
             WinRate: MetricsCalculator.ComputeWinRate(trades),

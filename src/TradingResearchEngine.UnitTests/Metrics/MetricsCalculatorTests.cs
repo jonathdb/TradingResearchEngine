@@ -191,7 +191,7 @@ public class MetricsCalculatorAdvancedTests
             new(T0, 100_000m),
             new(T0.AddDays(252), 110_000m),
         };
-        Assert.Null(MetricsCalculator.ComputeCalmarRatio(curve, 100_000m, 110_000m));
+        Assert.Null(MetricsCalculator.ComputeCalmarRatio(curve, 100_000m, 110_000m, 252));
     }
 
     [Fact]
@@ -204,7 +204,7 @@ public class MetricsCalculatorAdvancedTests
             new(T0.AddDays(189), 108_000m),
             new(T0.AddDays(252), 115_000m),
         };
-        var result = MetricsCalculator.ComputeCalmarRatio(curve, 100_000m, 115_000m);
+        var result = MetricsCalculator.ComputeCalmarRatio(curve, 100_000m, 115_000m, 252);
         Assert.NotNull(result);
         Assert.True(result > 0m);
     }

@@ -6,6 +6,13 @@
 @if (_canRender)
 {
     <MudStack Row="true" Spacing="2" Class="mb-3">
+        <MudSelect T="string" Value="_selectedMetric" ValueChanged="OnMetricChanged" Label="Metric" Dense="true" Style="max-width:200px">
+            <MudSelectItem Value="@("Sharpe")">Sharpe Ratio</MudSelectItem>
+            <MudSelectItem Value="@("MaxDrawdown")">Max Drawdown</MudSelectItem>
+            <MudSelectItem Value="@("WinRate")">Win Rate</MudSelectItem>
+            <MudSelectItem Value="@("ProfitFactor")">Profit Factor</MudSelectItem>
+            <MudSelectItem Value="@("TotalTrades")">Trade Count</MudSelectItem>
+        </MudSelect>
         @if (_paramNames.Count > 2)
         {
             <MudSelect T="string" @bind-Value="_xParam" Label="X-Axis Parameter" Variant="Variant.Outlined" Style="max-width:200px">
@@ -55,6 +62,7 @@ else if (SweepResult is not null)
     private List<string> _paramNames = new();
     private string _xParam = "";
     private string _yParam = "";
+    private string _selectedMetric = "Sharpe";
 
     protected override void OnParametersSet()
     {
@@ -68,7 +76,14 @@ else if (SweepResult is not null)
 
         _xParam = !string.IsNullOrEmpty(XParam) && _paramNames.Contains(XParam) ? XParam : _paramNames[0];
         _yParam = !string.IsNullOrEmpty(YParam) && _paramNames.Contains(YParam) ? YParam : _paramNames[1];
+        _selectedMetric = !string.IsNullOrEmpty(MetricName) ? MetricName : "Sharpe";
 
+        RebuildChart();
+    }
+
+    private void OnMetricChanged(string newMetric)
+    {
+        _selectedMetric = newMetric;
         RebuildChart();
     }
 
@@ -96,7 +111,7 @@ else if (SweepResult is not null)
         var xLabels = xValues.Select(v => (object)v.ToString("G")).ToList();
         var yLabels = yValues.Select(v => (object)v.ToString("G")).ToList();
 
-        // Build Z matrix
+        // Build Z matrix using selected metric
         var z = new List<object>();
         foreach (var yVal in yValues)
         {
@@ -105,10 +120,26 @@ else if (SweepResult is not null)
             {
                 var match = results.FirstOrDefault(r =>
                     GetParamValue(r, _xParam) == xVal && GetParamValue(r, _yParam) == yVal);
-                row.Add(match?.SharpeRatio is not null ? (object)Math.Round(match.SharpeRatio.Value, 3) : (object?)null!);
+                row.Add(match is not null ? (object)Math.Round(GetMetricValue(match), 3) : (object?)null!);
             }
             z.Add(row);
         }
+
+        // Invert color scale for MaxDrawdown (lower = better = green)
+        bool invertScale = _selectedMetric == "MaxDrawdown";
+        var colorScale = invertScale
+            ? new object[]
+            {
+                new object[] { 0, "#66BB6A" },
+                new object[] { 0.5, "#FFFFFF" },
+                new object[] { 1, "#EF5350" }
+            } as IList<object>
+            : new object[]
+            {
+                new object[] { 0, "#EF5350" },
+                new object[] { 0.5, "#FFFFFF" },
+                new object[] { 1, "#66BB6A" }
+            } as IList<object>;
 
         _data = new List<ITrace>
         {
@@ -117,20 +148,15 @@ else if (SweepResult is not null)
                 X = xLabels,
                 Y = yLabels,
                 Z = z as IList<object>,
-                ColorScale = new object[]
-                {
-                    new object[] { 0, "#EF5350" },
-                    new object[] { 0.5, "#FFFFFF" },
-                    new object[] { 1, "#66BB6A" }
-                } as IList<object>,
-                ZMid = 0m,
-                HoverTemplate = $"{_xParam}: %{{x}}<br>{_yParam}: %{{y}}<br>Sharpe: %{{z:.3f}}<extra></extra>"
+                ColorScale = colorScale,
+                ZMid = _selectedMetric == "MaxDrawdown" ? null : 0m,
+                HoverTemplate = $"{_xParam}: %{{x}}<br>{_yParam}: %{{y}}<br>{_selectedMetric}: %{{z:.3f}}<extra></extra>"
             }
         };
 
         _layout = new Layout
         {
-            Title = new Plotly.Blazor.LayoutLib.Title { Text = $"Parameter Sweep — {MetricName}" },
+            Title = new Plotly.Blazor.LayoutLib.Title { Text = $"Parameter Sweep — {GetMetricDisplayName()}" },
             Margin = new Plotly.Blazor.LayoutLib.Margin { L = 80, R = 40, T = 50, B = 60 },
             XAxis = new[] { new Plotly.Blazor.LayoutLib.XAxis
             {
@@ -142,6 +168,24 @@ else if (SweepResult is not null)
             } }.ToList()
         };
     }
+
+    private decimal GetMetricValue(BacktestResult result) => _selectedMetric switch
+    {
+        "MaxDrawdown" => result.MaxDrawdown,
+        "WinRate" => result.WinRate ?? 0m,
+        "ProfitFactor" => result.ProfitFactor ?? 0m,
+        "TotalTrades" => result.TotalTrades,
+        _ => result.SharpeRatio ?? 0m
+    };
+
+    private string GetMetricDisplayName() => _selectedMetric switch
+    {
+        "MaxDrawdown" => "Max Drawdown",
+        "WinRate" => "Win Rate",
+        "ProfitFactor" => "Profit Factor",
+        "TotalTrades" => "Trade Count",
+        _ => "Sharpe Ratio"
+    };
 
     private static List<string> DiscoverNumericParams(IReadOnlyList<BacktestResult> results)
     {

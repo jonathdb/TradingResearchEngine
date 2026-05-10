@@ -13,6 +13,7 @@ Create a new file in `src/TradingResearchEngine.Application/Strategies/`. Your c
 - Implement `IStrategy` (from `TradingResearchEngine.Core.Strategy`)
 - Be decorated with `[StrategyName("your-strategy-name")]` (lowercase-kebab-case, unique)
 - Annotate constructor parameters with `[ParameterMeta]`
+- Optionally override `Initialize(StrategyConfig)` and `Reset()` lifecycle methods (default implementations are no-ops)
 
 ```csharp
 using TradingResearchEngine.Application.Strategy;
@@ -59,6 +60,19 @@ public sealed class RsiMeanReversionStrategy : IStrategy
         _period = period;
         _oversoldThreshold = oversoldThreshold;
         _overboughtThreshold = overboughtThreshold;
+    }
+
+    public void Initialize(StrategyConfig config)
+    {
+        // Optional: extract parameters from config if not using constructor injection.
+        // Called once before the first bar of a new execution window.
+    }
+
+    public void Reset()
+    {
+        // Optional: clear all indicator state and internal tracking.
+        // After Reset(), the instance should behave identically to a freshly constructed one.
+        // Called between walk-forward windows to reuse the same instance.
     }
 
     public IReadOnlyList<EngineEvent> OnMarketData(MarketDataEvent evt)

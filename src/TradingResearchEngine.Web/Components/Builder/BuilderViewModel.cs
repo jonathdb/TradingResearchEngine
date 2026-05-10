@@ -39,6 +39,7 @@ public sealed class BuilderViewModel
     public decimal InitialCash { get; set; } = 100_000m;
     public decimal AnnualRiskFreeRate { get; set; } = 0.05m;
     public decimal StopLoss { get; set; } = 2.0m;
+    public int FillDelayBars { get; set; } = 0;
 
     // Navigation
     public int CurrentStep { get; set; } = 1;
@@ -71,6 +72,7 @@ public sealed class BuilderViewModel
         return new ConfigDraft(
             DraftId: DraftId,
             CurrentStep: CurrentStep,
+            MaxVisitedStep: MaxVisitedStep,
             StrategyName: string.IsNullOrWhiteSpace(StrategyName) ? null : StrategyName,
             StrategyType: StrategyType,
             TemplateId: TemplateId,
@@ -149,7 +151,7 @@ public sealed class BuilderViewModel
         {
             DraftId = draft.DraftId,
             CurrentStep = draft.CurrentStep,
-            MaxVisitedStep = draft.CurrentStep,
+            MaxVisitedStep = draft.MaxVisitedStep > 0 ? draft.MaxVisitedStep : draft.CurrentStep,
             StrategyName = draft.StrategyName ?? "",
             StrategyType = draft.StrategyType,
             TemplateId = draft.TemplateId,

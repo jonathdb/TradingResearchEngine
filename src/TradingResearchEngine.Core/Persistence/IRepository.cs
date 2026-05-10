@@ -15,6 +15,12 @@ public interface IRepository<T> where T : IHasId
     /// <summary>Returns all persisted entities.</summary>
     Task<IReadOnlyList<T>> ListAsync(CancellationToken ct = default);
 
+    /// <summary>
+    /// Returns the most recent <paramref name="count"/> entities ordered by creation time descending.
+    /// Implementations should use a database-level LIMIT where possible.
+    /// </summary>
+    Task<IReadOnlyList<T>> ListRecentAsync(int count, CancellationToken ct = default);
+
     /// <summary>Deletes the entity with the given id. No-op if not found.</summary>
     Task DeleteAsync(string id, CancellationToken ct = default);
 }

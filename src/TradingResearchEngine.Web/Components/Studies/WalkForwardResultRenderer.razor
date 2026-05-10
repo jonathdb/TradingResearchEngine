@@ -1,0 +1,21 @@
+@using TradingResearchEngine.Application.Research
+@using TradingResearchEngine.Application.Research.Results
+@using System.Text.Json
+
+@if (_result is not null)
+{
+    <WalkForwardCompositeChart Summary="@WalkForwardWorkflow.BuildSummary(_result)" />
+}
+
+@code {
+    [Parameter] public StudyRecord Study { get; set; } = default!;
+    [Parameter] public string ResultJson { get; set; } = "";
+
+    private WalkForwardResult? _result;
+
+    protected override void OnParametersSet()
+    {
+        if (!string.IsNullOrEmpty(ResultJson))
+            _result = JsonSerializer.Deserialize<WalkForwardResult>(ResultJson);
+    }
+}

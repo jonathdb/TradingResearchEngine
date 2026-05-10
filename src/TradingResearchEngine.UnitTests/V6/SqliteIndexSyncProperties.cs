@@ -37,6 +37,10 @@ public class SqliteIndexSyncProperties
         public Task<IReadOnlyList<BacktestResult>> ListAsync(CancellationToken ct = default)
             => Task.FromResult<IReadOnlyList<BacktestResult>>(_store.Values.ToList());
 
+        public Task<IReadOnlyList<BacktestResult>> ListRecentAsync(int count, CancellationToken ct = default)
+            => Task.FromResult<IReadOnlyList<BacktestResult>>(
+                _store.Values.OrderByDescending(r => r.Id).Take(count).ToList());
+
         public Task DeleteAsync(string id, CancellationToken ct = default)
         {
             _store.Remove(id);

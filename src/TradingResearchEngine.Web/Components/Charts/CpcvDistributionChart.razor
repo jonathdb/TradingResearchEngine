@@ -1,0 +1,104 @@
+@rendermode InteractiveServer
+@using Plotly.Blazor
+@using Plotly.Blazor.Traces
+@using Plotly.Blazor.Traces.HistogramLib
+
+@if (_canRender)
+{
+    <PlotlyChart @ref="_chart" Config="_config" Layout="_layout" Data="_data"
+                 style="width:100%; height:350px;" />
+}
+
+@code {
+    /// <summary>OOS Sharpe distribution values from CpcvResult.</summary>
+    [Parameter] public IReadOnlyList<decimal> OosSharpeDistribution { get; set; } = Array.Empty<decimal>();
+
+    private PlotlyChart? _chart;
+    private Config _config = new() { Responsive = true, DisplayModeBar = Plotly.Blazor.ConfigLib.DisplayModeBarEnum.Hover };
+    private Layout _layout = new();
+    private IList<ITrace> _data = new List<ITrace>();
+    private bool _canRender;
+
+    protected override void OnParametersSet()
+    {
+        if (OosSharpeDistribution.Count == 0)
+        {
+            _canRender = false;
+            return;
+        }
+
+        _canRender = true;
+        BuildChart();
+    }
+
+    private void BuildChart()
+    {
+        var values = OosSharpeDistribution.Select(v => (object)(double)v).ToList();
+
+        // Color bars by Sharpe value ranges: red < 0, yellow 0-1, green >= 1
+        var colors = OosSharpeDistribution.Select(v => v switch
+        {
+            < 0m => "#EF5350",
+            < 1m => "#FFC107",
+            _ => "#66BB6A"
+        }).Cast<object>().ToList();
+
+        _data = new List<ITrace>
+        {
+            new Histogram
+            {
+                X = values,
+                Name = "OOS Sharpe",
+            }
+        };
+
+        var median = (double)OosSharpeDistribution.OrderBy(v => v).ElementAt(OosSharpeDistribution.Count / 2);
+
+        _layout = new Layout
+        {
+            Title = new Plotly.Blazor.LayoutLib.Title { Text = "CPCV OOS Sharpe Distribution" },
+            Margin = new Plotly.Blazor.LayoutLib.Margin { L = 60, R = 40, T = 50, B = 50 },
+            XAxis = new[] { new Plotly.Blazor.LayoutLib.XAxis
+            {
+                Title = new Plotly.Blazor.LayoutLib.XAxisLib.Title { Text = "OOS Sharpe Ratio" }
+            } }.ToList(),
+            YAxis = new[] { new Plotly.Blazor.LayoutLib.YAxis
+            {
+                Title = new Plotly.Blazor.LayoutLib.YAxisLib.Title { Text = "Frequency" }
+            } }.ToList(),
+            Shapes = new List<Plotly.Blazor.LayoutLib.Shape>
+            {
+                new Plotly.Blazor.LayoutLib.Shape
+                {
+                    Type = Plotly.Blazor.LayoutLib.ShapeLib.TypeEnum.Line,
+                    X0 = (object)0.0,
+                    X1 = (object)0.0,
+                    Y0 = (object)0,
+                    Y1 = (object)1,
+                    YRef = "paper",
+                    Line = new Plotly.Blazor.LayoutLib.ShapeLib.Line
+                    {
+                        Color = "#EF5350",
+                        Width = 2m,
+                        Dash = "dash"
+                    }
+                },
+                new Plotly.Blazor.LayoutLib.Shape
+                {
+                    Type = Plotly.Blazor.LayoutLib.ShapeLib.TypeEnum.Line,
+                    X0 = (object)median,
+                    X1 = (object)median,
+                    Y0 = (object)0,
+                    Y1 = (object)1,
+                    YRef = "paper",
+                    Line = new Plotly.Blazor.LayoutLib.ShapeLib.Line
+                    {
+                        Color = "#42A5F5",
+                        Width = 2m,
+                        Dash = "dash"
+                    }
+                }
+            }
+        };
+    }
+}

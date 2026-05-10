@@ -80,6 +80,28 @@
                     </ul>
                 </MudAlert>
             }
+
+            @if (_draftHistory.Count > 1)
+            {
+                <MudPaper Outlined="true" Class="pa-3 mb-3">
+                    <MudText Typo="Typo.caption" Class="text-muted mb-1">REFINEMENT HISTORY</MudText>
+                    @for (int i = 0; i < _draftHistory.Count; i++)
+                    {
+                        var idx = i;
+                        var entry = _draftHistory[i];
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-1">
+                            <MudText Typo="Typo.body2" Style="flex:1">
+                                @(idx == 0 ? "Original" : $"Refinement {idx}: {entry.prompt}")
+                            </MudText>
+                            @if (idx != _draftHistory.Count - 1)
+                            {
+                                <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Text"
+                                           OnClick="@(() => RevertTo(idx))">Revert</MudButton>
+                            }
+                        </MudStack>
+                    }
+                </MudPaper>
+            }
         }
     </DialogContent>
     <DialogActions>
@@ -112,6 +134,7 @@
     private string? _error;
     private AIStrategyDraft? _refinedDraft;
     private CancellationTokenSource? _cts;
+    private List<(string prompt, AIStrategyDraft draft)> _draftHistory = new();
 
     private async Task Refine()
     {
@@ -119,14 +142,13 @@
 
         _refining = true;
         _error = null;
-        _refinedDraft = null;
         _cts = new CancellationTokenSource();
         StateHasChanged();
 
         try
         {
-            // Build a current draft from the result's scenario config
-            var currentDraft = new AIStrategyDraft(
+            // Build a current draft from the result's scenario config or use existing refined draft
+            var currentDraft = _refinedDraft ?? new AIStrategyDraft(
                 StrategyName: Result.ScenarioConfig.StrategyType,
                 Hypothesis: "",
                 StrategyType: Result.ScenarioConfig.StrategyType,
@@ -137,7 +159,18 @@
                 Caveats: Array.Empty<string>(),
                 SourceType: SourceType.AIGenerated);
 
+            // Store original in history if first refinement
+            if (_draftHistory.Count == 0)
+                _draftHistory.Add(("", currentDraft));
+
             _refinedDraft = await AIAssistant.RefineStrategyAsync(currentDraft, Result, _refinementPrompt, _cts.Token);
+
+            // Add refinement history
+            var history = _refinedDraft.RefinementHistory.ToList();
+            history.Add(_refinementPrompt);
+            _refinedDraft = _refinedDraft with { RefinementHistory = history };
+            _draftHistory.Add((_refinementPrompt, _refinedDraft));
+            _refinementPrompt = "";
         }
         catch (OperationCanceledException)
         {
@@ -154,6 +187,14 @@
             _cts = null;
             StateHasChanged();
         }
+    }
+
+    private void RevertTo(int index)
+    {
+        if (index < 0 || index >= _draftHistory.Count) return;
+        _refinedDraft = _draftHistory[index].draft;
+        _draftHistory = _draftHistory.Take(index + 1).ToList();
+        StateHasChanged();
     }
 
     private void ApplyRefinement()

@@ -66,7 +66,17 @@ public sealed class ParameterSweepWorkflow : IResearchWorkflow<SweepOptions, Swe
 
         var sensitivity = ComputeSensitivity(ranked, grid);
 
-        return new SweepResult(ranked.ToList(), ranked, sensitivity);
+        // Build cells with multi-metric values for heatmap rendering
+        var cells = ranked.Select(r => new SweepCell(
+            Parameters: r.ScenarioConfig.StrategyParameters as IReadOnlyDictionary<string, object>
+                ?? new Dictionary<string, object>(),
+            SharpeRatio: r.SharpeRatio,
+            MaxDrawdown: r.MaxDrawdown,
+            WinRate: r.WinRate,
+            ProfitFactor: r.ProfitFactor,
+            TotalTrades: r.TotalTrades)).ToList();
+
+        return new SweepResult(ranked.ToList(), ranked, sensitivity, cells);
     }
 
     private static Dictionary<string, List<object>> ParseGrid(Dictionary<string, object> raw)

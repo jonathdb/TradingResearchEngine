@@ -36,6 +36,7 @@ public class ConfigDraftValidatorWarningTests
         var draft = new ConfigDraft(
             DraftId: "draft-1",
             CurrentStep: 2,
+            MaxVisitedStep: 2,
             StrategyName: "My Strategy",
             StrategyType: "donchian-breakout",
             TemplateId: "tpl-donchian-breakout",
@@ -65,6 +66,7 @@ public class ConfigDraftValidatorWarningTests
         var draft = new ConfigDraft(
             DraftId: "draft-1",
             CurrentStep: 2,
+            MaxVisitedStep: 2,
             StrategyName: "My Strategy",
             StrategyType: null,
             TemplateId: "tpl-donchian-breakout",
@@ -109,7 +111,7 @@ public class ConfigDraftValidatorWarningTests
 
     private static ConfigDraft MakeDraft(int step = 2, string? strategyType = "donchian-breakout",
         string? templateId = "tpl-donchian-breakout", string? timeframe = "Daily") =>
-        new("draft-1", step, "Test", strategyType, templateId, SourceType.Template,
+        new("draft-1", step, step, "Test", strategyType, templateId, SourceType.Template,
             null, null,
             timeframe is not null ? new DataConfig("csv", new Dictionary<string, object>(), timeframe, 252) : null,
             null, null, null, null, null, T0, T0);

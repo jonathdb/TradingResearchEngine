@@ -1,0 +1,26 @@
+@using TradingResearchEngine.Application.Research
+@using System.Text.Json
+
+@if (_result is not null)
+{
+    <MudGrid>
+        <MudItem xs="4"><MetricCard Label="Mean Sharpe" Value="@_result.MeanSharpe.ToString("F2")" /></MudItem>
+        <MudItem xs="4"><MetricCard Label="Std Dev" Value="@_result.StdDevSharpe.ToString("F3")" /></MudItem>
+        <MudItem xs="4"><MetricCard Label="Mean Expectancy" Value="@($"${_result.MeanExpectancy:F2}")" /></MudItem>
+        <MudItem xs="6"><MetricCard Label="Worst Sharpe" Value="@_result.WorstSharpe.ToString("F2")" /></MudItem>
+        <MudItem xs="6"><MetricCard Label="Best Sharpe" Value="@_result.BestSharpe.ToString("F2")" /></MudItem>
+    </MudGrid>
+}
+
+@code {
+    [Parameter] public StudyRecord Study { get; set; } = default!;
+    [Parameter] public string ResultJson { get; set; } = "";
+
+    private PerturbationResult? _result;
+
+    protected override void OnParametersSet()
+    {
+        if (!string.IsNullOrEmpty(ResultJson))
+            _result = JsonSerializer.Deserialize<PerturbationResult>(ResultJson);
+    }
+}
