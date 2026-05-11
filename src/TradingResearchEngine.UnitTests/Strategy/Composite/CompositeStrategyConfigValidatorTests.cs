@@ -88,16 +88,16 @@ public class CompositeStrategyConfigValidatorTests
             "Unknown Type",
             new List<IndicatorConfig>
             {
-                new("vwap1", "vwap", new Dictionary<string, object> { ["period"] = 20 })
+                new("fake1", "completely_unknown_indicator", new Dictionary<string, object> { ["period"] = 20 })
             },
-            "vwap1 > 50",
-            "vwap1 < 30",
+            "fake1 > 50",
+            "fake1 < 30",
             DirectionMode.Long);
 
         var errors = CompositeStrategyConfigValidator.Validate(config);
 
         Assert.NotEmpty(errors);
-        Assert.Contains(errors, e => e.Contains("vwap", StringComparison.OrdinalIgnoreCase)
+        Assert.Contains(errors, e => e.Contains("completely_unknown_indicator", StringComparison.OrdinalIgnoreCase)
                                      && e.Contains("unsupported", StringComparison.OrdinalIgnoreCase));
     }
 

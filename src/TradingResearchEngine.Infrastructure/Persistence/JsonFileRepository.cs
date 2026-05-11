@@ -76,6 +76,20 @@ public sealed class JsonFileRepository<T> : IRepository<T> where T : IHasId
     }
 
     /// <inheritdoc/>
+    public async Task<IReadOnlyList<T>> ListByStatusAsync(string status, CancellationToken ct = default)
+    {
+        var all = await ListAsync(ct);
+        var statusProp = typeof(T).GetProperty("Status");
+        if (statusProp is null) return all;
+
+        return all.Where(e =>
+        {
+            var val = statusProp.GetValue(e);
+            return val is not null && string.Equals(val.ToString(), status, StringComparison.OrdinalIgnoreCase);
+        }).ToList();
+    }
+
+    /// <inheritdoc/>
     public Task DeleteAsync(string id, CancellationToken ct = default)
     {
         var path = Path.Combine(_baseDir, $"{id}.json");

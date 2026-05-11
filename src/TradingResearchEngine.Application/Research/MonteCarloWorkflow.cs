@@ -98,6 +98,12 @@ public sealed class MonteCarloWorkflow : IResearchWorkflow<MonteCarloOptions, Mo
         for (int s = 0; s <= tradeCount; s++)
             stepEquities[s] = new decimal[options.SimulationCount];
 
+        // Block bootstrap resampling:
+        // When BlockSize == 1 (default), this is standard IID bootstrap — each trade is sampled independently.
+        // When BlockSize > 1, contiguous blocks of trades are sampled together to preserve serial
+        // autocorrelation in the return sequence. This is important for trend-following strategies
+        // where consecutive trade outcomes are correlated. The block start is randomized every
+        // `effectiveBlockSize` trades, and indices wrap around using modular arithmetic.
         // Clamp BlockSize to tradeCount when it exceeds the number of trades
         int effectiveBlockSize = Math.Min(Math.Max(options.BlockSize, 1), tradeCount);
 

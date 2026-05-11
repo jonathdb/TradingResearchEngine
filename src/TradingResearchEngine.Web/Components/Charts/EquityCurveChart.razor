@@ -109,8 +109,9 @@
         }
     }
 
-    /// <summary>Maximum number of data points to display. Beyond this, LTTB downsampling is applied.</summary>
-    private const int MaxDisplayPoints = 800;
+    /// <summary>Maximum number of data points to display. Beyond this, LTTB downsampling is applied.
+    /// Exposed as a parameter so parent components can pass a responsive value based on container width.</summary>
+    [Parameter] public int MaxDisplayPoints { get; set; } = 800;
 
     private static List<decimal> ComputeDrawdownPercent(IReadOnlyList<EquityCurvePoint> curve)
     {

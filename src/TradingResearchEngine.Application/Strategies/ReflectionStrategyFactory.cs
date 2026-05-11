@@ -14,6 +14,7 @@ public sealed class ReflectionStrategyFactory : IStrategyFactory
 {
     private readonly Type _strategyType;
     private readonly IServiceProvider _services;
+    private readonly System.Reflection.ConstructorInfo[] _ctors;
 
     /// <inheritdoc/>
     public string StrategyType { get; }
@@ -24,17 +25,17 @@ public sealed class ReflectionStrategyFactory : IStrategyFactory
         StrategyType = strategyType;
         _strategyType = strategyClrType;
         _services = services;
+        _ctors = strategyClrType.GetConstructors()
+            .OrderByDescending(c => c.GetParameters().Length)
+            .ToArray();
     }
 
     /// <inheritdoc/>
     public IStrategy Create(StrategyConfig config)
     {
         var parameters = config.StrategyParameters;
-        var ctors = _strategyType.GetConstructors()
-            .OrderByDescending(c => c.GetParameters().Length)
-            .ToArray();
 
-        foreach (var ctor in ctors)
+        foreach (var ctor in _ctors)
         {
             var ctorParams = ctor.GetParameters();
             var args = new object?[ctorParams.Length];

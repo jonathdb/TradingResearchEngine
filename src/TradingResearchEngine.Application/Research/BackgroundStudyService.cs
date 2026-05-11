@@ -18,6 +18,12 @@ public sealed record ActiveStudy(
 
 /// <summary>
 /// Manages background execution of long-running studies. Singleton service.
+/// <para>
+/// <b>Important:</b> This is NOT a background worker (not an <see cref="Microsoft.Extensions.Hosting.IHostedService"/>
+/// or <see cref="Microsoft.Extensions.Hosting.BackgroundService"/>). It is an event/progress coordination service
+/// that tracks active studies, emits progress events, and manages cancellation tokens.
+/// Actual job execution is handled by <see cref="JobWorkerService"/>.
+/// </para>
 /// The concrete implementation must be registered in the Web host because it
 /// manages Task.Run lifetime and must create its own DI scope per study execution.
 /// This Application-layer class provides the abstraction and event contracts.

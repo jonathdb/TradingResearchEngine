@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -17,20 +18,26 @@ public sealed class JobWorkerService : BackgroundService
 {
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly JobExecutor _executor;
+    private readonly IStudyRepository _studyRepo;
     private readonly ILogger<JobWorkerService> _logger;
     private readonly JobWorkerOptions _options;
+    private readonly SemaphoreSlim _concurrencySemaphore;
+    private int _cleanupCounter;
 
     /// <summary>Creates a new <see cref="JobWorkerService"/>.</summary>
     public JobWorkerService(
         IServiceScopeFactory scopeFactory,
         JobExecutor executor,
+        IStudyRepository studyRepo,
         IOptions<JobWorkerOptions> options,
         ILogger<JobWorkerService> logger)
     {
         _scopeFactory = scopeFactory;
         _executor = executor;
+        _studyRepo = studyRepo;
         _logger = logger;
         _options = options.Value;
+        _concurrencySemaphore = new SemaphoreSlim(_options.MaxConcurrentJobs, _options.MaxConcurrentJobs);
     }
 
     /// <inheritdoc/>
@@ -43,15 +50,20 @@ public sealed class JobWorkerService : BackgroundService
         {
             try
             {
-                var jobs = await _executor.ListJobsAsync(stoppingToken);
-                var queued = jobs.Where(j => j.Status == JobStatus.Queued)
-                    .Take(_options.MaxConcurrentJobs)
-                    .ToList();
+                var queued = await _executor.ListQueuedJobsAsync(_options.MaxConcurrentJobs, stoppingToken);
 
-                foreach (var job in queued)
+                if (queued.Count > 0)
                 {
-                    await ProcessJobAsync(job, stoppingToken);
+                    var tasks = queued.Select(job => ProcessJobWithSemaphoreAsync(job, stoppingToken)).ToList();
+                    await Task.WhenAll(tasks);
                 }
+
+                // Flush any pending progress snapshots
+                await _executor.FlushAllProgressAsync(stoppingToken);
+
+                // Periodic cleanup: every 60 poll cycles (~5 minutes at default 5s poll)
+                if (++_cleanupCounter % 60 == 0)
+                    await _executor.CleanupExpiredJobsAsync(stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -63,6 +75,19 @@ public sealed class JobWorkerService : BackgroundService
             }
 
             await Task.Delay(_options.PollInterval, stoppingToken);
+        }
+    }
+
+    private async Task ProcessJobWithSemaphoreAsync(BacktestJob job, CancellationToken stoppingToken)
+    {
+        await _concurrencySemaphore.WaitAsync(stoppingToken);
+        try
+        {
+            await ProcessJobAsync(job, stoppingToken);
+        }
+        finally
+        {
+            _concurrencySemaphore.Release();
         }
     }
 
@@ -91,6 +116,11 @@ public sealed class JobWorkerService : BackgroundService
             _logger.LogError(ex, "Job {JobId} failed", job.JobId);
             await _executor.MarkFailedAsync(job.JobId, ex.Message, CancellationToken.None);
         }
+        finally
+        {
+            // Flush progress for this job on completion
+            await _executor.FlushProgressAsync(job.JobId, CancellationToken.None);
+        }
     }
 
     private async Task DispatchAsync(BacktestJob job, IServiceProvider services, CancellationToken ct)
@@ -116,43 +146,49 @@ public sealed class JobWorkerService : BackgroundService
             case JobType.MonteCarlo:
                 var mcWorkflow = services.GetRequiredService<MonteCarloWorkflow>();
                 var mcOptions = new MonteCarloOptions();
-                await mcWorkflow.RunAsync(job.Config, mcOptions, ct);
-                await _executor.MarkCompletedAsync(job.JobId, job.JobId);
+                var mcResult = await mcWorkflow.RunAsync(job.Config, mcOptions, ct);
+                var mcStudyId = await PersistStudyResultAsync(job, StudyType.MonteCarlo, mcResult, ct);
+                await _executor.MarkCompletedAsync(job.JobId, mcStudyId);
                 break;
 
             case JobType.WalkForward:
                 var wfWorkflow = services.GetRequiredService<WalkForwardWorkflow>();
                 var wfOptions = new WalkForwardOptions();
-                await wfWorkflow.RunAsync(job.Config, wfOptions, ct);
-                await _executor.MarkCompletedAsync(job.JobId, job.JobId);
+                var wfResult = await wfWorkflow.RunAsync(job.Config, wfOptions, ct);
+                var wfStudyId = await PersistStudyResultAsync(job, StudyType.WalkForward, wfResult, ct);
+                await _executor.MarkCompletedAsync(job.JobId, wfStudyId);
                 break;
 
             case JobType.ParameterSweep:
                 var sweepWorkflow = services.GetRequiredService<ParameterSweepWorkflow>();
                 var sweepOptions = new SweepOptions();
-                await sweepWorkflow.RunAsync(job.Config, sweepOptions, ct);
-                await _executor.MarkCompletedAsync(job.JobId, job.JobId);
+                var sweepResult = await sweepWorkflow.RunAsync(job.Config, sweepOptions, ct);
+                var sweepStudyId = await PersistStudyResultAsync(job, StudyType.ParameterSweep, sweepResult, ct);
+                await _executor.MarkCompletedAsync(job.JobId, sweepStudyId);
                 break;
 
             case JobType.BenchmarkComparison:
                 var benchWorkflow = services.GetRequiredService<BenchmarkComparisonWorkflow>();
                 var benchOptions = new BenchmarkOptions { InitialCash = job.Config.InitialCash };
-                await benchWorkflow.RunAsync(job.Config, benchOptions, ct);
-                await _executor.MarkCompletedAsync(job.JobId, job.JobId);
+                var benchResult = await benchWorkflow.RunAsync(job.Config, benchOptions, ct);
+                var benchStudyId = await PersistStudyResultAsync(job, StudyType.BenchmarkComparison, benchResult, ct);
+                await _executor.MarkCompletedAsync(job.JobId, benchStudyId);
                 break;
 
             case JobType.Variance:
                 var varWorkflow = services.GetRequiredService<VarianceTestingWorkflow>();
                 var varOptions = new VarianceOptions();
-                await varWorkflow.RunAsync(job.Config, varOptions, ct);
-                await _executor.MarkCompletedAsync(job.JobId, job.JobId);
+                var varResult = await varWorkflow.RunAsync(job.Config, varOptions, ct);
+                var varStudyId = await PersistStudyResultAsync(job, StudyType.Variance, varResult, ct);
+                await _executor.MarkCompletedAsync(job.JobId, varStudyId);
                 break;
 
             case JobType.RandomisedOos:
                 var oosWorkflow = services.GetRequiredService<RandomizedOosWorkflow>();
                 var oosOptions = new RandomizedOosOptions();
-                await oosWorkflow.RunAsync(job.Config, oosOptions, ct);
-                await _executor.MarkCompletedAsync(job.JobId, job.JobId);
+                var oosResult = await oosWorkflow.RunAsync(job.Config, oosOptions, ct);
+                var oosStudyId = await PersistStudyResultAsync(job, StudyType.RandomisedOos, oosResult, ct);
+                await _executor.MarkCompletedAsync(job.JobId, oosStudyId);
                 break;
 
             default:
@@ -160,5 +196,26 @@ public sealed class JobWorkerService : BackgroundService
                     $"Unsupported job type: {job.JobType}", CancellationToken.None);
                 break;
         }
+    }
+
+    /// <summary>
+    /// Persists a workflow result as a study record and returns the study ID for result linkage.
+    /// </summary>
+    private async Task<string> PersistStudyResultAsync<TResult>(
+        BacktestJob job, StudyType studyType, TResult result, CancellationToken ct)
+    {
+        var studyId = Guid.NewGuid().ToString("N");
+        var study = new StudyRecord(
+            StudyId: studyId,
+            StrategyVersionId: job.Config?.StrategyVersionId ?? "",
+            Type: studyType,
+            Status: StudyStatus.Completed,
+            CreatedAt: DateTimeOffset.UtcNow);
+        await _studyRepo.SaveAsync(study, ct);
+
+        var resultJson = System.Text.Json.JsonSerializer.Serialize(result);
+        await _studyRepo.SaveResultAsync(studyId, resultJson, ct);
+
+        return studyId;
     }
 }

@@ -302,9 +302,12 @@ internal sealed class Tokeniser
 /// </summary>
 internal sealed class Parser
 {
+    private const int MaxParseDepth = 50;
+
     private readonly List<Token> _tokens;
     private readonly string _source;
     private int _pos;
+    private int _depth;
 
     private static readonly HashSet<string> PriceKeywords = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -316,6 +319,7 @@ internal sealed class Parser
         _tokens = tokens;
         _source = source;
         _pos = 0;
+        _depth = 0;
     }
 
     private Token Current => _tokens[_pos];
@@ -358,7 +362,22 @@ internal sealed class Parser
     /// </summary>
     public ConditionNode ParseExpression()
     {
-        return ParseLogicalOr();
+        if (++_depth > MaxParseDepth)
+        {
+            throw new ConditionParseException(
+                Current.Position,
+                "expression within depth limit",
+                "maximum nesting depth exceeded");
+        }
+
+        try
+        {
+            return ParseLogicalOr();
+        }
+        finally
+        {
+            _depth--;
+        }
     }
 
     /// <summary>

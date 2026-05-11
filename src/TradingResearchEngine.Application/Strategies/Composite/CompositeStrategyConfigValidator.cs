@@ -1,3 +1,4 @@
+using TradingResearchEngine.Application.Indicators;
 using TradingResearchEngine.Application.Strategies.Composite.Conditions;
 
 namespace TradingResearchEngine.Application.Strategies.Composite;
@@ -10,11 +11,25 @@ public static class CompositeStrategyConfigValidator
 {
     /// <summary>
     /// The set of supported indicator type names (case-insensitive).
+    /// Includes both hardcoded built-in types and all keys from the Skender indicator catalog.
     /// </summary>
-    private static readonly HashSet<string> SupportedTypes = new(StringComparer.OrdinalIgnoreCase)
+    private static readonly HashSet<string> SupportedTypes = BuildSupportedTypes();
+
+    private static HashSet<string> BuildSupportedTypes()
     {
-        "sma", "ema", "rsi", "macd", "bollinger", "atr", "stochastic", "donchian"
-    };
+        var types = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "sma", "ema", "rsi", "macd", "bollinger", "atr", "stochastic", "donchian"
+        };
+
+        // Include all keys from the Skender indicator catalog
+        foreach (var entry in SkenderIndicatorCatalog.All)
+        {
+            types.Add(entry.Key);
+        }
+
+        return types;
+    }
 
     /// <summary>
     /// Validates the specified composite strategy configuration and returns all violations found.

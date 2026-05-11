@@ -587,6 +587,7 @@
         _aiCts?.Cancel();
         _aiCts?.Dispose();
         _aiCts = new CancellationTokenSource();
+        _aiCts.CancelAfter(TimeSpan.FromSeconds(120)); // 2-minute timeout
         var ct = _aiCts.Token;
 
         StateHasChanged();
@@ -604,8 +605,10 @@
         }
         catch (OperationCanceledException)
         {
-            // User cancelled — keep partial buffer visible
-            _aiError = "Generation stopped by user.";
+            // Distinguish timeout from user cancellation
+            _aiError = _aiStreamBuffer.Length > 0 && !_aiStreamBuffer.EndsWith("}")
+                ? "Generation timed out. Try a simpler prompt or try again."
+                : "Generation stopped by user.";
         }
         catch (Exception ex)
         {
@@ -628,6 +631,7 @@
         _aiCts?.Cancel();
         _aiCts?.Dispose();
         _aiCts = new CancellationTokenSource();
+        _aiCts.CancelAfter(TimeSpan.FromSeconds(120)); // 2-minute timeout
         var ct = _aiCts.Token;
 
         // Save current draft to history before refining
@@ -649,7 +653,9 @@
         }
         catch (OperationCanceledException)
         {
-            _aiError = "Refinement stopped by user.";
+            _aiError = _aiStreamBuffer.Length > 0 && !_aiStreamBuffer.EndsWith("}")
+                ? "Refinement timed out. Try a simpler prompt or try again."
+                : "Refinement stopped by user.";
         }
         catch (Exception ex)
         {
