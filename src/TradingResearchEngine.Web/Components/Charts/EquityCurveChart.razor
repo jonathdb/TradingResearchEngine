@@ -16,6 +16,9 @@
     /// <summary>The equity curve data points to render.</summary>
     [Parameter] public IReadOnlyList<EquityCurvePoint>? Curve { get; set; }
 
+    /// <summary>Optional buy-and-hold benchmark equity curve to overlay.</summary>
+    [Parameter] public IReadOnlyList<EquityCurvePoint>? BenchmarkCurve { get; set; }
+
     /// <summary>Chart title.</summary>
     [Parameter] public string Title { get; set; } = "Equity Curve";
 
@@ -76,6 +79,27 @@
             Line = new Line { Color = "#42A5F5", Width = 2m },
             HoverTemplate = "Date: %{x}<br>Equity: $%{y:,.0f}<extra></extra>"
         });
+
+        // Buy & Hold benchmark line (muted colour)
+        if (BenchmarkCurve is { Count: > 0 })
+        {
+            var benchDisplay = BenchmarkCurve.Count > MaxDisplayPoints
+                ? Downsample(BenchmarkCurve, MaxDisplayPoints)
+                : BenchmarkCurve;
+
+            var benchTimestamps = benchDisplay.Select(p => (object)p.Timestamp.DateTime).ToList();
+            var benchEquities = benchDisplay.Select(p => (object)p.TotalEquity).ToList();
+
+            _data.Add(new Scatter
+            {
+                X = benchTimestamps,
+                Y = benchEquities,
+                Name = "Buy & Hold",
+                Mode = ModeFlag.Lines,
+                Line = new Line { Color = "rgba(158,158,158,0.7)", Width = 1.5m, Dash = "dot" },
+                HoverTemplate = "Date: %{x}<br>Buy & Hold: $%{y:,.0f}<extra></extra>"
+            });
+        }
 
         _layout = new Layout
         {

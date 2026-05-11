@@ -6,9 +6,21 @@ namespace TradingResearchEngine.Application.Engine;
 /// <summary>
 /// Validates that a study's date range does not overlap with the sealed test set
 /// on a strategy version. Called by study orchestration before dispatching any workflow.
+/// Also records audit entries when the test set is unlocked or re-sealed.
 /// </summary>
-public static class SealedTestSetGuard
+public sealed class SealedTestSetGuard
 {
+    private readonly ITestSetAuditLog _auditLog;
+
+    /// <summary>
+    /// Creates a new <see cref="SealedTestSetGuard"/> with the specified audit log.
+    /// </summary>
+    /// <param name="auditLog">The audit log for recording test-set transitions.</param>
+    public SealedTestSetGuard(ITestSetAuditLog auditLog)
+    {
+        _auditLog = auditLog;
+    }
+
     /// <summary>
     /// Throws <see cref="SealedTestSetViolationException"/> if the study date range
     /// overlaps the sealed test set on the given version.
@@ -43,4 +55,22 @@ public static class SealedTestSetGuard
 
         Validate(version, from, to);
     }
+
+    /// <summary>
+    /// Records an audit entry when the sealed test set is unlocked (phase transitions to FinalTest).
+    /// </summary>
+    /// <param name="versionId">The strategy version ID.</param>
+    /// <param name="reason">Optional reason for the unlock.</param>
+    /// <param name="ct">Cancellation token.</param>
+    public Task RecordUnlockAsync(Guid versionId, string? reason = null, CancellationToken ct = default)
+        => _auditLog.RecordUnlockAsync(versionId, reason, ct);
+
+    /// <summary>
+    /// Records an audit entry when the sealed test set is re-sealed (phase transitions back from FinalTest).
+    /// </summary>
+    /// <param name="versionId">The strategy version ID.</param>
+    /// <param name="reason">Optional reason for the re-seal.</param>
+    /// <param name="ct">Cancellation token.</param>
+    public Task RecordResealAsync(Guid versionId, string? reason = null, CancellationToken ct = default)
+        => _auditLog.RecordResealAsync(versionId, reason, ct);
 }

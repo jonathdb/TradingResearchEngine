@@ -110,6 +110,12 @@ public static class ServiceCollectionExtensions
         // V4: Migration service
         services.AddSingleton<MigrationService>();
 
+        // V4: Test set audit log (JSON-file-backed)
+        services.AddSingleton<TradingResearchEngine.Application.Engine.ITestSetAuditLog>(sp =>
+        {
+            return new JsonTestSetAuditLog(DataSubDir("audit"));
+        });
+
         // V7: Prompt loader — reads .md files from Prompts/ directory at startup
         services.AddSingleton<IPromptLoader>(sp =>
         {

@@ -121,6 +121,7 @@ else
                 <MudTable Items="FilteredRecentRuns" Dense="true" Hover="true" Class="mb-4"
                           SortLabel="Sort By">
                     <HeaderContent>
+                        <MudTh><MudCheckBox T="bool" Value="_selectAll" ValueChanged="ToggleSelectAll" Size="MudBlazor.Size.Small" /></MudTh>
                         <MudTh>Strategy</MudTh>
                         <MudTh>Date</MudTh>
                         <MudTh><MudTableSortLabel SortBy="new Func<BacktestResult, object>(x => x.SharpeRatio ?? decimal.MinValue)">Sharpe</MudTableSortLabel></MudTh>
@@ -129,6 +130,7 @@ else
                         <MudTh></MudTh>
                     </HeaderContent>
                     <RowTemplate>
+                        <MudTd><MudCheckBox T="bool" Value="_selectedRunIds.Contains(context.Id)" ValueChanged="@((bool v) => ToggleRunSelection(context.Id, v))" Size="MudBlazor.Size.Small" /></MudTd>
                         <MudTd>
                             @if (_strategyIdByType.TryGetValue(context.ScenarioConfig.StrategyType, out var sid))
                             {
@@ -146,6 +148,21 @@ else
                         <MudTd><MudIconButton Icon="@Icons.Material.Filled.OpenInNew" Size="MudBlazor.Size.Small" Href="@($"/backtests/{context.Id}")" /></MudTd>
                     </RowTemplate>
                 </MudTable>
+
+                @* Compare Selected button *@
+                @if (_selectedRunIds.Count >= 2)
+                {
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="MudBlazor.Size.Small"
+                               StartIcon="@Icons.Material.Filled.CompareArrows"
+                               Disabled="@(_selectedRunIds.Count < 2 || _selectedRunIds.Count > 5)"
+                               OnClick="NavigateToCompare" Class="mb-2">
+                        Compare Selected (@_selectedRunIds.Count)
+                    </MudButton>
+                    @if (_selectedRunIds.Count > 5)
+                    {
+                        <MudText Typo="Typo.caption" Color="Color.Error" Class="ml-2">Max 5 runs</MudText>
+                    }
+                }
             }
         </MudItem>
         <MudItem xs="12" md="4">
@@ -254,6 +271,8 @@ else
     private string? _selectedTypeFilter;
     private bool _showFailedRuns;
     private bool _loading = true;
+    private HashSet<string> _selectedRunIds = new();
+    private bool _selectAll;
 
     private List<BacktestResult> FilteredRecentRuns => _recentRuns
         .Where(r => _showFailedRuns || r.Status != BacktestStatus.Failed)
@@ -383,6 +402,37 @@ else
     private void ToggleTypeFilter(string type)
     {
         _selectedTypeFilter = _selectedTypeFilter == type ? null : type;
+    }
+
+    private void ToggleRunSelection(string runId, bool selected)
+    {
+        if (selected)
+            _selectedRunIds.Add(runId);
+        else
+            _selectedRunIds.Remove(runId);
+    }
+
+    private void ToggleSelectAll(bool selectAll)
+    {
+        _selectAll = selectAll;
+        if (selectAll)
+        {
+            foreach (var run in FilteredRecentRuns)
+                _selectedRunIds.Add(run.Id);
+        }
+        else
+        {
+            _selectedRunIds.Clear();
+        }
+    }
+
+    private void NavigateToCompare()
+    {
+        if (_selectedRunIds.Count >= 2 && _selectedRunIds.Count <= 5)
+        {
+            var ids = string.Join(",", _selectedRunIds);
+            Nav.NavigateTo($"/compare-runs?runIds={ids}");
+        }
     }
 
     // Fix 4: Parse run date from RunId prefix

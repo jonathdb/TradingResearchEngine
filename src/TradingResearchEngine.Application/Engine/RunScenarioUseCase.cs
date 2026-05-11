@@ -52,18 +52,28 @@ public sealed class RunScenarioUseCase
     private readonly ILogger<RunScenarioUseCase> _logger;
     private readonly IRepository<BacktestResult>? _repository;
     private readonly PreflightValidator _preflightValidator;
+    private readonly IBacktestEngineFactory _engineFactory;
+
+    /// <summary>
+    /// Cache of compiled strategy factory delegates, keyed by strategy type.
+    /// Avoids repeated reflection (GetConstructors) on every sweep iteration.
+    /// </summary>
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<Type, (System.Reflection.ConstructorInfo Ctor, System.Reflection.ParameterInfo[] Params)>
+        _strategyCtorCache = new();
 
     /// <inheritdoc cref="RunScenarioUseCase"/>
     public RunScenarioUseCase(
         StrategyRegistry strategyRegistry,
         IServiceProvider services,
         ILogger<RunScenarioUseCase> logger,
-        PreflightValidator preflightValidator)
+        PreflightValidator preflightValidator,
+        IBacktestEngineFactory engineFactory)
     {
         _strategyRegistry = strategyRegistry;
         _services = services;
         _logger = logger;
         _preflightValidator = preflightValidator;
+        _engineFactory = engineFactory;
         // Optional: auto-save results if repository is registered
         _repository = services.GetService<IRepository<BacktestResult>>();
     }
@@ -120,24 +130,33 @@ public sealed class RunScenarioUseCase
         var effectiveData = config.EffectiveDataConfig;
         var dataProviderFactory = _services.GetRequiredService<IDataProviderFactory>();
         var dataProvider = dataProviderFactory.Create(effectiveData.DataProviderType, effectiveData.DataProviderOptions);
-        var riskLayer = _services.GetRequiredService<IRiskLayer>();
-        var executionHandler = _services.GetRequiredService<IExecutionHandler>();
-        var engineLogger = _services.GetRequiredService<ILogger<BacktestEngine>>();
-        var loggerFactory = _services.GetRequiredService<ILoggerFactory>();
+
+        // Create a per-run service scope to isolate stateful services (IRiskLayer, IExecutionHandler)
+        using var scope = _services.CreateScope();
+        var scopedServices = scope.ServiceProvider;
+        var riskLayer = scopedServices.GetRequiredService<IRiskLayer>();
+        var executionHandler = scopedServices.GetRequiredService<IExecutionHandler>();
 
         // Resolve optional session calendar if configured
         var sessionCalendar = config.SessionOptions?.SessionCalendarType is not null
-            ? _services.GetService<Core.Sessions.ISessionCalendar>()
+            ? scopedServices.GetService<Core.Sessions.ISessionCalendar>()
             : null;
 
-        var engine = new BacktestEngine(dataProvider, strategy, riskLayer, executionHandler, engineLogger, loggerFactory, sessionCalendar,
-            _services.GetService<BarDataPool>());
+        var engine = _engineFactory.Create(dataProvider, strategy, riskLayer, executionHandler, sessionCalendar,
+            scopedServices.GetService<BarDataPool>());
         var result = await engine.RunAsync(config, ct: ct);
 
         // V5: Collect realism advisories from SimulatedExecutionHandler
         if (executionHandler is SimulatedExecutionHandler simHandler && simHandler.RealismAdvisories.Count > 0)
         {
             result = result with { RealismAdvisories = simHandler.RealismAdvisories.ToList().AsReadOnly() };
+        }
+
+        // V8: Compute buy-and-hold benchmark equity curve
+        var benchmarkCurve = await ComputeBenchmarkAsync(dataProvider, result.EquityCurve, config, ct);
+        if (benchmarkCurve is not null)
+        {
+            result = result with { BenchmarkEquityCurve = benchmarkCurve };
         }
 
         // Attach experiment metadata for reproducibility
@@ -175,15 +194,8 @@ public sealed class RunScenarioUseCase
         var strategyRepo = _services.GetService<IStrategyRepository>();
         if (strategyRepo is null) return result;
 
-        // Find the version
-        StrategyVersion? version = null;
-        var strategies = await strategyRepo.ListAsync(ct);
-        foreach (var s in strategies)
-        {
-            var versions = await strategyRepo.GetVersionsAsync(s.StrategyId, ct);
-            version = versions.FirstOrDefault(v => v.StrategyVersionId == result.StrategyVersionId);
-            if (version is not null) break;
-        }
+        // Direct lookup by version ID — O(1) instead of O(N×M) table scan
+        var version = await strategyRepo.GetVersionAsync(result.StrategyVersionId, ct);
         if (version is null) return result;
 
         // Increment trial count: completed/failed = +1, cancelled with bars = +1
@@ -192,10 +204,10 @@ public sealed class RunScenarioUseCase
 
         if (shouldIncrement)
         {
-            var updatedVersion = version with { TotalTrialsRun = version.TotalTrialsRun + 1 };
-            try { await strategyRepo.SaveVersionAsync(updatedVersion, ct); }
+            try { await strategyRepo.IncrementTrialCountAsync(result.StrategyVersionId, ct); }
             catch (Exception ex) { _logger.LogWarning(ex, "Failed to increment TotalTrialsRun for version {VersionId}.", version.StrategyVersionId); }
-            version = updatedVersion;
+            // Re-read the updated version to get the correct TotalTrialsRun for DSR
+            version = await strategyRepo.GetVersionAsync(result.StrategyVersionId, ct) ?? version;
         }
 
         // Snapshot trial count
@@ -218,17 +230,33 @@ public sealed class RunScenarioUseCase
         return result;
     }
 
-    /// <summary>Computes skewness and excess kurtosis from equity curve period returns.</summary>
+    /// <summary>
+    /// Computes skewness and excess kurtosis for DSR calculation.
+    /// Prefers trade-level returns when available (≥ 3 trades) as per Bailey &amp; López de Prado.
+    /// Falls back to equity curve bar returns when trades are insufficient.
+    /// </summary>
     private static (decimal Skewness, decimal Kurtosis) ComputeReturnMoments(BacktestResult result)
     {
-        if (result.EquityCurve.Count < 3) return (0m, 0m);
+        List<double> returns;
 
-        var returns = new List<double>();
-        for (int i = 1; i < result.EquityCurve.Count; i++)
+        // Prefer trade-level returns for DSR (Bailey & López de Prado use the same series as Sharpe)
+        if (result.Trades is { Count: >= 3 })
         {
-            var prev = (double)result.EquityCurve[i - 1].TotalEquity;
-            var curr = (double)result.EquityCurve[i].TotalEquity;
-            if (prev > 0) returns.Add(curr / prev - 1.0);
+            returns = result.Trades
+                .Where(t => t.EntryPrice > 0 && t.Quantity > 0)
+                .Select(t => (double)(t.NetPnl / (t.EntryPrice * t.Quantity)))
+                .ToList();
+        }
+        else
+        {
+            // Fallback to equity curve bar returns
+            returns = new List<double>();
+            for (int i = 1; i < result.EquityCurve.Count; i++)
+            {
+                var prev = (double)result.EquityCurve[i - 1].TotalEquity;
+                var curr = (double)result.EquityCurve[i].TotalEquity;
+                if (prev > 0) returns.Add(curr / prev - 1.0);
+            }
         }
 
         if (returns.Count < 3) return (0m, 0m);
@@ -246,40 +274,70 @@ public sealed class RunScenarioUseCase
         return ((decimal)Math.Round(skew, 6), (decimal)Math.Round(kurt, 6));
     }
 
-    /// <summary>
-    /// Legacy validation method — retained for backward compatibility.
-    /// Preflight validation is now handled by <see cref="PreflightValidator"/>.
-    /// </summary>
-    [Obsolete("Use PreflightValidator.Validate instead. This method is retained for backward compatibility.")]
-    private static List<string> Validate(ScenarioConfig config)
-    {
-        var errors = new List<string>();
-        if (string.IsNullOrWhiteSpace(config.ScenarioId)) errors.Add("ScenarioId is required.");
-        if (string.IsNullOrWhiteSpace(config.StrategyType)) errors.Add("StrategyType is required.");
-        if (string.IsNullOrWhiteSpace(config.DataProviderType)) errors.Add("DataProviderType is required.");
-        if (config.InitialCash <= 0) errors.Add("InitialCash must be greater than zero.");
-        if (config.AnnualRiskFreeRate < 0) errors.Add("AnnualRiskFreeRate must be non-negative.");
-        if (config.BarsPerYear <= 0) errors.Add("BarsPerYear must be greater than zero.");
-        return errors;
-    }
-
     private IStrategy CreateStrategy(Type strategyType, Dictionary<string, object> parameters)
     {
-        // Try to match constructor parameters by name from the StrategyParameters dictionary
+        // Use cached constructor info to avoid repeated reflection in sweeps
+        var ctorEntries = _strategyCtorCache.GetOrAdd(strategyType, static type =>
+        {
+            var ctor = type.GetConstructors()
+                .OrderByDescending(c => c.GetParameters().Length)
+                .First();
+            return (ctor, ctor.GetParameters());
+        });
+
+        // Try the cached best-match constructor first
+        var ctorParams = ctorEntries.Params;
+        var args = new object?[ctorParams.Length];
+        bool allResolved = true;
+
+        for (int i = 0; i < ctorParams.Length; i++)
+        {
+            var p = ctorParams[i];
+            var match = parameters.FirstOrDefault(kv =>
+                string.Equals(kv.Key, p.Name, StringComparison.OrdinalIgnoreCase));
+
+            if (match.Key is not null)
+            {
+                try
+                {
+                    var rawValue = match.Value;
+                    if (rawValue is System.Text.Json.JsonElement je)
+                        rawValue = ConvertJsonElement(je, p.ParameterType);
+                    args[i] = Convert.ChangeType(rawValue, p.ParameterType);
+                    continue;
+                }
+                catch (NotSupportedException ex)
+                {
+                    _logger.LogError(ex, "Unsupported parameter type conversion for {ParamName} ({ParamType}).", p.Name, p.ParameterType.Name);
+                    throw;
+                }
+                catch { /* fall through to default */ }
+            }
+
+            if (p.HasDefaultValue) { args[i] = p.DefaultValue; continue; }
+
+            allResolved = false;
+            break;
+        }
+
+        if (allResolved)
+            return (IStrategy)ctorEntries.Ctor.Invoke(args);
+
+        // Fallback: try all constructors (uncached path for unusual cases)
         var ctors = strategyType.GetConstructors()
             .OrderByDescending(c => c.GetParameters().Length)
+            .Skip(1) // Skip the one we already tried
             .ToArray();
 
         foreach (var ctor in ctors)
         {
-            var ctorParams = ctor.GetParameters();
-            var args = new object?[ctorParams.Length];
-            bool allResolved = true;
+            var fallbackParams = ctor.GetParameters();
+            var fallbackArgs = new object?[fallbackParams.Length];
+            bool resolved = true;
 
-            for (int i = 0; i < ctorParams.Length; i++)
+            for (int i = 0; i < fallbackParams.Length; i++)
             {
-                var p = ctorParams[i];
-                // Try case-insensitive match from StrategyParameters
+                var p = fallbackParams[i];
                 var match = parameters.FirstOrDefault(kv =>
                     string.Equals(kv.Key, p.Name, StringComparison.OrdinalIgnoreCase));
 
@@ -288,23 +346,27 @@ public sealed class RunScenarioUseCase
                     try
                     {
                         var rawValue = match.Value;
-                        // Handle System.Text.Json's JsonElement
                         if (rawValue is System.Text.Json.JsonElement je)
                             rawValue = ConvertJsonElement(je, p.ParameterType);
-                        args[i] = Convert.ChangeType(rawValue, p.ParameterType);
+                        fallbackArgs[i] = Convert.ChangeType(rawValue, p.ParameterType);
                         continue;
+                    }
+                    catch (NotSupportedException ex)
+                    {
+                        _logger.LogError(ex, "Unsupported parameter type conversion for {ParamName} ({ParamType}).", p.Name, p.ParameterType.Name);
+                        throw;
                     }
                     catch { /* fall through to default */ }
                 }
 
-                if (p.HasDefaultValue) { args[i] = p.DefaultValue; continue; }
+                if (p.HasDefaultValue) { fallbackArgs[i] = p.DefaultValue; continue; }
 
-                allResolved = false;
+                resolved = false;
                 break;
             }
 
-            if (allResolved)
-                return (IStrategy)ctor.Invoke(args);
+            if (resolved)
+                return (IStrategy)ctor.Invoke(fallbackArgs);
         }
 
         // Fallback: parameterless or DI-resolved
@@ -414,17 +476,38 @@ public sealed class RunScenarioUseCase
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase
     };
 
+    /// <summary>
+    /// Converts a <see cref="System.Text.Json.JsonElement"/> to the specified CLR type.
+    /// Supports primitives, enums, TimeSpan, Guid, DateTimeOffset, DateTime, and Nullable&lt;T&gt;.
+    /// Throws <see cref="NotSupportedException"/> for unhandled types.
+    /// </summary>
     private static object? ConvertJsonElement(System.Text.Json.JsonElement je, Type targetType)
     {
-        if (targetType == typeof(int)) return je.GetInt32();
-        if (targetType == typeof(decimal)) return je.GetDecimal();
-        if (targetType == typeof(double)) return je.GetDouble();
-        if (targetType == typeof(bool)) return je.ValueKind == System.Text.Json.JsonValueKind.True
+        // Unwrap Nullable<T>
+        var underlying = Nullable.GetUnderlyingType(targetType) ?? targetType;
+
+        if (underlying == typeof(int)) return je.GetInt32();
+        if (underlying == typeof(long)) return je.GetInt64();
+        if (underlying == typeof(decimal)) return je.GetDecimal();
+        if (underlying == typeof(double)) return je.GetDouble();
+        if (underlying == typeof(float)) return je.GetSingle();
+        if (underlying == typeof(bool)) return je.ValueKind == System.Text.Json.JsonValueKind.True
             || (je.ValueKind == System.Text.Json.JsonValueKind.Number && je.GetInt32() != 0);
-        if (targetType == typeof(string)) return je.GetString();
-        if (targetType == typeof(long)) return je.GetInt64();
-        if (targetType == typeof(float)) return je.GetSingle();
-        return je.ToString();
+        if (underlying == typeof(string)) return je.GetString();
+        if (underlying == typeof(Guid)) return je.GetGuid();
+        if (underlying == typeof(DateTimeOffset)) return je.GetDateTimeOffset();
+        if (underlying == typeof(DateTime)) return je.GetDateTime();
+        if (underlying == typeof(TimeSpan) && je.ValueKind == System.Text.Json.JsonValueKind.String)
+            return TimeSpan.Parse(je.GetString()!);
+        if (underlying.IsEnum && je.ValueKind == System.Text.Json.JsonValueKind.String)
+            return Enum.Parse(underlying, je.GetString()!, ignoreCase: true);
+        if (underlying.IsEnum && je.ValueKind == System.Text.Json.JsonValueKind.Number)
+            return Enum.ToObject(underlying, je.GetInt32());
+
+        // Unhandled type — throw instead of silent fallback
+        throw new NotSupportedException(
+            $"Cannot convert JsonElement of kind {je.ValueKind} to {targetType.Name}. " +
+            "Add an explicit conversion in ConvertJsonElement.");
     }
 
     private static Core.Results.ExperimentMetadata BuildMetadata(ScenarioConfig config)
@@ -446,5 +529,61 @@ public sealed class RunScenarioUseCase
             config.BarsPerYear,
             config.RandomSeed,
             null); // EngineVersion populated at composition root if available
+    }
+
+    /// <summary>
+    /// Computes a buy-and-hold benchmark equity curve by normalising close prices to InitialCash.
+    /// Returns null if the data provider cannot supply bars or the equity curve is empty.
+    /// </summary>
+    private static async Task<IReadOnlyList<Core.Portfolio.EquityCurvePoint>?> ComputeBenchmarkAsync(
+        Core.DataHandling.IDataProvider dataProvider,
+        IReadOnlyList<Core.Portfolio.EquityCurvePoint> strategyCurve,
+        Core.Configuration.ScenarioConfig config,
+        CancellationToken ct)
+    {
+        if (strategyCurve.Count < 2) return null;
+
+        try
+        {
+            var dataOpts = config.DataProviderOptions;
+            string symbol = dataOpts.TryGetValue("Symbol", out var s) ? s?.ToString() ?? "" : "";
+            string interval = dataOpts.TryGetValue("Interval", out var iv) ? iv?.ToString() ?? "1D" : "1D";
+            var from = dataOpts.TryGetValue("From", out var f) && f is DateTimeOffset df ? df : strategyCurve[0].Timestamp;
+            var to = dataOpts.TryGetValue("To", out var t) && t is DateTimeOffset dt ? dt : strategyCurve[^1].Timestamp;
+
+            if (string.IsNullOrEmpty(symbol)) return null;
+
+            var bars = new List<Core.DataHandling.BarRecord>();
+            await foreach (var bar in dataProvider.GetBars(symbol, interval, from, to, ct))
+            {
+                bars.Add(bar);
+            }
+
+            if (bars.Count < 2) return null;
+
+            decimal initialCash = config.InitialCash;
+            decimal firstClose = bars[0].Close;
+            if (firstClose <= 0) return null;
+
+            // Build benchmark curve aligned to strategy timestamps where possible
+            var benchmarkPoints = new List<Core.Portfolio.EquityCurvePoint>(bars.Count);
+            foreach (var bar in bars)
+            {
+                decimal benchEquity = initialCash * (bar.Close / firstClose);
+                benchmarkPoints.Add(new Core.Portfolio.EquityCurvePoint(
+                    bar.Timestamp,
+                    benchEquity,
+                    CashBalance: benchEquity,
+                    UnrealisedPnl: 0m,
+                    RealisedPnl: benchEquity - initialCash));
+            }
+
+            return benchmarkPoints.AsReadOnly();
+        }
+        catch
+        {
+            // If benchmark computation fails for any reason, return null gracefully
+            return null;
+        }
     }
 }

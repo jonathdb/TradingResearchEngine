@@ -60,7 +60,8 @@ public static class ServiceCollectionExtensions
             return new StrategyFactoryProvider(registry, sp);
         });
         services.AddScoped<RunScenarioUseCase>();
-        // BacktestEngine is constructed manually by RunScenarioUseCase — not registered in DI
+        // BacktestEngine is created via IBacktestEngineFactory — not registered directly in DI
+        services.AddTransient<IBacktestEngineFactory, BacktestEngineFactory>();
         services.AddTransient<IRiskLayer, DefaultRiskLayer>();
 
         // Default position sizing policy — can be overridden via DI
@@ -97,6 +98,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<StudyInterpretationService>();
         services.AddScoped<FinalValidationUseCase>();
 
+        // V4: Sealed test set guard with audit logging
+        services.AddScoped<SealedTestSetGuard>();
+
         // V5: Preflight validation and resolved config
         services.AddScoped<PreflightValidator>();
         services.AddScoped<ResolvedConfigService>();
@@ -110,6 +114,9 @@ public static class ServiceCollectionExtensions
 
         // V8: Portfolio backtest runner
         services.AddScoped<PortfolioBacktestRunner>();
+
+        // V8: Result export service for browser file downloads
+        services.AddSingleton<IResultExportService, ResultExportService>();
 
         // V8: BarDataPool singleton for hot-path allocation reduction
         services.AddSingleton<BarDataPool>();

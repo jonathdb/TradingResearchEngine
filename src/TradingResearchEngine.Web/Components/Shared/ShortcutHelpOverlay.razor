@@ -1,0 +1,64 @@
+@using TradingResearchEngine.Web.Services
+@inject KeyboardShortcutService ShortcutService
+
+@* Command palette overlay with fuzzy search for keyboard shortcuts *@
+
+@if (ShortcutService.IsCommandPaletteVisible)
+{
+    <MudOverlay Visible="true" DarkBackground="true" OnClick="Close" ZIndex="9999">
+        <MudPaper Class="pa-4" Style="width: 500px; max-height: 70vh; overflow-y: auto; margin: 10vh auto;">
+            <MudTextField @bind-Value="_searchQuery"
+                          Placeholder="Type a command..."
+                          Variant="Variant.Outlined"
+                          Adornment="Adornment.Start"
+                          AdornmentIcon="@Icons.Material.Filled.Search"
+                          Immediate="true"
+                          AutoFocus="true"
+                          Class="mb-3" />
+
+            @{
+                var results = ShortcutService.FuzzySearch(_searchQuery ?? "");
+                var grouped = results.GroupBy(r => r.Category);
+            }
+
+            @foreach (var group in grouped)
+            {
+                <MudText Typo="Typo.overline" Class="mt-2 mb-1">@group.Key</MudText>
+                @foreach (var shortcut in group)
+                {
+                    <MudPaper Class="pa-2 mb-1 d-flex justify-space-between align-center"
+                              Elevation="0"
+                              Style="cursor: pointer; border: 1px solid var(--mud-palette-lines-default);"
+                              @onclick="() => ExecuteShortcut(shortcut)">
+                        <MudText>@shortcut.Description</MudText>
+                        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">@shortcut.Key</MudChip>
+                    </MudPaper>
+                }
+            }
+
+            @if (!results.Any())
+            {
+                <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-2">
+                    No matching commands found.
+                </MudText>
+            }
+        </MudPaper>
+    </MudOverlay>
+}
+
+@code {
+    private string? _searchQuery;
+
+    private void Close()
+    {
+        ShortcutService.SetCommandPaletteVisible(false);
+        _searchQuery = null;
+    }
+
+    private async Task ExecuteShortcut(ShortcutRegistration shortcut)
+    {
+        ShortcutService.SetCommandPaletteVisible(false);
+        _searchQuery = null;
+        await shortcut.Action();
+    }
+}

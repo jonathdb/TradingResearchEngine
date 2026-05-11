@@ -27,6 +27,12 @@ builder.Services.AddSingleton<TradingResearchEngine.Application.Research.IRobust
 // V5: Register JobExecutor as singleton for async job lifecycle management
 builder.Services.AddSingleton<TradingResearchEngine.Application.Research.JobExecutor>();
 
+// V8: Keyboard shortcut service
+builder.Services.AddScoped<TradingResearchEngine.Web.Services.KeyboardShortcutService>();
+
+// V8: Study cost estimator service
+builder.Services.AddScoped<TradingResearchEngine.Application.Research.StudyCostEstimatorService>();
+
 // MudBlazor
 builder.Services.AddMudServices();
 

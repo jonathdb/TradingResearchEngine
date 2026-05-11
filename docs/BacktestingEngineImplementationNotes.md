@@ -69,7 +69,7 @@ When `DefaultRiskLayer.ConvertSignal` receives a `SignalEvent` with `Direction.F
 
 ## Engine Construction
 
-`BacktestEngine` is not registered in DI. `RunScenarioUseCase` constructs it manually per run, wiring the resolved data provider, strategy, risk layer, and execution handler directly. This avoids a DI-scoped engine lifetime that would conflict with the one-queue-per-run ownership model and allows each run to receive scenario-specific component instances.
+`BacktestEngine` implements `IBacktestEngine` and is created via `IBacktestEngineFactory` (Core interface, Application implementation). `RunScenarioUseCase` injects the factory and calls `Create(...)` per run, passing the resolved data provider, strategy, risk layer, and execution handler. This avoids a DI-scoped engine lifetime that would conflict with the one-queue-per-run ownership model, allows each run to receive scenario-specific component instances, and enables unit tests to substitute a mock engine without instantiating the real implementation.
 
 ## Data Provider Resolution
 
@@ -341,6 +341,21 @@ Long-running research workflows report progress via `IProgress<ProgressUpdate>`.
 - `Fraction` — computed property (`CurrentStep / TotalSteps`, clamped to 0 when `TotalSteps` is zero)
 
 `IResearchWorkflow<TOptions, TResult>` exposes an overload that accepts `IProgress<ProgressUpdate>?`. The default implementation delegates to the progress-less overload, so existing callers are unaffected. Workflow implementations that support progress (parameter sweep, Monte Carlo, walk-forward, etc.) report updates as they complete each step.
+
+## IRepository\<T\> Interface
+
+`IRepository<T>` (`Core/Persistence/`) is the generic persistence abstraction. Methods:
+
+| Method | Description |
+|---|---|
+| `SaveAsync(T entity, CancellationToken)` | Persists the entity, overwriting any existing record with the same id |
+| `GetByIdAsync(string id, CancellationToken)` | Returns the entity with the given id, or null if not found |
+| `ListAsync(CancellationToken)` | Returns all persisted entities |
+| `ListRecentAsync(int count, CancellationToken)` | Returns the most recent N entities ordered by creation time descending |
+| `ListByStatusAsync(string status, CancellationToken)` | Returns entities whose `Status` property matches the given value (case-insensitive) |
+| `DeleteAsync(string id, CancellationToken)` | Deletes the entity with the given id; no-op if not found |
+
+`ListByStatusAsync` is a default interface method. Its fallback implementation loads all entities via `ListAsync` and filters in-memory using reflection on the `Status` property. Implementations with indexed storage (e.g. `SqliteIndexRepository`) should override this with a query-level filter for O(log n) performance. Entities without a `Status` property return the full unfiltered list from the fallback.
 
 ## ScenarioConfig Persistence
 

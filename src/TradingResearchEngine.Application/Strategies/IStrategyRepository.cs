@@ -46,4 +46,12 @@ public interface IStrategyRepository
     /// <param name="ct">Cancellation token.</param>
     /// <returns>All strategy versions ordered by strategy ID then version number.</returns>
     Task<IReadOnlyList<StrategyVersion>> ListAllVersionsAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Atomically increments <see cref="StrategyVersion.TotalTrialsRun"/> by 1 for the specified version.
+    /// Safe for concurrent calls from parallel sweep workers.
+    /// </summary>
+    /// <param name="strategyVersionId">The version ID to increment.</param>
+    /// <param name="ct">Cancellation token.</param>
+    Task IncrementTrialCountAsync(string strategyVersionId, CancellationToken ct = default);
 }
