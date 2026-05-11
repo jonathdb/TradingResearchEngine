@@ -3,7 +3,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using TradingResearchEngine.Application.Engine;
-using TradingResearchEngine.Application.Strategy;
+using TradingResearchEngine.Application.Strategies;
 using TradingResearchEngine.Core.Configuration;
 using TradingResearchEngine.Core.Engine;
 

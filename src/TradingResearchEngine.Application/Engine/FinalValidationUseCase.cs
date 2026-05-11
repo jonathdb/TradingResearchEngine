@@ -1,5 +1,5 @@
 using Microsoft.Extensions.Logging;
-using TradingResearchEngine.Application.Strategy;
+using TradingResearchEngine.Application.Strategies;
 using TradingResearchEngine.Core.Results;
 
 namespace TradingResearchEngine.Application.Engine;

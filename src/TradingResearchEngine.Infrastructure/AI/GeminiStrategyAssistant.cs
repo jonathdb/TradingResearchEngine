@@ -4,8 +4,8 @@ using Microsoft.Extensions.Options;
 using Mscc.GenerativeAI;
 using TradingResearchEngine.Application.AI;
 using TradingResearchEngine.Application.Configuration;
-using TradingResearchEngine.Application.Strategy;
-using TradingResearchEngine.Application.Strategy.Composite;
+using TradingResearchEngine.Application.Strategies;
+using TradingResearchEngine.Application.Strategies.Composite;
 using TradingResearchEngine.Core.Configuration;
 using TradingResearchEngine.Core.Results;
 

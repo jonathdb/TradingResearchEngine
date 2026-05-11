@@ -1,4 +1,4 @@
-using TradingResearchEngine.Application.Strategy.Composite;
+using TradingResearchEngine.Application.Strategies.Composite;
 
 namespace TradingResearchEngine.UnitTests.Strategy.Composite;
 

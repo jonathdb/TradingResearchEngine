@@ -1,5 +1,5 @@
 using TradingResearchEngine.Application.Indicators;
-using TradingResearchEngine.Application.Strategy;
+using TradingResearchEngine.Core.Configuration;
 using TradingResearchEngine.Core.DataHandling;
 using TradingResearchEngine.Core.Events;
 using TradingResearchEngine.Core.Strategy;
@@ -76,6 +76,24 @@ public sealed class StationaryMeanReversionStrategy : IStrategy
         _adfRecheckInterval = adfRecheckInterval;
         _sma = new SmaIndicator(lookback);
         _bollinger = new BollingerBandsIndicator(lookback, 1.0);
+    }
+
+    /// <inheritdoc/>
+    public void Initialize(StrategyConfig config)
+    {
+        // Parameters are set via constructor; Initialize is a lifecycle hook.
+    }
+
+    /// <inheritdoc/>
+    public void Reset()
+    {
+        _sma.Reset();
+        _bollinger.Reset();
+        _closes.Clear();
+        _barsSinceAdfCheck = 0;
+        _cachedStationarity = false;
+        _adfWarmedUp = false;
+        _position = Direction.Flat;
     }
 
     /// <inheritdoc/>

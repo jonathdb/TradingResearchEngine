@@ -1,5 +1,5 @@
 using System.Text.RegularExpressions;
-using TradingResearchEngine.Application.Strategy;
+using TradingResearchEngine.Application.Strategies;
 using Xunit;
 
 namespace TradingResearchEngine.UnitTests.Strategy;

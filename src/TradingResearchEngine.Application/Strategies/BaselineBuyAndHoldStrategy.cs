@@ -1,4 +1,4 @@
-using TradingResearchEngine.Application.Strategy;
+using TradingResearchEngine.Core.Configuration;
 using TradingResearchEngine.Core.Events;
 using TradingResearchEngine.Core.Strategy;
 
@@ -28,6 +28,20 @@ public sealed class BaselineBuyAndHoldStrategy : IStrategy
         int warmupBars = 1)
     {
         _warmupBars = warmupBars;
+    }
+
+    /// <inheritdoc/>
+    public void Initialize(StrategyConfig config)
+    {
+        if (config.StrategyParameters.TryGetValue("warmupBars", out var wb))
+            _ = wb; // Parameters are set via constructor; Initialize is a lifecycle hook for future use.
+    }
+
+    /// <inheritdoc/>
+    public void Reset()
+    {
+        _barCount = 0;
+        _entered = false;
     }
 
     /// <inheritdoc/>

@@ -4,7 +4,7 @@ using TradingResearchEngine.Application.Engine;
 using TradingResearchEngine.Application.Metrics;
 using TradingResearchEngine.Application.PropFirm;
 using TradingResearchEngine.Application.Research;
-using TradingResearchEngine.Application.Strategy;
+using TradingResearchEngine.Application.Strategies;
 using TradingResearchEngine.Core.Configuration;
 using TradingResearchEngine.Core.Engine;
 using TradingResearchEngine.Core.Persistence;
@@ -249,6 +249,40 @@ public class V4ServicesTests
         Assert.NotNull(received);
         Assert.Equal(347, received.Current);
         Assert.Equal(1000, received.Total);
+    }
+
+    [Fact]
+    public void BackgroundStudyService_CreateProgressReporter_RoutesToOnProgress()
+    {
+        using var service = new BackgroundStudyService();
+        service.RegisterStudy("study-2", "v1", StudyType.ParameterSweep, 50);
+
+        StudyProgressUpdate? received = null;
+        service.OnProgress += update => received = update;
+
+        var reporter = service.CreateProgressReporter("study-2");
+        reporter.Report(new ProgressUpdate(10, 50, "Completed 10 of 50 parameter combinations"));
+
+        Assert.NotNull(received);
+        Assert.Equal("study-2", received.StudyId);
+        Assert.Equal(10, received.Current);
+        Assert.Equal(50, received.Total);
+        Assert.Equal("Completed 10 of 50 parameter combinations", received.Label);
+    }
+
+    [Fact]
+    public void BackgroundStudyService_CreateProgressReporter_UpdatesActiveStudySnapshot()
+    {
+        using var service = new BackgroundStudyService();
+        service.RegisterStudy("study-3", "v1", StudyType.WalkForward, 8);
+
+        var reporter = service.CreateProgressReporter("study-3");
+        reporter.Report(new ProgressUpdate(5, 8, "Completed window 5 of 8"));
+
+        var active = service.GetActiveStudies();
+        Assert.Single(active);
+        Assert.Equal(5, active[0].Current);
+        Assert.Equal(8, active[0].Total);
     }
 
     // --- Helpers ---

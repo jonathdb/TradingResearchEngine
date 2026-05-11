@@ -3,8 +3,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using TradingResearchEngine.Application.Execution;
 using TradingResearchEngine.Application.Metrics;
-using TradingResearchEngine.Application.Strategy;
-using TradingResearchEngine.Application.Strategy.Composite;
+using TradingResearchEngine.Application.Strategies;
+using TradingResearchEngine.Application.Strategies.Composite;
 using TradingResearchEngine.Core.Configuration;
 using TradingResearchEngine.Core.DataHandling;
 using TradingResearchEngine.Core.Engine;
@@ -75,7 +75,8 @@ public sealed class RunScenarioUseCase
     /// <param name="config">Scenario configuration.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <param name="autoSave">When true, persists the result to the repository. Research workflows should pass false.</param>
-    public async Task<ScenarioRunResult> RunAsync(ScenarioConfig config, CancellationToken ct = default, bool autoSave = true)
+    /// <param name="strategy">Optional pre-built strategy instance. When provided, bypasses internal strategy creation (used by parallel workflows for factory isolation).</param>
+    public async Task<ScenarioRunResult> RunAsync(ScenarioConfig config, CancellationToken ct = default, bool autoSave = true, IStrategy? strategy = null)
     {
         // V5: Preflight validation replaces the old inline Validate method
         var preflight = _preflightValidator.Validate(config);
@@ -90,27 +91,31 @@ public sealed class RunScenarioUseCase
 
         // Resolve strategy type via registry using effective config
         var effectiveStrategy = config.EffectiveStrategyConfig;
-        Type strategyType;
-        try
-        {
-            strategyType = _strategyRegistry.Resolve(effectiveStrategy.StrategyType);
-        }
-        catch (StrategyNotFoundException ex)
-        {
-            return ScenarioRunResult.Failure(new[] { ex.Message });
-        }
 
-        IStrategy strategy;
-        if (string.Equals(effectiveStrategy.StrategyType, "composite", StringComparison.OrdinalIgnoreCase))
+        // Use pre-built strategy if provided (parallel workflow isolation), otherwise create one
+        if (strategy is null)
         {
-            var compositeResult = CreateCompositeStrategy(effectiveStrategy.StrategyParameters);
-            if (!compositeResult.IsSuccess)
-                return ScenarioRunResult.Failure(compositeResult.Errors!);
-            strategy = compositeResult.Strategy!;
-        }
-        else
-        {
-            strategy = CreateStrategy(strategyType, effectiveStrategy.StrategyParameters);
+            Type strategyType;
+            try
+            {
+                strategyType = _strategyRegistry.Resolve(effectiveStrategy.StrategyType);
+            }
+            catch (StrategyNotFoundException ex)
+            {
+                return ScenarioRunResult.Failure(new[] { ex.Message });
+            }
+
+            if (string.Equals(effectiveStrategy.StrategyType, "composite", StringComparison.OrdinalIgnoreCase))
+            {
+                var compositeResult = CreateCompositeStrategy(effectiveStrategy.StrategyParameters);
+                if (!compositeResult.IsSuccess)
+                    return ScenarioRunResult.Failure(compositeResult.Errors!);
+                strategy = compositeResult.Strategy!;
+            }
+            else
+            {
+                strategy = CreateStrategy(strategyType, effectiveStrategy.StrategyParameters);
+            }
         }
         var effectiveData = config.EffectiveDataConfig;
         var dataProviderFactory = _services.GetRequiredService<IDataProviderFactory>();
@@ -118,15 +123,16 @@ public sealed class RunScenarioUseCase
         var riskLayer = _services.GetRequiredService<IRiskLayer>();
         var executionHandler = _services.GetRequiredService<IExecutionHandler>();
         var engineLogger = _services.GetRequiredService<ILogger<BacktestEngine>>();
+        var loggerFactory = _services.GetRequiredService<ILoggerFactory>();
 
         // Resolve optional session calendar if configured
         var sessionCalendar = config.SessionOptions?.SessionCalendarType is not null
             ? _services.GetService<Core.Sessions.ISessionCalendar>()
             : null;
 
-        var engine = new BacktestEngine(dataProvider, strategy, riskLayer, executionHandler, engineLogger, sessionCalendar,
+        var engine = new BacktestEngine(dataProvider, strategy, riskLayer, executionHandler, engineLogger, loggerFactory, sessionCalendar,
             _services.GetService<BarDataPool>());
-        var result = await engine.RunAsync(config, ct);
+        var result = await engine.RunAsync(config, ct: ct);
 
         // V5: Collect realism advisories from SimulatedExecutionHandler
         if (executionHandler is SimulatedExecutionHandler simHandler && simHandler.RealismAdvisories.Count > 0)

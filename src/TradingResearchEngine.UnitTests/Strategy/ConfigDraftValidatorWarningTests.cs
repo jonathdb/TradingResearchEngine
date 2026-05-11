@@ -1,4 +1,4 @@
-using TradingResearchEngine.Application.Strategy;
+using TradingResearchEngine.Application.Strategies;
 using TradingResearchEngine.Core.Configuration;
 using Xunit;
 

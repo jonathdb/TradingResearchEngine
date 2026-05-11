@@ -1,6 +1,6 @@
 using TradingResearchEngine.Application.DataFiles;
 using TradingResearchEngine.Application.Engine;
-using TradingResearchEngine.Application.Strategy;
+using TradingResearchEngine.Application.Strategies;
 using TradingResearchEngine.Core.Configuration;
 using TradingResearchEngine.Core.Engine;
 

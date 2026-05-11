@@ -1,5 +1,5 @@
 using System.Text.Json;
-using TradingResearchEngine.Application.Strategy;
+using TradingResearchEngine.Application.Strategies;
 
 namespace TradingResearchEngine.Infrastructure.Persistence;
 

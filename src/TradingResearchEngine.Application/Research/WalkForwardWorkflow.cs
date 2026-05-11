@@ -2,7 +2,10 @@ using System.Collections.Concurrent;
 using TradingResearchEngine.Application.Configuration;
 using TradingResearchEngine.Application.Engine;
 using TradingResearchEngine.Application.Research.Results;
+using TradingResearchEngine.Application.Strategies;
 using TradingResearchEngine.Core.Configuration;
+using TradingResearchEngine.Core.Engine;
+using TradingResearchEngine.Core.Strategy;
 
 namespace TradingResearchEngine.Application.Research;
 
@@ -14,17 +17,30 @@ public sealed class WalkForwardWorkflow : IResearchWorkflow<WalkForwardOptions, 
 {
     private readonly ParameterSweepWorkflow _sweepWorkflow;
     private readonly RunScenarioUseCase _runScenario;
+    private readonly IStrategyFactoryProvider _factoryProvider;
 
     /// <inheritdoc cref="WalkForwardWorkflow"/>
-    public WalkForwardWorkflow(ParameterSweepWorkflow sweepWorkflow, RunScenarioUseCase runScenario)
+    public WalkForwardWorkflow(
+        ParameterSweepWorkflow sweepWorkflow,
+        RunScenarioUseCase runScenario,
+        IStrategyFactoryProvider factoryProvider)
     {
         _sweepWorkflow = sweepWorkflow;
         _runScenario = runScenario;
+        _factoryProvider = factoryProvider;
     }
 
     /// <inheritdoc/>
     public async Task<WalkForwardResult> RunAsync(
         ScenarioConfig baseConfig, WalkForwardOptions options, CancellationToken ct = default)
+    {
+        return await RunAsync(baseConfig, options, progress: null, ct);
+    }
+
+    /// <inheritdoc/>
+    public async Task<WalkForwardResult> RunAsync(
+        ScenarioConfig baseConfig, WalkForwardOptions options,
+        IProgress<ProgressUpdate>? progress, CancellationToken ct = default)
     {
         if (options.StepSize <= TimeSpan.Zero)
             throw new ArgumentException("StepSize must be positive.", nameof(options));
@@ -55,16 +71,28 @@ public sealed class WalkForwardWorkflow : IResearchWorkflow<WalkForwardOptions, 
         var maxConcurrency = Math.Max(1, Environment.ProcessorCount - 1);
         var semaphore = new SemaphoreSlim(maxConcurrency);
         var results = new ConcurrentBag<WalkForwardWindow>();
+        int completedWindows = 0;
+        int totalWindows = windowSpecs.Count;
+
+        // Resolve the strategy factory once — thread-safe for concurrent Create() calls
+        var effectiveStrategy = baseConfig.EffectiveStrategyConfig;
+        var factory = _factoryProvider.GetFactory(effectiveStrategy.StrategyType);
 
         await Parallel.ForEachAsync(windowSpecs, new ParallelOptions { CancellationToken = ct }, async (spec, token) =>
         {
             await semaphore.WaitAsync(token);
             try
             {
-                var window = await RunWindowAsync(baseConfig, spec, token);
+                var window = await RunWindowAsync(baseConfig, spec, factory, token);
                 if (window is not null) results.Add(window);
             }
-            finally { semaphore.Release(); }
+            finally
+            {
+                semaphore.Release();
+                int current = Interlocked.Increment(ref completedWindows);
+                progress?.Report(new ProgressUpdate(current, totalWindows,
+                    $"Completed window {current} of {totalWindows}"));
+            }
         });
 
         // V6: Sort by window index after parallel collection
@@ -107,7 +135,7 @@ public sealed class WalkForwardWorkflow : IResearchWorkflow<WalkForwardOptions, 
 
     /// <summary>Executes a single walk-forward window (IS sweep + OOS validation).</summary>
     private async Task<WalkForwardWindow?> RunWindowAsync(
-        ScenarioConfig baseConfig, WindowSpec spec, CancellationToken ct)
+        ScenarioConfig baseConfig, WindowSpec spec, IStrategyFactory factory, CancellationToken ct)
     {
         // Build in-sample config with restricted date range
         var isConfig = baseConfig with
@@ -130,7 +158,16 @@ public sealed class WalkForwardWorkflow : IResearchWorkflow<WalkForwardOptions, 
             StrategyParameters = new Dictionary<string, object>(bestParams),
             DataProviderOptions = WithDateRange(baseConfig.DataProviderOptions, spec.OosStart, spec.OosEnd)
         };
-        var oosRunResult = await _runScenario.RunAsync(oosConfig, ct, autoSave: false);
+
+        // Create an isolated strategy instance for this OOS iteration via factory
+        var oosStrategyConfig = oosConfig.EffectiveStrategyConfig;
+        var isolatedStrategy = factory.Create(oosStrategyConfig);
+
+        // Reset strategy state before OOS window to ensure clean indicator state
+        isolatedStrategy.Reset();
+        isolatedStrategy.Initialize(oosStrategyConfig);
+
+        var oosRunResult = await _runScenario.RunAsync(oosConfig, ct, autoSave: false, strategy: isolatedStrategy);
 
         if (oosRunResult.IsSuccess && oosRunResult.Result is not null)
         {

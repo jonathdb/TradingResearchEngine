@@ -1,7 +1,7 @@
 using FsCheck;
 using FsCheck.Fluent;
 using FsCheck.Xunit;
-using TradingResearchEngine.Application.Strategy.Composite.Conditions;
+using TradingResearchEngine.Application.Strategies.Composite.Conditions;
 
 namespace TradingResearchEngine.UnitTests.Strategy.Composite;
 

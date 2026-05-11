@@ -2,6 +2,7 @@ using TradingResearchEngine.Application.Configuration;
 using TradingResearchEngine.Application.Engine;
 using TradingResearchEngine.Application.Research.Results;
 using TradingResearchEngine.Core.Configuration;
+using TradingResearchEngine.Core.Engine;
 using TradingResearchEngine.Core.Results;
 
 namespace TradingResearchEngine.Application.Research;
@@ -32,6 +33,23 @@ public sealed class MonteCarloWorkflow : IResearchWorkflow<MonteCarloOptions, Mo
         return RunSimulation(runResult.Result, options, ct);
     }
 
+    /// <inheritdoc/>
+    public async Task<MonteCarloResult> RunAsync(
+        ScenarioConfig baseConfig, MonteCarloOptions options,
+        IProgress<ProgressUpdate>? progress, CancellationToken ct = default)
+    {
+        if (options.SimulationCount < 1)
+            throw new ArgumentException("SimulationCount must be >= 1.", nameof(options));
+
+        var runResult = await _runScenario.RunAsync(baseConfig, ct, autoSave: false);
+        if (!runResult.IsSuccess || runResult.Result is null)
+            throw new InvalidOperationException(
+                "MonteCarloWorkflow: base scenario run failed. "
+                + string.Join("; ", runResult.Errors ?? Array.Empty<string>()));
+
+        return RunSimulation(runResult.Result, options, ct, progress);
+    }
+
     /// <summary>Runs Monte Carlo simulation on an existing backtest result's trade sequence.</summary>
     public MonteCarloResult RunAsync(
         BacktestResult sourceResult, MonteCarloOptions options, CancellationToken ct = default)
@@ -41,8 +59,19 @@ public sealed class MonteCarloWorkflow : IResearchWorkflow<MonteCarloOptions, Mo
         return RunSimulation(sourceResult, options, ct);
     }
 
+    /// <summary>Runs Monte Carlo simulation on an existing backtest result's trade sequence with progress reporting.</summary>
+    public MonteCarloResult RunAsync(
+        BacktestResult sourceResult, MonteCarloOptions options,
+        CancellationToken ct, IProgress<ProgressUpdate>? progress)
+    {
+        if (options.SimulationCount < 1)
+            throw new ArgumentException("SimulationCount must be >= 1.", nameof(options));
+        return RunSimulation(sourceResult, options, ct, progress);
+    }
+
     private static MonteCarloResult RunSimulation(
-        BacktestResult sourceResult, MonteCarloOptions options, CancellationToken ct)
+        BacktestResult sourceResult, MonteCarloOptions options, CancellationToken ct,
+        IProgress<ProgressUpdate>? progress = null)
     {
         var trades = sourceResult.Trades;
         if (trades.Count == 0)
@@ -72,9 +101,19 @@ public sealed class MonteCarloWorkflow : IResearchWorkflow<MonteCarloOptions, Mo
         // Clamp BlockSize to tradeCount when it exceeds the number of trades
         int effectiveBlockSize = Math.Min(Math.Max(options.BlockSize, 1), tradeCount);
 
+        // Progress reporting interval: emit ~100 updates per run
+        int progressInterval = Math.Max(1, options.SimulationCount / 100);
+
         for (int sim = 0; sim < options.SimulationCount; sim++)
         {
             ct.ThrowIfCancellationRequested();
+
+            // Emit progress at regular intervals
+            if (progress is not null && sim % progressInterval == 0)
+            {
+                progress.Report(new ProgressUpdate(sim, options.SimulationCount,
+                    $"Simulating path {sim + 1} of {options.SimulationCount}"));
+            }
 
             decimal equity = sourceResult.StartEquity;
             decimal peak = equity;
@@ -152,6 +191,10 @@ public sealed class MonteCarloWorkflow : IResearchWorkflow<MonteCarloOptions, Mo
         decimal medianDd = maxDrawdowns[Math.Max(0, (int)(maxDrawdowns.Count * 0.50) - 1)];
         int p90ConsecLosses = maxConsecLosses[Math.Min((int)(count * 0.90), count - 1)];
         int p90ConsecWins = maxConsecWins[Math.Min((int)(count * 0.90), count - 1)];
+
+        // Final progress report
+        progress?.Report(new ProgressUpdate(options.SimulationCount, options.SimulationCount,
+            $"Completed {options.SimulationCount} simulations"));
 
         return new MonteCarloResult(p10, p50, p90, ruinProb, medianDd, endEquities,
             p90ConsecLosses, p90ConsecWins, allPaths, bands);

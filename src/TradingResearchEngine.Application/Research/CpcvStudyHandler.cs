@@ -1,6 +1,7 @@
 using TradingResearchEngine.Application.Engine;
 using TradingResearchEngine.Application.Research.Results;
 using TradingResearchEngine.Core.Configuration;
+using TradingResearchEngine.Core.Engine;
 
 namespace TradingResearchEngine.Application.Research;
 
@@ -22,6 +23,14 @@ public sealed class CpcvStudyHandler : IResearchWorkflow<CpcvOptions, CpcvResult
     /// <inheritdoc/>
     public async Task<CpcvResult> RunAsync(
         ScenarioConfig baseConfig, CpcvOptions options, CancellationToken ct = default)
+    {
+        return await RunAsync(baseConfig, options, progress: null, ct);
+    }
+
+    /// <inheritdoc/>
+    public async Task<CpcvResult> RunAsync(
+        ScenarioConfig baseConfig, CpcvOptions options,
+        IProgress<ProgressUpdate>? progress, CancellationToken ct = default)
     {
         ValidateOptions(options);
 
@@ -60,6 +69,8 @@ public sealed class CpcvStudyHandler : IResearchWorkflow<CpcvOptions, CpcvResult
         var oosDistribution = new List<decimal>();
         var isDistribution = new List<decimal>();
         int overfitCount = 0;
+        int completedCombinations = 0;
+        int totalCombinations = combinations.Count;
 
         foreach (var testIndices in combinations)
         {
@@ -85,6 +96,10 @@ public sealed class CpcvStudyHandler : IResearchWorkflow<CpcvOptions, CpcvResult
             // Per-combination comparison: OOS vs that same combination's IS
             if (comboOosSharpe < comboIsSharpe)
                 overfitCount++;
+
+            completedCombinations++;
+            progress?.Report(new ProgressUpdate(completedCombinations, totalCombinations,
+                $"Completed combination {completedCombinations} of {totalCombinations}"));
         }
 
         // Step 4: Compute summary statistics

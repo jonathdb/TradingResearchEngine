@@ -1,5 +1,5 @@
 using TradingResearchEngine.Application.PropFirm;
-using TradingResearchEngine.Application.Strategy;
+using TradingResearchEngine.Application.Strategies;
 using TradingResearchEngine.Core.Results;
 
 namespace TradingResearchEngine.Application.Research;

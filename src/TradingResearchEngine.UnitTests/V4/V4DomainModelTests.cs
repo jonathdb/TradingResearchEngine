@@ -1,7 +1,7 @@
 using System.Text.Json;
 using TradingResearchEngine.Application.DataFiles;
 using TradingResearchEngine.Application.Research;
-using TradingResearchEngine.Application.Strategy;
+using TradingResearchEngine.Application.Strategies;
 using TradingResearchEngine.Core.Configuration;
 using TradingResearchEngine.Core.Engine;
 

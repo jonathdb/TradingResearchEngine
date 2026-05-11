@@ -1,7 +1,7 @@
 @rendermode InteractiveServer
 @using Plotly.Blazor
 @using Plotly.Blazor.Traces
-@using Plotly.Blazor.Traces.HistogramLib
+@using TradingResearchEngine.Application.Helpers
 
 @if (_canRender)
 {
@@ -12,6 +12,8 @@
 @code {
     /// <summary>OOS Sharpe distribution values from CpcvResult.</summary>
     [Parameter] public IReadOnlyList<decimal> OosSharpeDistribution { get; set; } = Array.Empty<decimal>();
+
+    private const int BinCount = 20;
 
     private PlotlyChart? _chart;
     private Config _config = new() { Responsive = true, DisplayModeBar = Plotly.Blazor.ConfigLib.DisplayModeBarEnum.Hover };
@@ -33,31 +35,50 @@
 
     private void BuildChart()
     {
-        var values = OosSharpeDistribution.Select(v => (object)(double)v).ToList();
-
-        // Color bars by Sharpe value ranges: red < 0, yellow 0-1, green >= 1
-        var colors = OosSharpeDistribution.Select(v => v switch
+        var bins = ChartComputationHelpers.BinValues(OosSharpeDistribution.ToList(), BinCount);
+        if (bins.Count == 0)
         {
-            < 0m => "#EF5350",
-            < 1m => "#FFC107",
-            _ => "#66BB6A"
+            _canRender = false;
+            return;
+        }
+
+        // Compute bin midpoints for X-axis labels and coloring
+        var midpoints = bins.Select(b => (object)(double)((b.LowerBound + b.UpperBound) / 2m)).ToList();
+        var counts = bins.Select(b => (object)b.Count).ToList();
+
+        // Color bars by midpoint Sharpe value: red < 0, yellow 0-1, green >= 1
+        var colors = bins.Select(b =>
+        {
+            var mid = (b.LowerBound + b.UpperBound) / 2m;
+            return mid switch
+            {
+                < 0m => "rgba(239,83,80,0.7)",   // red
+                < 1m => "rgba(255,193,7,0.7)",    // yellow
+                _ => "rgba(102,187,106,0.7)"      // green
+            };
         }).Cast<object>().ToList();
 
         _data = new List<ITrace>
         {
-            new Histogram
+            new Bar
             {
-                X = values,
+                X = midpoints,
+                Y = counts,
                 Name = "OOS Sharpe",
+                Marker = new Plotly.Blazor.Traces.BarLib.Marker { Color = colors as IList<object> },
+                HoverTemplate = "Sharpe: %{x:.2f}<br>Count: %{y}<extra></extra>"
             }
         };
 
-        var median = (double)OosSharpeDistribution.OrderBy(v => v).ElementAt(OosSharpeDistribution.Count / 2);
+        // Compute median from the raw distribution
+        var sorted = OosSharpeDistribution.OrderBy(v => v).ToList();
+        var median = (double)sorted[sorted.Count / 2];
 
         _layout = new Layout
         {
             Title = new Plotly.Blazor.LayoutLib.Title { Text = "CPCV OOS Sharpe Distribution" },
             Margin = new Plotly.Blazor.LayoutLib.Margin { L = 60, R = 40, T = 50, B = 50 },
+            BarGap = 0.05m,
             XAxis = new[] { new Plotly.Blazor.LayoutLib.XAxis
             {
                 Title = new Plotly.Blazor.LayoutLib.XAxisLib.Title { Text = "OOS Sharpe Ratio" }
@@ -68,6 +89,7 @@
             } }.ToList(),
             Shapes = new List<Plotly.Blazor.LayoutLib.Shape>
             {
+                // Vertical dashed line at zero
                 new Plotly.Blazor.LayoutLib.Shape
                 {
                     Type = Plotly.Blazor.LayoutLib.ShapeLib.TypeEnum.Line,
@@ -83,6 +105,7 @@
                         Dash = "dash"
                     }
                 },
+                // Vertical dashed line at median Sharpe
                 new Plotly.Blazor.LayoutLib.Shape
                 {
                     Type = Plotly.Blazor.LayoutLib.ShapeLib.TypeEnum.Line,

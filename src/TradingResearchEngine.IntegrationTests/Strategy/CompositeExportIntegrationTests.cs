@@ -1,5 +1,5 @@
-using TradingResearchEngine.Application.Strategy;
-using TradingResearchEngine.Application.Strategy.Composite;
+using TradingResearchEngine.Application.Strategies;
+using TradingResearchEngine.Application.Strategies.Composite;
 using TradingResearchEngine.Infrastructure.Export;
 
 namespace TradingResearchEngine.IntegrationTests.Strategy;

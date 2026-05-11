@@ -1,10 +1,12 @@
 @page "/research/study/{StudyId}"
 @using TradingResearchEngine.Web.Components.Studies
-@implements IDisposable
+@implements IAsyncDisposable
 @inject TradingResearchEngine.Application.Research.IStudyRepository StudyRepo
 @inject IStrategyRepository StrategyRepo
 @inject TradingResearchEngine.Application.Research.BackgroundStudyService StudyService
 @inject TradingResearchEngine.Application.Research.StudyInterpretationService InterpretationService
+@inject TradingResearchEngine.Application.Research.IRobustnessAdvisoryService RobustnessService
+@inject TradingResearchEngine.Core.Persistence.IRepository<BacktestResult> ResultRepo
 @inject NavigationManager Nav
 
 <PageTitle>Study Detail — TradingResearchEngine</PageTitle>
@@ -61,6 +63,19 @@ else
             </MudPaper>
         </MudItem>
     </MudGrid>
+
+    @* Robustness warning chips *@
+    @if (_warnings.Count > 0)
+    {
+        <MudStack Row="true" Spacing="1" Wrap="Wrap.Wrap" Class="mb-4">
+            @foreach (var w in _warnings)
+            {
+                <MudTooltip Text="@TradingResearchEngine.Application.Research.RobustnessWarningCatalog.GetExplanation(w)">
+                    <MudChip T="string" Size="MudBlazor.Size.Small" Color="Color.Warning">@w</MudChip>
+                </MudTooltip>
+            }
+        </MudStack>
+    }
 
     @if (_study.Status == TradingResearchEngine.Application.Research.StudyStatus.Failed && _study.ErrorSummary is not null)
     {
@@ -137,6 +152,7 @@ else
     private int _progressCurrent;
     private int _progressTotal;
     private string _progressLabel = "";
+    private IReadOnlyList<string> _warnings = Array.Empty<string>();
 
     protected override async Task OnInitializedAsync()
     {
@@ -156,6 +172,16 @@ else
                 StudyService.OnProgress += HandleProgress;
                 StudyService.OnCompleted += HandleCompleted;
             }
+
+            // Load robustness warnings from source run
+            if (_study.SourceRunId is not null)
+            {
+                var sourceRun = await ResultRepo.GetByIdAsync(_study.SourceRunId);
+                if (sourceRun is not null)
+                {
+                    _warnings = RobustnessService.GetWarnings(sourceRun);
+                }
+            }
         }
         _loading = false;
     }
@@ -165,14 +191,14 @@ else
         if (update.StudyId != StudyId) return;
         _progressCurrent = update.Current;
         _progressTotal = update.Total;
-        _progressLabel = update.Label;
-        InvokeAsync(StateHasChanged);
+        _progressLabel = $"{update.Current} of {update.Total} simulations complete";
+        _ = InvokeAsync(StateHasChanged);
     }
 
     private void HandleCompleted(TradingResearchEngine.Application.Research.StudyCompletionUpdate update)
     {
         if (update.StudyId != StudyId) return;
-        InvokeAsync(async () =>
+        _ = InvokeAsync(async () =>
         {
             _study = await StudyRepo.GetAsync(StudyId);
             _progressCurrent = 0;
@@ -181,10 +207,11 @@ else
         });
     }
 
-    public void Dispose()
+    public ValueTask DisposeAsync()
     {
         StudyService.OnProgress -= HandleProgress;
         StudyService.OnCompleted -= HandleCompleted;
+        return ValueTask.CompletedTask;
     }
 
     private string GetInterpretation()

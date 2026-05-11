@@ -25,6 +25,9 @@ namespace TradingResearchEngine.Application.Research;
 /// </remarks>
 public sealed class JobExecutor : IDisposable
 {
+    /// <summary>Number of hours after completion before a job is eligible for cleanup.</summary>
+    private const int JobRetentionHours = 24;
+
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _active = new();
     private readonly IRepository<BacktestJob> _jobRepo;
     private readonly ILogger<JobExecutor> _logger;
@@ -231,6 +234,85 @@ public sealed class JobExecutor : IDisposable
     /// <returns>The cancellation token for the job.</returns>
     public CancellationToken GetCancellationToken(string jobId)
         => _active.TryGetValue(jobId, out var cts) ? cts.Token : CancellationToken.None;
+
+    /// <summary>
+    /// Enqueues a new backtest job for background execution. Returns the job identifier
+    /// immediately without blocking the caller (e.g. the Blazor SignalR circuit).
+    /// This is the primary entry point used by the Strategy Builder UI.
+    /// </summary>
+    /// <param name="jobType">The type of execution to perform.</param>
+    /// <param name="config">The scenario configuration to execute.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The unique job identifier.</returns>
+    public Task<string> EnqueueAsync(JobType jobType, ScenarioConfig config, CancellationToken ct = default)
+        => SubmitAsync(jobType, config, ct);
+
+    /// <summary>
+    /// Returns the current <see cref="JobStatus"/> for the specified job,
+    /// or <c>null</c> if the job does not exist.
+    /// </summary>
+    /// <param name="jobId">The job identifier.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The job status, or <c>null</c> if not found.</returns>
+    public async Task<JobStatus?> GetStatusAsync(string jobId, CancellationToken ct = default)
+    {
+        var job = await _jobRepo.GetByIdAsync(jobId, ct);
+        return job?.Status;
+    }
+
+    /// <summary>
+    /// Returns the result identifier for a completed job, or <c>null</c> if the job
+    /// has not completed or does not exist.
+    /// </summary>
+    /// <param name="jobId">The job identifier.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The result identifier, or <c>null</c>.</returns>
+    public async Task<string?> GetResultIdAsync(string jobId, CancellationToken ct = default)
+    {
+        var job = await _jobRepo.GetByIdAsync(jobId, ct);
+        return job?.ResultId;
+    }
+
+    /// <summary>
+    /// Returns the error message for a failed job, or <c>null</c> if the job
+    /// has not failed or does not exist.
+    /// </summary>
+    /// <param name="jobId">The job identifier.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The error message, or <c>null</c>.</returns>
+    public async Task<string?> GetErrorAsync(string jobId, CancellationToken ct = default)
+    {
+        var job = await _jobRepo.GetByIdAsync(jobId, ct);
+        return job?.ErrorMessage;
+    }
+
+    /// <summary>
+    /// Removes all persisted jobs that completed (or failed) more than 24 hours ago.
+    /// Called periodically to prevent unbounded growth of the job store.
+    /// </summary>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The number of jobs removed.</returns>
+    public async Task<int> CleanupExpiredJobsAsync(CancellationToken ct = default)
+    {
+        var cutoff = DateTimeOffset.UtcNow.AddHours(-JobRetentionHours);
+        var allJobs = await _jobRepo.ListAsync(ct);
+        var expired = allJobs
+            .Where(j => j.CompletedAt.HasValue && j.CompletedAt.Value < cutoff)
+            .ToList();
+
+        foreach (var job in expired)
+        {
+            await _jobRepo.DeleteAsync(job.JobId, ct);
+            _logger.LogDebug("Cleaned up expired job {JobId} (completed at {CompletedAt})",
+                job.JobId, job.CompletedAt);
+        }
+
+        if (expired.Count > 0)
+            _logger.LogInformation("Cleaned up {Count} expired jobs older than {Hours}h",
+                expired.Count, JobRetentionHours);
+
+        return expired.Count;
+    }
 
     /// <inheritdoc/>
     public void Dispose()

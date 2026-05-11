@@ -5,9 +5,10 @@ namespace TradingResearchEngine.UnitTests.Indicators;
 public class IndicatorRegistryTests
 {
     [Fact]
-    public void All_ReturnsExactlySevenDescriptors()
+    public void All_ReturnsAtLeastSevenBuiltInDescriptors()
     {
-        Assert.Equal(7, IndicatorRegistry.All.Count);
+        Assert.True(IndicatorRegistry.All.Count >= 7,
+            $"Expected at least 7 built-in descriptors, got {IndicatorRegistry.All.Count}");
     }
 
     [Theory]
@@ -45,10 +46,14 @@ public class IndicatorRegistryTests
     }
 
     [Fact]
-    public void AllDescriptors_HaveAtLeastOneParameter()
+    public void BuiltInDescriptors_HaveAtLeastOneParameter()
     {
-        foreach (var descriptor in IndicatorRegistry.All)
+        // Built-in indicators (first 7) all have at least one parameter.
+        // Catalog-registered indicators may have zero parameters (e.g. OBV, ADL).
+        var builtIn = new[] { "SMA", "EMA", "ATR", "RSI", "BollingerBands", "ZScore", "DonchianChannel" };
+        foreach (var name in builtIn)
         {
+            var descriptor = IndicatorRegistry.All.First(d => d.Name == name);
             Assert.True(descriptor.Parameters.Count >= 1,
                 $"Descriptor '{descriptor.Name}' has no parameters.");
         }

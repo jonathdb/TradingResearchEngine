@@ -22,43 +22,75 @@ namespace TradingResearchEngine.Core.Engine;
 public sealed class BacktestEngine : IBacktestEngine
 {
     private readonly IDataProvider _dataProvider;
-    private readonly IStrategy _strategy;
+    private readonly IStrategyFactory _strategyFactory;
     private readonly IRiskLayer _riskLayer;
     private readonly IExecutionHandler _executionHandler;
     private readonly ISessionCalendar? _sessionCalendar;
     private readonly BarDataPool? _barDataPool;
     private readonly ILogger<BacktestEngine> _logger;
+    private readonly ILoggerFactory _loggerFactory;
 
-    /// <summary>Initialises the engine with all required pipeline components.</summary>
+    /// <summary>Initialises the engine with a strategy factory for parallel-safe instance creation.</summary>
+    public BacktestEngine(
+        IDataProvider dataProvider,
+        IStrategyFactory strategyFactory,
+        IRiskLayer riskLayer,
+        IExecutionHandler executionHandler,
+        ILogger<BacktestEngine> logger,
+        ILoggerFactory loggerFactory,
+        ISessionCalendar? sessionCalendar = null,
+        BarDataPool? barDataPool = null)
+    {
+        _dataProvider = dataProvider;
+        _strategyFactory = strategyFactory;
+        _riskLayer = riskLayer;
+        _executionHandler = executionHandler;
+        _logger = logger;
+        _loggerFactory = loggerFactory;
+        _sessionCalendar = sessionCalendar;
+        _barDataPool = barDataPool;
+    }
+
+    /// <summary>
+    /// Backward-compatible constructor accepting a pre-built <see cref="IStrategy"/> instance.
+    /// Wraps the strategy in a <see cref="SingletonStrategyFactory"/> adapter.
+    /// </summary>
     public BacktestEngine(
         IDataProvider dataProvider,
         IStrategy strategy,
         IRiskLayer riskLayer,
         IExecutionHandler executionHandler,
         ILogger<BacktestEngine> logger,
+        ILoggerFactory? loggerFactory = null,
         ISessionCalendar? sessionCalendar = null,
         BarDataPool? barDataPool = null)
+        : this(dataProvider, new SingletonStrategyFactory(strategy), riskLayer, executionHandler, logger,
+            loggerFactory ?? Microsoft.Extensions.Logging.Abstractions.NullLoggerFactory.Instance, sessionCalendar, barDataPool)
     {
-        _dataProvider = dataProvider;
-        _strategy = strategy;
-        _riskLayer = riskLayer;
-        _executionHandler = executionHandler;
-        _logger = logger;
-        _sessionCalendar = sessionCalendar;
-        _barDataPool = barDataPool;
     }
 
     /// <inheritdoc/>
-    public async Task<BacktestResult> RunAsync(ScenarioConfig config, CancellationToken ct = default)
+    public async Task<BacktestResult> RunAsync(ScenarioConfig config, IProgress<ProgressUpdate>? progress = null, CancellationToken ct = default)
     {
         var sw = Stopwatch.StartNew();
-        var loggerFactory = Microsoft.Extensions.Logging.Abstractions.NullLoggerFactory.Instance;
         var portfolio = new Portfolio.Portfolio(config.InitialCash,
-            loggerFactory.CreateLogger<Portfolio.Portfolio>());
+            _loggerFactory.CreateLogger<Portfolio.Portfolio>());
         var queue = new EventQueue();
-        var dataHandler = new DataHandler(_dataProvider, config, loggerFactory.CreateLogger<DataHandler>(), _barDataPool);
+        var dataHandler = new DataHandler(_dataProvider, config, _loggerFactory.CreateLogger<DataHandler>(), _barDataPool);
         var state = new RunState(config.EffectiveFillMode, config.EnableEventTrace,
             config.EffectiveExecutionConfig.FillDelayBars);
+
+        // Create an isolated strategy instance from the factory using the scenario's strategy config
+        var strategy = _strategyFactory.Create(config.EffectiveStrategyConfig);
+
+        // Initialize the strategy with its configuration before the event loop
+        strategy.Initialize(config.EffectiveStrategyConfig);
+
+        int barsProcessed = 0;
+        // Estimate ~100 progress updates per run using Math.Max(1, estimatedTotalBars / 100).
+        // Since totalBars is unknown from streaming data, estimate from BarsPerYear * 5 (typical 5-year run).
+        int estimatedTotalBars = config.BarsPerYear * 5;
+        int progressInterval = Math.Max(1, estimatedTotalBars / 100);
 
         try
         {
@@ -70,7 +102,13 @@ public sealed class BacktestEngine : IBacktestEngine
                 {
                     if (evt is MarketDataEvent mde)
                     {
-                        ProcessBar(mde, queue, portfolio, state);
+                        ProcessBar(mde, queue, portfolio, state, strategy);
+                        barsProcessed++;
+
+                        if (progress is not null && barsProcessed % progressInterval == 0)
+                        {
+                            progress.Report(new ProgressUpdate(barsProcessed, 0, "Processing bars..."));
+                        }
                     }
                     else
                     {
@@ -96,6 +134,12 @@ public sealed class BacktestEngine : IBacktestEngine
             state.Status = BacktestStatus.Failed;
         }
 
+        // Emit final progress with actual total bars known
+        if (progress is not null)
+        {
+            progress.Report(new ProgressUpdate(barsProcessed, barsProcessed, "Completed"));
+        }
+
         sw.Stop();
         return BuildResult(config, portfolio, state, sw.ElapsedMilliseconds, dataHandler.MalformedRecordCount);
     }
@@ -107,9 +151,11 @@ public sealed class BacktestEngine : IBacktestEngine
     /// 3. Pass new bar to strategy
     /// 4. New signals → risk layer → approved orders enter pending queue
     /// </summary>
-    private void ProcessBar(MarketDataEvent mde, IEventQueue queue, Portfolio.Portfolio portfolio, RunState state)
+    private void ProcessBar(MarketDataEvent mde, IEventQueue queue, Portfolio.Portfolio portfolio, RunState state, IStrategy strategy)
     {
         state.LastMarketEvent = mde;
+        if (mde is BarEvent barEvt)
+            state.LastBarInterval = barEvt.Interval;
 
         // Process fill delay queue: decrement bars remaining, promote to pending when ready
         if (state.DelayQueue.Count > 0)
@@ -150,7 +196,7 @@ public sealed class BacktestEngine : IBacktestEngine
         // Step 3: Pass to strategy
         try
         {
-            var outputs = _strategy.OnMarketData(mde);
+            var outputs = strategy.OnMarketData(mde);
             foreach (var output in outputs)
                 queue.Enqueue(output);
         }
@@ -257,16 +303,18 @@ public sealed class BacktestEngine : IBacktestEngine
     /// Market orders fill at the new bar's Open price.
     /// Limit/Stop orders use intra-bar fill logic.
     /// Expired orders are dropped.
+    /// Uses a pre-allocated swap buffer to avoid per-bar List allocations.
     /// </summary>
     private void ProcessPendingOrders(MarketDataEvent mde, Portfolio.Portfolio portfolio, RunState state)
     {
         if (state.PendingOrders.Count == 0) return;
 
-        var remaining = new List<OrderEvent>();
+        // Use the pre-allocated swap buffer as the "remaining" list — zero allocations per bar
+        var remaining = state.GetSwapBuffer();
 
         foreach (var order in state.PendingOrders)
         {
-            var result = TryFillOrder(order, mde);
+            var result = TryFillOrder(order, mde, state);
 
             if (result is not null && result.Fill is not null &&
                 result.Outcome is ExecutionOutcome.Filled or ExecutionOutcome.PartiallyFilled)
@@ -287,38 +335,41 @@ public sealed class BacktestEngine : IBacktestEngine
             else
             {
                 // Unfilled — check expiry (MaxBarsPending: 0 = GTC, >0 = decrement and expire at 0)
-                if (order.MaxBarsPending > 0)
+                // Use TriggeredOrder from result if present to preserve stop-triggered state
+                var orderToRequeue = result?.TriggeredOrder ?? order;
+                if (orderToRequeue.MaxBarsPending > 0)
                 {
-                    int barsLeft = order.MaxBarsPending - 1;
+                    int barsLeft = orderToRequeue.MaxBarsPending - 1;
                     if (barsLeft <= 0)
                     {
-                        _logger.LogInformation("OrderExpired: {Symbol} {OrderType} order expired after MaxBarsPending.", order.Symbol, order.OrderType);
+                        _logger.LogInformation("OrderExpired: {Symbol} {OrderType} order expired after MaxBarsPending.", orderToRequeue.Symbol, orderToRequeue.OrderType);
                         continue;
                     }
-                    remaining.Add(order with { MaxBarsPending = barsLeft });
+                    remaining.Add(orderToRequeue with { MaxBarsPending = barsLeft });
                 }
                 else
                 {
-                    remaining.Add(order); // GTC — keep
+                    remaining.Add(orderToRequeue); // GTC — keep
                 }
             }
         }
 
-        state.PendingOrders.Clear();
-        state.PendingOrders.AddRange(remaining);
+        // Swap references: PendingOrders now points to the populated "remaining" buffer,
+        // and the old PendingOrders list becomes the swap buffer (cleared for next use)
+        state.SwapPendingBuffers();
     }
 
     /// <summary>Attempts to fill an order against the current market data. Returns null if no fill attempt possible.</summary>
-    private ExecutionResult? TryFillOrder(OrderEvent order, MarketDataEvent mde)
+    private ExecutionResult? TryFillOrder(OrderEvent order, MarketDataEvent mde, RunState state)
     {
         if (mde is BarEvent bar)
         {
             return order.OrderType switch
             {
                 OrderType.Market => FillMarketAtOpen(order, bar),
-                OrderType.Limit => TryFillLimit(order, bar),
+                OrderType.Limit => TryFillLimit(order, bar, state),
                 OrderType.StopMarket => TryFillStopMarket(order, bar),
-                OrderType.StopLimit => TryFillStopLimit(order, bar),
+                OrderType.StopLimit => TryFillStopLimit(order, bar, state),
                 _ => null
             };
         }
@@ -340,17 +391,17 @@ public sealed class BacktestEngine : IBacktestEngine
     /// Short sell: fill if bar.High &gt;= LimitPrice (price rises to short entry limit).
     /// Flat exit: fill if bar.High &gt;= LimitPrice (price rises to sell limit).
     /// </summary>
-    private ExecutionResult? TryFillLimit(OrderEvent order, BarEvent bar)
+    private ExecutionResult? TryFillLimit(OrderEvent order, BarEvent bar, RunState state)
     {
         if (!order.LimitPrice.HasValue) return null;
         decimal limitPrice = order.LimitPrice.Value;
 
         if (order.Direction == Direction.Long && bar.Low <= limitPrice)
-            return CreateFillAtPrice(order, limitPrice, bar.Timestamp);
+            return CreateFillAtPrice(order, limitPrice, bar.Timestamp, state);
         if (order.Direction == Direction.Short && bar.High >= limitPrice)
-            return CreateFillAtPrice(order, limitPrice, bar.Timestamp);
+            return CreateFillAtPrice(order, limitPrice, bar.Timestamp, state);
         if (order.Direction == Direction.Flat && bar.High >= limitPrice)
-            return CreateFillAtPrice(order, limitPrice, bar.Timestamp);
+            return CreateFillAtPrice(order, limitPrice, bar.Timestamp, state);
         return null;
     }
 
@@ -390,7 +441,7 @@ public sealed class BacktestEngine : IBacktestEngine
     /// Flat: trigger if bar.Low &lt;= StopPrice, then fill if bar.High &gt;= LimitPrice.
     /// If triggered but not filled, converts to pending limit order.
     /// </summary>
-    private ExecutionResult? TryFillStopLimit(OrderEvent order, BarEvent bar)
+    private ExecutionResult? TryFillStopLimit(OrderEvent order, BarEvent bar, RunState state)
     {
         if (!order.StopPrice.HasValue || !order.LimitPrice.HasValue) return null;
 
@@ -411,20 +462,22 @@ public sealed class BacktestEngine : IBacktestEngine
         if (!triggered) return null;
 
         if (order.Direction == Direction.Long && bar.Low <= limitPrice)
-            return CreateFillAtPrice(order, limitPrice, bar.Timestamp);
+            return CreateFillAtPrice(order, limitPrice, bar.Timestamp, state);
         if (order.Direction == Direction.Short && bar.High >= limitPrice)
-            return CreateFillAtPrice(order, limitPrice, bar.Timestamp);
+            return CreateFillAtPrice(order, limitPrice, bar.Timestamp, state);
         if (order.Direction == Direction.Flat && bar.High >= limitPrice)
-            return CreateFillAtPrice(order, limitPrice, bar.Timestamp);
+            return CreateFillAtPrice(order, limitPrice, bar.Timestamp, state);
 
-        // Triggered but not filled — return Unfilled so caller keeps it in queue
-        return new ExecutionResult(ExecutionOutcome.Unfilled, null);
+        // Triggered but not filled — return Unfilled with TriggeredOrder carrying StopTriggered = true
+        return new ExecutionResult(ExecutionOutcome.Unfilled, null,
+            TriggeredOrder: order with { StopTriggered = true });
     }
 
     /// <summary>Creates a fill at a specific price using the execution handler for commission calculation.</summary>
-    private ExecutionResult? CreateFillAtPrice(OrderEvent order, decimal fillPrice, DateTimeOffset timestamp)
+    private ExecutionResult? CreateFillAtPrice(OrderEvent order, decimal fillPrice, DateTimeOffset timestamp, RunState state)
     {
-        var syntheticBar = new BarEvent(order.Symbol, "1D", fillPrice, fillPrice, fillPrice, fillPrice, 0m, timestamp);
+        string timeframe = state.LastBarInterval ?? "1D";
+        var syntheticBar = new BarEvent(order.Symbol, timeframe, fillPrice, fillPrice, fillPrice, fillPrice, 0m, timestamp);
         var result = _executionHandler.Execute(order, syntheticBar);
 
         if (result.Fill is null) return null;
@@ -444,13 +497,37 @@ public sealed class BacktestEngine : IBacktestEngine
         }
         public BacktestStatus Status { get; set; } = BacktestStatus.Completed;
         public MarketDataEvent? LastMarketEvent { get; set; }
+        /// <summary>Tracks the interval from the most recent BarEvent for synthetic bar construction. Falls back to "1D" for tick-only data.</summary>
+        public string? LastBarInterval { get; set; }
         public FillMode FillMode { get; }
         public int FillDelayBars { get; }
-        public List<OrderEvent> PendingOrders { get; } = new();
+        public List<OrderEvent> PendingOrders { get; set; } = new();
+        /// <summary>Pre-allocated swap buffer for pending order processing. Eliminates per-bar List allocations.</summary>
+        private List<OrderEvent> _pendingSwap = new();
         /// <summary>Orders waiting for fill delay to expire. Each entry tracks bars remaining.</summary>
         public List<(OrderEvent Order, int BarsRemaining)> DelayQueue { get; } = new();
         public bool TraceEnabled { get; }
         public List<Results.EventTraceRecord>? TraceRecords { get; }
+
+        /// <summary>
+        /// Swaps the pending orders list with the swap buffer.
+        /// After calling this, PendingOrders references the buffer that was populated
+        /// as the "remaining" list, and _pendingSwap references the old PendingOrders list (cleared).
+        /// </summary>
+        public void SwapPendingBuffers()
+        {
+            var temp = PendingOrders;
+            PendingOrders = _pendingSwap;
+            _pendingSwap = temp;
+            _pendingSwap.Clear();
+        }
+
+        /// <summary>Gets the pre-allocated swap buffer, cleared and ready for population as the "remaining" list.</summary>
+        public List<OrderEvent> GetSwapBuffer()
+        {
+            _pendingSwap.Clear();
+            return _pendingSwap;
+        }
 
         public void Trace(DateTimeOffset ts, string eventType, string symbol, string description)
         {

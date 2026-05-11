@@ -2,10 +2,10 @@ using FsCheck;
 using FsCheck.Fluent;
 using FsCheck.Xunit;
 using Moq;
-using TradingResearchEngine.Application.Strategy.Composite;
-using TradingResearchEngine.Application.Strategy.Composite.Conditions;
+using TradingResearchEngine.Application.Strategies.Composite;
+using TradingResearchEngine.Application.Strategies.Composite.Conditions;
 using TradingResearchEngine.Core.DataHandling;
-using ExpressionCompiler = TradingResearchEngine.Application.Strategy.Composite.Conditions.ExpressionCompiler;
+using ExpressionCompiler = TradingResearchEngine.Application.Strategies.Composite.Conditions.ExpressionCompiler;
 
 namespace TradingResearchEngine.UnitTests.Strategy.Composite;
 

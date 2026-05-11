@@ -1,6 +1,6 @@
 using Skender.Stock.Indicators;
 using TradingResearchEngine.Application.Indicators;
-using TradingResearchEngine.Application.Strategy;
+using TradingResearchEngine.Core.Configuration;
 using TradingResearchEngine.Core.DataHandling;
 using TradingResearchEngine.Core.Events;
 using TradingResearchEngine.Core.Strategy;
@@ -69,6 +69,23 @@ public sealed class MacroRegimeRotationStrategy : IStrategy
         _rebalanceDays = rebalanceDays;
         _trendEma = new EmaIndicator(trendLookback);
         _rsi = new RsiIndicator(momentumLookback);
+    }
+
+    /// <inheritdoc/>
+    public void Initialize(StrategyConfig config)
+    {
+        // Parameters are set via constructor; Initialize is a lifecycle hook.
+    }
+
+    /// <inheritdoc/>
+    public void Reset()
+    {
+        _trendEma.Reset();
+        _rsi.Reset();
+        _closes.Clear();
+        _barsSinceRebalance = 0;
+        _currentPosition = Direction.Flat;
+        _currentAllocation = 0m;
     }
 
     /// <inheritdoc/>

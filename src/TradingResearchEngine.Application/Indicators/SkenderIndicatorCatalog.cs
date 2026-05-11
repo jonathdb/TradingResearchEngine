@@ -1,4 +1,5 @@
 using Skender.Stock.Indicators;
+using TradingResearchEngine.Core.Indicators;
 
 namespace TradingResearchEngine.Application.Indicators;
 
@@ -26,10 +27,12 @@ public sealed record SkenderCatalogEntry(
 /// <summary>
 /// Static catalog of 40+ Skender.Stock.Indicators with pre-compiled delegate invokers.
 /// Zero reflection in the hot path — all indicator calls go through typed delegates.
+/// All delegates are pre-compiled at catalog initialization time.
 /// </summary>
 public static class SkenderIndicatorCatalog
 {
     private static readonly List<SkenderCatalogEntry> _entries = BuildCatalog();
+    private static bool _registered;
 
     /// <summary>All registered indicator catalog entries.</summary>
     public static IReadOnlyList<SkenderCatalogEntry> All => _entries;
@@ -37,6 +40,25 @@ public static class SkenderIndicatorCatalog
     /// <summary>Gets a catalog entry by key, or null if not found.</summary>
     public static SkenderCatalogEntry? Get(string key) =>
         _entries.FirstOrDefault(e => string.Equals(e.Key, key, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// Registers all catalog indicators in <see cref="IndicatorRegistry.All"/>.
+    /// Safe to call multiple times — only registers once.
+    /// </summary>
+    public static void RegisterInIndicatorRegistry()
+    {
+        if (_registered) return;
+        _registered = true;
+
+        var descriptors = _entries.Select(e => new IndicatorDescriptor(
+            e.Key.ToUpperInvariant(),
+            e.Description,
+            e.Parameters.Select(p => new IndicatorParameterDescriptor(
+                p.Name, p.ClrType.Name.ToLowerInvariant(), p.Min, p.Max, p.DefaultValue)).ToArray(),
+            "decimal"));
+
+        IndicatorRegistry.Register(descriptors);
+    }
 
     private static List<SkenderCatalogEntry> BuildCatalog() => new()
     {
@@ -346,6 +368,58 @@ public static class SkenderIndicatorCatalog
                     Param("rankPeriod", typeof(int), 100, 10, 500, "Percentile rank period") },
             "ConnorsRsi", new[] { "ConnorsRsi" },
             (quotes, p, field) => quotes.GetConnorsRsi(GetInt(p, "rsiPeriod"), GetInt(p, "streakPeriod"), GetInt(p, "rankPeriod")).LastOrDefault()?.ConnorsRsi is double v ? (decimal)v : null),
+
+        // Additional indicators to reach 40+
+
+        Entry("stochrsi", "Stochastic RSI", "Stochastic oscillator applied to RSI values.", "Momentum",
+            new[] { Param("rsiPeriod", typeof(int), 14, 1, 100, "RSI period"),
+                    Param("stochPeriod", typeof(int), 14, 1, 100, "Stochastic period"),
+                    Param("signalPeriod", typeof(int), 3, 1, 50, "Signal smoothing"),
+                    Param("smoothPeriod", typeof(int), 3, 1, 50, "K smoothing") },
+            "StochRsi", new[] { "StochRsi", "Signal" },
+            (quotes, p, field) => {
+                var r = quotes.GetStochRsi(GetInt(p, "rsiPeriod"), GetInt(p, "stochPeriod"), GetInt(p, "signalPeriod"), GetInt(p, "smoothPeriod")).LastOrDefault();
+                if (r is null) return null;
+                return field == "Signal" ? (r.Signal is double s ? (decimal)s : null) : (r.StochRsi is double k ? (decimal)k : null);
+            }),
+
+        Entry("vortex", "Vortex Indicator", "Identifies trend direction and strength using positive/negative movement.", "Trend Strength",
+            new[] { Param("period", typeof(int), 14, 1, 200, "Lookback period") },
+            "Pvi", new[] { "Pvi", "Nvi" },
+            (quotes, p, field) => {
+                var r = quotes.GetVortex(GetInt(p, "period")).LastOrDefault();
+                if (r is null) return null;
+                return field == "Nvi" ? (r.Nvi is double n ? (decimal)n : null) : (r.Pvi is double pv ? (decimal)pv : null);
+            }),
+
+        Entry("smma", "Smoothed Moving Average", "Smoothed (modified) moving average with reduced noise.", "Trend",
+            new[] { Param("period", typeof(int), 20, 1, 500, "Lookback period") },
+            "Smma", new[] { "Smma" },
+            (quotes, p, field) => quotes.GetSmma(GetInt(p, "period")).LastOrDefault()?.Smma is double v ? (decimal)v : null),
+
+        Entry("epma", "Endpoint Moving Average", "Endpoint moving average using linear regression.", "Trend",
+            new[] { Param("period", typeof(int), 14, 1, 500, "Lookback period") },
+            "Epma", new[] { "Epma" },
+            (quotes, p, field) => quotes.GetEpma(GetInt(p, "period")).LastOrDefault()?.Epma is double v ? (decimal)v : null),
+
+        Entry("mama", "MESA Adaptive MA", "MESA Adaptive Moving Average by John Ehlers.", "Trend",
+            new[] { Param("fastLimit", typeof(double), 0.5, 0.01, 1.0, "Fast limit"),
+                    Param("slowLimit", typeof(double), 0.05, 0.01, 0.5, "Slow limit") },
+            "Mama", new[] { "Mama", "Fama" },
+            (quotes, p, field) => {
+                var r = quotes.GetMama(GetDouble(p, "fastLimit"), GetDouble(p, "slowLimit")).LastOrDefault();
+                if (r is null) return null;
+                return field == "Fama" ? (r.Fama is double f ? (decimal)f : null) : (r.Mama is double m ? (decimal)m : null);
+            }),
+
+        Entry("fisher", "Fisher Transform", "Normalizes prices into a Gaussian distribution for clearer turning points.", "Momentum",
+            new[] { Param("period", typeof(int), 10, 1, 200, "Lookback period") },
+            "Fisher", new[] { "Fisher", "Trigger" },
+            (quotes, p, field) => {
+                var r = quotes.GetFisherTransform(GetInt(p, "period")).LastOrDefault();
+                if (r is null) return null;
+                return field == "Trigger" ? (r.Trigger is double t ? (decimal)t : null) : (r.Fisher is double f ? (decimal)f : null);
+            }),
     };
 
     private static SkenderCatalogEntry Entry(

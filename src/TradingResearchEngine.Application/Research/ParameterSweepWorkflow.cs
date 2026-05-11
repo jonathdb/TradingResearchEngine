@@ -3,8 +3,11 @@ using Microsoft.Extensions.Options;
 using TradingResearchEngine.Application.Configuration;
 using TradingResearchEngine.Application.Engine;
 using TradingResearchEngine.Application.Research.Results;
+using TradingResearchEngine.Application.Strategies;
 using TradingResearchEngine.Core.Configuration;
+using TradingResearchEngine.Core.Engine;
 using TradingResearchEngine.Core.Results;
+using TradingResearchEngine.Core.Strategy;
 
 namespace TradingResearchEngine.Application.Research;
 
@@ -15,17 +18,30 @@ namespace TradingResearchEngine.Application.Research;
 public sealed class ParameterSweepWorkflow : IResearchWorkflow<SweepOptions, SweepResult>
 {
     private readonly RunScenarioUseCase _runScenario;
+    private readonly IStrategyFactoryProvider _factoryProvider;
     private readonly IOptions<SweepOptions> _options;
 
     /// <inheritdoc cref="ParameterSweepWorkflow"/>
-    public ParameterSweepWorkflow(RunScenarioUseCase runScenario, IOptions<SweepOptions> options)
+    public ParameterSweepWorkflow(
+        RunScenarioUseCase runScenario,
+        IStrategyFactoryProvider factoryProvider,
+        IOptions<SweepOptions> options)
     {
         _runScenario = runScenario;
+        _factoryProvider = factoryProvider;
         _options = options;
     }
 
     /// <inheritdoc/>
     public async Task<SweepResult> RunAsync(ScenarioConfig baseConfig, SweepOptions options, CancellationToken ct = default)
+    {
+        return await RunAsync(baseConfig, options, progress: null, ct);
+    }
+
+    /// <inheritdoc/>
+    public async Task<SweepResult> RunAsync(
+        ScenarioConfig baseConfig, SweepOptions options,
+        IProgress<ProgressUpdate>? progress, CancellationToken ct = default)
     {
         var grid = baseConfig.ResearchWorkflowOptions is not null
             && baseConfig.ResearchWorkflowOptions.TryGetValue("ParameterGrid", out var gridObj)
@@ -37,10 +53,16 @@ public sealed class ParameterSweepWorkflow : IResearchWorkflow<SweepOptions, Swe
         if (combinations.Count == 0)
             combinations.Add(new Dictionary<string, object>());
 
+        // Resolve the strategy factory once — thread-safe for concurrent Create() calls
+        var effectiveStrategy = baseConfig.EffectiveStrategyConfig;
+        var factory = _factoryProvider.GetFactory(effectiveStrategy.StrategyType);
+
         var results = new ConcurrentBag<BacktestResult>();
         // V6: Formalize SemaphoreSlim concurrency pattern — each combination creates its own EventQueue
         var maxConcurrency = Math.Max(1, Environment.ProcessorCount - 1);
         var semaphore = new SemaphoreSlim(maxConcurrency);
+        int completedCount = 0;
+        int totalCombinations = combinations.Count;
 
         await Parallel.ForEachAsync(
             combinations,
@@ -51,13 +73,22 @@ public sealed class ParameterSweepWorkflow : IResearchWorkflow<SweepOptions, Swe
                 try
                 {
                     var merged = MergeParameters(baseConfig, combo);
-                    var runResult = await _runScenario.RunAsync(merged, token, autoSave: false);
+                    // Each iteration creates an isolated strategy via factory — never reuse a single IStrategy
+                    var iterationStrategyConfig = merged.EffectiveStrategyConfig;
+                    var isolatedStrategy = factory.Create(iterationStrategyConfig);
+                    var runResult = await _runScenario.RunAsync(merged, token, autoSave: false, strategy: isolatedStrategy);
                     if (runResult.IsSuccess && runResult.Result is not null)
                     {
                         results.Add(runResult.Result);
                     }
                 }
-                finally { semaphore.Release(); }
+                finally
+                {
+                    semaphore.Release();
+                    int current = Interlocked.Increment(ref completedCount);
+                    progress?.Report(new ProgressUpdate(current, totalCombinations,
+                        $"Completed {current} of {totalCombinations} parameter combinations"));
+                }
             });
 
         var ranked = results

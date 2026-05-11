@@ -1,8 +1,8 @@
 using System.Globalization;
 using System.Text;
 using TradingResearchEngine.Application.Export;
-using TradingResearchEngine.Application.Strategy;
-using TradingResearchEngine.Application.Strategy.Composite;
+using TradingResearchEngine.Application.Strategies;
+using TradingResearchEngine.Application.Strategies.Composite;
 
 namespace TradingResearchEngine.Infrastructure.Export;
 

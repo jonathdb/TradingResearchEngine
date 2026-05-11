@@ -1,5 +1,4 @@
 using TradingResearchEngine.Application.Strategies;
-using TradingResearchEngine.Application.Strategy;
 using Xunit;
 
 namespace TradingResearchEngine.UnitTests.Strategy;

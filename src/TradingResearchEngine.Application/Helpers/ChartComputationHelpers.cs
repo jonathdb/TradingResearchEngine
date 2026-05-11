@@ -67,7 +67,7 @@ public static class ChartComputationHelpers
     /// <summary>
     /// Generic binning of decimal values into a fixed number of equal-width bins.
     /// </summary>
-    internal static IReadOnlyList<HistogramBin> BinValues(IReadOnlyList<decimal> values, int bins)
+    public static IReadOnlyList<HistogramBin> BinValues(IReadOnlyList<decimal> values, int bins)
     {
         if (values.Count == 0 || bins <= 0)
             return Array.Empty<HistogramBin>();

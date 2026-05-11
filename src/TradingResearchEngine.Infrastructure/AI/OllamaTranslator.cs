@@ -5,7 +5,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TradingResearchEngine.Application.AI;
 using TradingResearchEngine.Application.Configuration;
-using TradingResearchEngine.Application.Strategy;
+using TradingResearchEngine.Application.Strategies;
 
 namespace TradingResearchEngine.Infrastructure.AI;
 

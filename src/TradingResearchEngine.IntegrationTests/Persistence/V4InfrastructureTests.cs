@@ -3,7 +3,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using TradingResearchEngine.Application.Configuration;
 using TradingResearchEngine.Application.DataFiles;
-using TradingResearchEngine.Application.Strategy;
+using TradingResearchEngine.Application.Strategies;
 using TradingResearchEngine.Core.Configuration;
 using TradingResearchEngine.Core.Engine;
 using TradingResearchEngine.Core.Persistence;

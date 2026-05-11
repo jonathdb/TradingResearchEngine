@@ -1,13 +1,13 @@
-@page "/backtests/job/{JobId}"
+@page "/job-status/{JobId}"
 @using TradingResearchEngine.Application.Research
 @inject JobExecutor JobExecutor
 @inject NavigationManager Nav
-@implements IDisposable
+@implements IAsyncDisposable
 
 <PageTitle>Job Status</PageTitle>
 
 <MudContainer MaxWidth="MaxWidth.Small" Class="mt-6">
-    @if (_job is null)
+    @if (_job is null && _status is null)
     {
         <MudProgressCircular Indeterminate="true" />
     }
@@ -18,37 +18,31 @@
                 <MudText Typo="Typo.h5">Backtest Job</MudText>
                 <MudText Typo="Typo.caption" Class="text-muted">@JobId</MudText>
 
-                <MudChip T="string" Color="@GetStatusColor(_job.Status)" Size="MudBlazor.Size.Small">
-                    @_job.Status.ToString()
-                </MudChip>
-
-                @if (_job.Status == JobStatus.Running || _job.Status == JobStatus.Queued)
+                @if (_status is not null)
                 {
-                    @if (_job.Progress is not null && _job.Progress.Total > 0)
-                    {
-                        <MudProgressLinear Value="@((double)_job.Progress.Percentage)" Color="Color.Primary" Rounded="true" Size="MudBlazor.Size.Large">
-                            <MudText Typo="Typo.caption">@_job.Progress.Stage — @_job.Progress.Current / @_job.Progress.Total</MudText>
-                        </MudProgressLinear>
-                    }
-                    else
-                    {
-                        <MudProgressLinear Indeterminate="true" Color="Color.Primary" Rounded="true" Size="MudBlazor.Size.Large" />
-                    }
+                    <MudChip T="string" Color="@GetStatusColor(_status.Value)" Size="MudBlazor.Size.Small">
+                        @_status.Value.ToString()
+                    </MudChip>
                 }
 
-                @if (_job.Status == JobStatus.Failed)
+                @if (_status is JobStatus.Running or JobStatus.Queued)
+                {
+                    <MudProgressLinear Indeterminate="true" Color="Color.Primary" Rounded="true" Size="MudBlazor.Size.Large" />
+                }
+
+                @if (_status == JobStatus.Failed)
                 {
                     <MudAlert Severity="Severity.Error" Class="mt-2">
-                        @(_job.ErrorMessage ?? "An unexpected error occurred during execution.")
+                        @(_errorMessage ?? "An unexpected error occurred during execution.")
                     </MudAlert>
                     <MudButton Variant="Variant.Outlined" Color="Color.Primary"
                                StartIcon="@Icons.Material.Filled.Edit"
-                               Href="/strategies/builder">
+                               Href="/builder">
                         Edit &amp; Retry
                     </MudButton>
                 }
 
-                @if (_job.Status == JobStatus.Completed && _completedCountdown > 0)
+                @if (_status == JobStatus.Completed && _completedCountdown > 0)
                 {
                     <MudAlert Severity="Severity.Success">
                         Backtest completed. Redirecting in @_completedCountdown second(s)...
@@ -63,13 +57,20 @@
     [Parameter] public string JobId { get; set; } = "";
 
     private BacktestJob? _job;
+    private JobStatus? _status;
+    private string? _errorMessage;
     private PeriodicTimer? _timer;
     private CancellationTokenSource _cts = new();
     private int _completedCountdown;
 
     protected override async Task OnInitializedAsync()
     {
+        _status = await JobExecutor.GetStatusAsync(JobId, _cts.Token);
         _job = await JobExecutor.GetJobAsync(JobId, _cts.Token);
+        if (_status == JobStatus.Failed)
+        {
+            _errorMessage = await JobExecutor.GetErrorAsync(JobId, _cts.Token);
+        }
         _ = PollStatusAsync();
     }
 
@@ -80,21 +81,33 @@
         {
             while (await _timer.WaitForNextTickAsync(_cts.Token))
             {
-                _job = await JobExecutor.GetJobAsync(JobId, _cts.Token);
+                _status = await JobExecutor.GetStatusAsync(JobId, _cts.Token);
                 await InvokeAsync(StateHasChanged);
 
-                if (_job?.Status == JobStatus.Completed)
+                if (_status == JobStatus.Completed)
                 {
                     _completedCountdown = 1;
                     await InvokeAsync(StateHasChanged);
                     await Task.Delay(1000, _cts.Token);
-                    if (_job.ResultId is not null)
-                        Nav.NavigateTo($"/backtests/{_job.ResultId}");
+                    var resultId = await JobExecutor.GetResultIdAsync(JobId, _cts.Token);
+                    if (resultId is not null)
+                    {
+                        Nav.NavigateTo($"/runs/{resultId}");
+                    }
                     break;
                 }
 
-                if (_job?.Status is JobStatus.Failed or JobStatus.Cancelled)
+                if (_status == JobStatus.Failed)
+                {
+                    _errorMessage = await JobExecutor.GetErrorAsync(JobId, _cts.Token);
+                    await InvokeAsync(StateHasChanged);
                     break;
+                }
+
+                if (_status == JobStatus.Cancelled)
+                {
+                    break;
+                }
             }
         }
         catch (OperationCanceledException) { }
@@ -110,9 +123,9 @@
         _ => Color.Default
     };
 
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
-        _cts.Cancel();
+        await _cts.CancelAsync();
         _cts.Dispose();
         _timer?.Dispose();
     }

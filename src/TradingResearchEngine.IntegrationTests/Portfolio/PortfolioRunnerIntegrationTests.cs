@@ -11,7 +11,6 @@ using TradingResearchEngine.Application.Portfolio;
 using TradingResearchEngine.Application.Research;
 using TradingResearchEngine.Application.Risk;
 using TradingResearchEngine.Application.Strategies;
-using TradingResearchEngine.Application.Strategy;
 using TradingResearchEngine.Core.Configuration;
 using TradingResearchEngine.Core.DataHandling;
 using TradingResearchEngine.Core.Engine;

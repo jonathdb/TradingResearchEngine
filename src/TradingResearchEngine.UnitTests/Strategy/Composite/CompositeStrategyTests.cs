@@ -1,5 +1,5 @@
-using TradingResearchEngine.Application.Strategy;
-using TradingResearchEngine.Application.Strategy.Composite;
+using TradingResearchEngine.Application.Strategies;
+using TradingResearchEngine.Application.Strategies.Composite;
 using TradingResearchEngine.Core.Events;
 
 namespace TradingResearchEngine.UnitTests.Strategy.Composite;

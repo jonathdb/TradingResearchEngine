@@ -8,10 +8,7 @@ namespace TradingResearchEngine.Core.Indicators;
 /// </summary>
 public static class IndicatorRegistry
 {
-    /// <summary>
-    /// All built-in indicator descriptors with full parameter metadata.
-    /// </summary>
-    public static IReadOnlyList<IndicatorDescriptor> All { get; } = new[]
+    private static readonly List<IndicatorDescriptor> _descriptors = new()
     {
         new IndicatorDescriptor(
             "SMA",
@@ -59,4 +56,35 @@ public static class IndicatorRegistry
             new[] { new IndicatorParameterDescriptor("Period", "int", 2, 500, 20) },
             "DonchianChannelOutput"),
     };
+
+    /// <summary>
+    /// All registered indicator descriptors with full parameter metadata.
+    /// Includes built-in indicators and any indicators registered via <see cref="Register"/>.
+    /// </summary>
+    public static IReadOnlyList<IndicatorDescriptor> All => _descriptors;
+
+    /// <summary>
+    /// Registers additional indicator descriptors (e.g. from the Skender catalog).
+    /// Skips entries whose <see cref="IndicatorDescriptor.Name"/> already exists in the registry.
+    /// Thread-safe for startup registration; not intended for hot-path use.
+    /// </summary>
+    /// <param name="descriptors">The descriptors to register.</param>
+    public static void Register(IEnumerable<IndicatorDescriptor> descriptors)
+    {
+        foreach (var descriptor in descriptors)
+        {
+            if (!_descriptors.Any(d => string.Equals(d.Name, descriptor.Name, StringComparison.OrdinalIgnoreCase)))
+            {
+                _descriptors.Add(descriptor);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Resets the registry to only the built-in indicators. Used for testing.
+    /// </summary>
+    internal static void ResetToBuiltIn()
+    {
+        _descriptors.RemoveRange(7, _descriptors.Count - 7);
+    }
 }

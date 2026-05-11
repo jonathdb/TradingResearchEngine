@@ -473,6 +473,14 @@ Uses `Microsoft.Data.Sqlite` NuGet package (Infrastructure project only).
 
 Both values are defined in `Core/Configuration/` (`FillMode.cs` enum and the `ScenarioConfig` record). `RunScenarioUseCase` rejects `BarsPerYear <= 0` during validation.
 
+## Synthetic Bar Timeframe in Intra-Bar Fills
+
+When a limit, stop-market, or stop-limit order fills intra-bar (i.e. the bar's High/Low range triggers the order), the engine constructs a synthetic `BarEvent` at the fill price via `CreateFillAtPrice`. This synthetic bar uses the timeframe from the most recent `BarEvent` (stored as `state.LastBarInterval`) rather than a hardcoded value. This ensures timeframe-aware slippage and commission models receive the correct interval.
+
+- The `LastBarInterval` field on `RunState` is updated from each `BarEvent.Interval` before pending orders are processed.
+- Fallback: if no prior `BarEvent` has been seen (tick-only data), the synthetic bar defaults to `"1D"`.
+- The synthetic bar has `Open == High == Low == Close == fillPrice` and `Volume == 0`.
+
 ## Execution Realism (V2.1)
 
 `ScenarioConfig` exposes additional V2.1 fields for execution realism and diagnostics:

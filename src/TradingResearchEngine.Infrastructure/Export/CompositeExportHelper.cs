@@ -1,7 +1,7 @@
 using System.Globalization;
 using System.Text;
-using TradingResearchEngine.Application.Strategy.Composite;
-using TradingResearchEngine.Application.Strategy.Composite.Conditions;
+using TradingResearchEngine.Application.Strategies.Composite;
+using TradingResearchEngine.Application.Strategies.Composite.Conditions;
 
 namespace TradingResearchEngine.Infrastructure.Export;
 

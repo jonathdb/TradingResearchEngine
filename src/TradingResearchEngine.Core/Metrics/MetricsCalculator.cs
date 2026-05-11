@@ -5,6 +5,8 @@ namespace TradingResearchEngine.Core.Metrics;
 /// <summary>Pure static performance metric calculations. No side effects.</summary>
 public static class MetricsCalculator
 {
+    /// <summary>Minimum number of period returns required for meaningful VaR/CVaR computation.</summary>
+    private const int MinSampleForPercentile = 30;
     /// <summary>
     /// Computes the maximum peak-to-trough decline in total equity as a decimal fraction.
     /// Returns 0 when the curve has fewer than two points.
@@ -282,7 +284,7 @@ public static class MetricsCalculator
     {
         if (curve.Count < 2) return null;
         var returns = GetPeriodReturns(curve).OrderBy(r => r).ToList();
-        if (returns.Count < 30) return null; // insufficient sample for meaningful VaR
+        if (returns.Count < MinSampleForPercentile) return null;
         int idx = (int)Math.Floor((1 - confidence) * returns.Count);
         return -returns[Math.Max(0, idx)]; // positive number = loss
     }
@@ -295,7 +297,7 @@ public static class MetricsCalculator
     {
         if (curve.Count < 2) return null;
         var returns = GetPeriodReturns(curve).OrderBy(r => r).ToList();
-        if (returns.Count < 30) return null; // insufficient sample for meaningful CVaR
+        if (returns.Count < MinSampleForPercentile) return null;
         int cutoff = (int)Math.Floor((1 - confidence) * returns.Count);
         var tail = returns.Take(Math.Max(1, cutoff)).ToList();
         return -tail.Average();

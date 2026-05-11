@@ -2,6 +2,7 @@
 @page "/strategies/builder/{DraftId}"
 @using System.Text.Json
 @using TradingResearchEngine.Web.Components.Builder
+@using TradingResearchEngine.Application.AI
 @using TradingResearchEngine.Application.DataFiles
 @using TradingResearchEngine.Application.Engine
 @using TradingResearchEngine.Application.Research
@@ -15,14 +16,129 @@
 @inject IDataFileRepository DataFileRepo
 @inject PreflightValidator PreflightValidator
 @inject ResolvedConfigService ResolvedConfigService
-@inject RunScenarioUseCase RunUseCase
 @inject JobExecutor JobExecutor
+@inject IAIStrategyAssistant AIAssistant
 @inject NavigationManager Nav
 @inject ISnackbar Snackbar
+@implements IAsyncDisposable
 
 <PageTitle>Strategy Builder — Research Engine</PageTitle>
 
 <MudText Typo="Typo.h4" Class="mb-2">Strategy Builder</MudText>
+
+@if (_aiMode)
+{
+    <MudPaper Class="pa-4 mb-4" Elevation="1">
+        <MudText Typo="Typo.h6" Class="mb-2">
+            <MudIcon Icon="@Icons.Material.Filled.AutoAwesome" Class="mr-1" />
+            AI Strategy Generation
+        </MudText>
+
+        @* AI Prompt Input *@
+        <MudTextField @bind-Value="_aiPrompt"
+                      Label="Describe your strategy idea"
+                      Placeholder="e.g., A mean-reversion strategy on SPY using Bollinger Bands with 2 standard deviations..."
+                      Lines="3"
+                      Variant="Variant.Outlined"
+                      Disabled="@_aiStreaming"
+                      Class="mb-3" />
+
+        @* Generate / Stop buttons *@
+        <MudStack Row="true" Class="mb-3">
+            @if (_aiStreaming)
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Error"
+                           StartIcon="@Icons.Material.Filled.Stop"
+                           OnClick="StopAIGeneration"
+                           aria-label="Stop generation">
+                    Stop generation
+                </MudButton>
+            }
+            else
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                           StartIcon="@Icons.Material.Filled.AutoAwesome"
+                           Disabled="@(string.IsNullOrWhiteSpace(_aiPrompt))"
+                           OnClick="StartAIGeneration"
+                           aria-label="Generate strategy with AI">
+                    Generate with AI
+                </MudButton>
+            }
+        </MudStack>
+
+        @* Streaming output *@
+        @if (!string.IsNullOrEmpty(_aiStreamBuffer))
+        {
+            <MudPaper Class="pa-3 mb-3" Outlined="true" Style="max-height: 300px; overflow-y: auto; font-family: monospace; white-space: pre-wrap;">
+                <MudText Typo="Typo.body2">@_aiStreamBuffer</MudText>
+                @if (_aiStreaming)
+                {
+                    <MudProgressCircular Size="MudBlazor.Size.Small" Indeterminate="true" Class="ml-2" />
+                }
+            </MudPaper>
+        }
+
+        @* Error display *@
+        @if (!string.IsNullOrEmpty(_aiError))
+        {
+            <MudAlert Severity="Severity.Error" Class="mb-3">@_aiError</MudAlert>
+        }
+
+        @* Refine with AI feedback — shown when a draft exists *@
+        @if (_aiDraft is not null && !_aiStreaming)
+        {
+            <MudDivider Class="my-3" />
+            <MudText Typo="Typo.subtitle1" Class="mb-2">Refine with AI feedback</MudText>
+            <MudStack Row="true" AlignItems="AlignItems.End">
+                <MudTextField @bind-Value="_aiRefinePrompt"
+                              Label="Refinement feedback"
+                              Placeholder="e.g., Increase the lookback period and add a volatility filter..."
+                              Variant="Variant.Outlined"
+                              Style="flex: 1;" />
+                <MudButton Variant="Variant.Filled" Color="Color.Secondary"
+                           StartIcon="@Icons.Material.Filled.Refresh"
+                           Disabled="@(string.IsNullOrWhiteSpace(_aiRefinePrompt))"
+                           OnClick="StartAIRefinement"
+                           aria-label="Refine strategy with AI">
+                    Refine
+                </MudButton>
+            </MudStack>
+        }
+
+        @* Refinement history *@
+        @if (_aiDraft is not null && _aiDraft.RefinementHistory.Count > 0)
+        {
+            <MudExpansionPanels Class="mt-3" MultiExpansion="false">
+                <MudExpansionPanel Text="Refinement History" Expanded="false">
+                    @for (var i = 0; i < _aiDraft.RefinementHistory.Count; i++)
+                    {
+                        var index = i;
+                        <MudPaper Class="pa-2 mb-2" Outlined="true">
+                            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                                <MudText Typo="Typo.body2">@_aiDraft.RefinementHistory[index]</MudText>
+                                <MudButton Variant="Variant.Text" Color="Color.Primary"
+                                           Size="MudBlazor.Size.Small"
+                                           OnClick="@(() => RevertToVersion(index))"
+                                           aria-label="@($"Revert to version {index + 1}")">
+                                    Revert to this version
+                                </MudButton>
+                            </MudStack>
+                        </MudPaper>
+                    }
+                </MudExpansionPanel>
+            </MudExpansionPanels>
+        }
+
+        @* Transition to wizard when draft is ready *@
+        @if (_aiDraft is not null && !_aiStreaming)
+        {
+            <MudDivider Class="my-3" />
+            <MudAlert Severity="Severity.Success" Class="mb-2">
+                Strategy draft generated. Form fields have been auto-populated. Continue with the wizard below to review and launch.
+            </MudAlert>
+        }
+    </MudPaper>
+}
 
 <BuilderStepIndicator CurrentStep="@_vm.CurrentStep" MaxVisitedStep="@_vm.MaxVisitedStep" OnStepSelected="GoToStep" />
 
@@ -101,6 +217,7 @@
 
 @code {
     [Parameter] public string? DraftId { get; set; }
+    [SupplyParameterFromQuery(Name = "mode")] public string? Mode { get; set; }
 
     private BuilderViewModel _vm = new();
     private IReadOnlyList<StrategyIdentity> _strategies = Array.Empty<StrategyIdentity>();
@@ -114,8 +231,26 @@
     private bool _saving;
     private string? _importJson;
 
+    // AI mode state
+    private bool _aiMode;
+    private string _aiPrompt = "";
+    private string _aiRefinePrompt = "";
+    private string _aiStreamBuffer = "";
+    private string? _aiError;
+    private bool _aiStreaming;
+    private AIStrategyDraft? _aiDraft;
+    private CancellationTokenSource? _aiCts;
+    private List<AIStrategyDraft> _aiDraftHistory = new();
+
+    /// <summary>Debounce delay for step persistence (500ms).</summary>
+    private const int StepPersistDebounceMs = 500;
+    private CancellationTokenSource? _debounceCts;
+
     protected override async Task OnInitializedAsync()
     {
+        // Detect AI mode from query string
+        _aiMode = string.Equals(Mode, "ai", StringComparison.OrdinalIgnoreCase);
+
         // Load reference data
         _strategies = await StrategyRepo.ListAsync();
         _knownStrategies = Registry.KnownNames;
@@ -131,6 +266,12 @@
                 _vm = BuilderViewModel.FromDraft(draft);
                 LoadSchemaForCurrentStrategy();
             }
+        }
+
+        // Set source type for AI mode
+        if (_aiMode)
+        {
+            _vm.SourceType = SourceType.AIGenerated;
         }
     }
 
@@ -206,29 +347,31 @@
         _vm.CurrentStep++;
         _vm.MaxVisitedStep = Math.Max(_vm.MaxVisitedStep, _vm.CurrentStep);
         _vm.IsDirty = true;
-        await PersistDraft();
+        DebouncePersistStep();
 
         // Load resolved config and preflight on step 5
         if (_vm.CurrentStep == 5)
             await RunPreflightAndResolve();
     }
 
-    private async Task PreviousStep()
+    private Task PreviousStep()
     {
         if (_vm.CurrentStep > 1)
         {
             _vm.CurrentStep--;
-            await PersistDraft();
+            DebouncePersistStep();
         }
+        return Task.CompletedTask;
     }
 
-    private async Task GoToStep(int step)
+    private Task GoToStep(int step)
     {
         if (step >= 1 && step <= _vm.MaxVisitedStep)
         {
             _vm.CurrentStep = step;
-            await PersistDraft();
+            DebouncePersistStep();
         }
+        return Task.CompletedTask;
     }
 
     private async Task PersistDraft()
@@ -250,6 +393,37 @@
         {
             Snackbar.Add($"Failed to save draft: {ex.Message}", Severity.Warning);
         }
+    }
+
+    /// <summary>
+    /// Debounced step persistence. Cancels any pending save and schedules a new one
+    /// after <see cref="StepPersistDebounceMs"/> milliseconds.
+    /// </summary>
+    private void DebouncePersistStep()
+    {
+        _debounceCts?.Cancel();
+        _debounceCts?.Dispose();
+        _debounceCts = new CancellationTokenSource();
+        var token = _debounceCts.Token;
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(StepPersistDebounceMs, token);
+                if (!token.IsCancellationRequested)
+                {
+                    await InvokeAsync(async () =>
+                    {
+                        await PersistDraft();
+                    });
+                }
+            }
+            catch (TaskCanceledException)
+            {
+                // Debounce cancelled — expected when user navigates quickly
+            }
+        }, token);
     }
 
     private async Task RunPreflightAndResolve()
@@ -285,6 +459,7 @@
         _vm.Parameters = new Dictionary<string, object>(config.EffectiveStrategyConfig.StrategyParameters);
         _vm.SlippageModelType = config.EffectiveExecutionConfig.SlippageModelType;
         _vm.CommissionModelType = config.EffectiveExecutionConfig.CommissionModelType;
+        _vm.FillDelayBars = config.EffectiveExecutionConfig.FillDelayBars;
         _vm.InitialCash = config.EffectiveRiskConfig.InitialCash;
         _vm.AnnualRiskFreeRate = config.EffectiveRiskConfig.AnnualRiskFreeRate;
         _vm.SourceType = SourceType.Import;
@@ -389,21 +564,171 @@
         };
     }
 
-    private void HandleRunResult(ScenarioRunResult result, bool isQuickSanity = false)
+    public ValueTask DisposeAsync()
     {
-        if (result.IsSuccess && result.Result is not null)
+        _debounceCts?.Cancel();
+        _debounceCts?.Dispose();
+        _debounceCts = null;
+        _aiCts?.Cancel();
+        _aiCts?.Dispose();
+        _aiCts = null;
+        return ValueTask.CompletedTask;
+    }
+
+    // ─── AI Streaming Methods ───────────────────────────────────────────────────
+
+    private async Task StartAIGeneration()
+    {
+        if (string.IsNullOrWhiteSpace(_aiPrompt)) return;
+
+        _aiError = null;
+        _aiStreamBuffer = "";
+        _aiStreaming = true;
+        _aiCts?.Cancel();
+        _aiCts?.Dispose();
+        _aiCts = new CancellationTokenSource();
+        var ct = _aiCts.Token;
+
+        StateHasChanged();
+
+        try
         {
-            Snackbar.Add($"Backtest completed: {result.Result.TotalTrades} trades", Severity.Success);
-            var url = $"/backtests/{result.Result.RunId}";
-            if (isQuickSanity) url += "?quickSanity=true";
-            Nav.NavigateTo(url);
+            await foreach (var token in AIAssistant.StreamGenerateAsync(_aiPrompt, ct))
+            {
+                _aiStreamBuffer += token;
+                StateHasChanged();
+            }
+
+            // Stream completed — parse as AIStrategyDraft
+            await ParseAndPopulateDraft(_aiStreamBuffer);
         }
-        else
+        catch (OperationCanceledException)
         {
-            var msg = result.Errors is { Count: > 0 }
-                ? string.Join("; ", result.Errors)
-                : "Unknown error";
-            Snackbar.Add($"Run failed: {msg}", Severity.Error);
+            // User cancelled — keep partial buffer visible
+            _aiError = "Generation stopped by user.";
+        }
+        catch (Exception ex)
+        {
+            _aiError = $"AI generation failed: {ex.Message}";
+        }
+        finally
+        {
+            _aiStreaming = false;
+            StateHasChanged();
         }
     }
+
+    private async Task StartAIRefinement()
+    {
+        if (string.IsNullOrWhiteSpace(_aiRefinePrompt) || _aiDraft is null) return;
+
+        _aiError = null;
+        _aiStreamBuffer = "";
+        _aiStreaming = true;
+        _aiCts?.Cancel();
+        _aiCts?.Dispose();
+        _aiCts = new CancellationTokenSource();
+        var ct = _aiCts.Token;
+
+        // Save current draft to history before refining
+        _aiDraftHistory.Add(_aiDraft);
+
+        StateHasChanged();
+
+        try
+        {
+            await foreach (var token in AIAssistant.StreamRefineAsync(_aiDraft, _aiRefinePrompt, ct))
+            {
+                _aiStreamBuffer += token;
+                StateHasChanged();
+            }
+
+            // Stream completed — parse refined draft
+            await ParseAndPopulateDraft(_aiStreamBuffer);
+            _aiRefinePrompt = "";
+        }
+        catch (OperationCanceledException)
+        {
+            _aiError = "Refinement stopped by user.";
+        }
+        catch (Exception ex)
+        {
+            _aiError = $"AI refinement failed: {ex.Message}";
+        }
+        finally
+        {
+            _aiStreaming = false;
+            StateHasChanged();
+        }
+    }
+
+    private void StopAIGeneration()
+    {
+        _aiCts?.Cancel();
+    }
+
+    private Task ParseAndPopulateDraft(string json)
+    {
+        try
+        {
+            var options = new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true,
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+            };
+
+            var draft = JsonSerializer.Deserialize<AIStrategyDraft>(json, options);
+            if (draft is null)
+            {
+                _aiError = "Failed to parse AI response as a strategy draft. The raw output is shown above.";
+                return Task.CompletedTask;
+            }
+
+            // Build refinement history from draft history
+            var history = _aiDraftHistory.Select(d => d.StrategyName + ": " + d.Rationale).ToList();
+            _aiDraft = draft with { RefinementHistory = history };
+
+            // Auto-populate form fields
+            PopulateFromAIDraft(_aiDraft);
+            _aiError = null;
+        }
+        catch (JsonException)
+        {
+            _aiError = "Failed to parse AI response as valid JSON. The raw output is shown above for manual review.";
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private void PopulateFromAIDraft(AIStrategyDraft draft)
+    {
+        _vm.StrategyName = draft.StrategyName;
+        _vm.StrategyType = draft.StrategyType;
+        _vm.Hypothesis = draft.Hypothesis;
+        _vm.Parameters = new Dictionary<string, object>(draft.Parameters);
+        _vm.SourceType = SourceType.AIGenerated;
+        _vm.InitialCash = draft.SuggestedRisk.InitialCash;
+        _vm.AnnualRiskFreeRate = draft.SuggestedRisk.AnnualRiskFreeRate;
+        _vm.IsDirty = true;
+        LoadSchemaForCurrentStrategy();
+    }
+
+    private void RevertToVersion(int index)
+    {
+        if (index < 0 || index >= _aiDraftHistory.Count) return;
+
+        var reverted = _aiDraftHistory[index];
+        // Trim history to the reverted point
+        _aiDraftHistory = _aiDraftHistory.Take(index).ToList();
+
+        var history = _aiDraftHistory.Select(d => d.StrategyName + ": " + d.Rationale).ToList();
+        _aiDraft = reverted with { RefinementHistory = history };
+
+        PopulateFromAIDraft(_aiDraft);
+        _aiStreamBuffer = "";
+        _aiError = null;
+        StateHasChanged();
+    }
+
+
 }

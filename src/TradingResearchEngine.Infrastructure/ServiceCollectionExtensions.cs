@@ -72,13 +72,13 @@ public static class ServiceCollectionExtensions
         // V5: Job, ConfigDraft, and ConfigPreset repositories
         services.AddSingleton<IRepository<TradingResearchEngine.Application.Research.BacktestJob>,
             JsonFileRepository<TradingResearchEngine.Application.Research.BacktestJob>>();
-        services.AddSingleton<IRepository<TradingResearchEngine.Application.Strategy.ConfigDraft>,
-            JsonFileRepository<TradingResearchEngine.Application.Strategy.ConfigDraft>>();
-        services.AddSingleton<IRepository<TradingResearchEngine.Application.Strategy.ConfigPreset>,
-            JsonFileRepository<TradingResearchEngine.Application.Strategy.ConfigPreset>>();
+        services.AddSingleton<IRepository<TradingResearchEngine.Application.Strategies.ConfigDraft>,
+            JsonFileRepository<TradingResearchEngine.Application.Strategies.ConfigDraft>>();
+        services.AddSingleton<IRepository<TradingResearchEngine.Application.Strategies.ConfigPreset>,
+            JsonFileRepository<TradingResearchEngine.Application.Strategies.ConfigPreset>>();
 
         // V3: Strategy and study repositories
-        services.AddSingleton<TradingResearchEngine.Application.Strategy.IStrategyRepository>(sp =>
+        services.AddSingleton<TradingResearchEngine.Application.Strategies.IStrategyRepository>(sp =>
         {
             return new JsonStrategyRepository(DataSubDir("strategies"));
         });
@@ -187,8 +187,8 @@ public static class ServiceCollectionExtensions
         });
 
         // V3: Strategy templates
-        services.AddSingleton<IReadOnlyList<TradingResearchEngine.Application.Strategy.StrategyTemplate>>(
-            TradingResearchEngine.Application.Strategy.DefaultStrategyTemplates.All);
+        services.AddSingleton<IReadOnlyList<TradingResearchEngine.Application.Strategies.StrategyTemplate>>(
+            TradingResearchEngine.Application.Strategies.DefaultStrategyTemplates.All);
 
         // Tick Import: configuration binding
         services.Configure<TickImportOptions>(configuration.GetSection(TickImportOptions.SectionName));
@@ -273,7 +273,7 @@ public static class ServiceCollectionExtensions
                 return new DisabledInfrastructureAIAssistant();
             }
 
-            var registry = sp.GetRequiredService<TradingResearchEngine.Application.Strategy.StrategyRegistry>();
+            var registry = sp.GetRequiredService<TradingResearchEngine.Application.Strategies.StrategyRegistry>();
             var geminiClient = sp.GetRequiredService<IGeminiClient>();
             return new GeminiStrategyAssistant(
                 Options.Create(options), registry, logger, geminiClient);

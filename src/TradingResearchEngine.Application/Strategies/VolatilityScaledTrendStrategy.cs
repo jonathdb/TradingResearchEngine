@@ -1,5 +1,5 @@
 using TradingResearchEngine.Application.Indicators;
-using TradingResearchEngine.Application.Strategy;
+using TradingResearchEngine.Core.Configuration;
 using TradingResearchEngine.Core.DataHandling;
 using TradingResearchEngine.Core.Events;
 using TradingResearchEngine.Core.Strategy;
@@ -57,6 +57,22 @@ public sealed class VolatilityScaledTrendStrategy : IStrategy
         _fastSma = new SmaIndicator(fastPeriod);
         _slowSma = new SmaIndicator(slowPeriod);
         _atr = new AtrIndicator(atrPeriod);
+    }
+
+    /// <inheritdoc/>
+    public void Initialize(StrategyConfig config)
+    {
+        // Parameters are set via constructor; Initialize is a lifecycle hook.
+    }
+
+    /// <inheritdoc/>
+    public void Reset()
+    {
+        _fastSma.Reset();
+        _slowSma.Reset();
+        _atr.Reset();
+        _position = Direction.Flat;
+        _barCount = 0;
     }
 
     /// <inheritdoc/>

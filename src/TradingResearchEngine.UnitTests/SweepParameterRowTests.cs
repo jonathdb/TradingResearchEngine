@@ -1,4 +1,4 @@
-using TradingResearchEngine.Application.Strategy;
+using TradingResearchEngine.Application.Strategies;
 using TradingResearchEngine.Web.Features.Research.Sweep;
 
 namespace TradingResearchEngine.UnitTests;

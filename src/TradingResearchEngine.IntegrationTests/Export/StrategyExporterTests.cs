@@ -1,5 +1,5 @@
 using TradingResearchEngine.Application.Export;
-using TradingResearchEngine.Application.Strategy;
+using TradingResearchEngine.Application.Strategies;
 using TradingResearchEngine.Core.Configuration;
 using TradingResearchEngine.Core.Engine;
 using TradingResearchEngine.Infrastructure.Export;

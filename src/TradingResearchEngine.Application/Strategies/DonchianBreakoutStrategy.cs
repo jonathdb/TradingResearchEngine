@@ -1,6 +1,6 @@
 using Skender.Stock.Indicators;
 using TradingResearchEngine.Application.Indicators;
-using TradingResearchEngine.Application.Strategy;
+using TradingResearchEngine.Core.Configuration;
 using TradingResearchEngine.Core.DataHandling;
 using TradingResearchEngine.Core.Events;
 using TradingResearchEngine.Core.Strategy;
@@ -44,6 +44,23 @@ public sealed class DonchianBreakoutStrategy : IStrategy
         _period = period;
         _directionMode = directionMode;
         _donchian = new DonchianIndicator(period);
+    }
+
+    /// <inheritdoc/>
+    public void Initialize(StrategyConfig config)
+    {
+        // Parameters are set via constructor; Initialize is a lifecycle hook.
+    }
+
+    /// <inheritdoc/>
+    public void Reset()
+    {
+        _donchian.Reset();
+        _priorUpperBand = 0m;
+        _priorLowerBand = 0m;
+        _position = Direction.Flat;
+        _hasPriorBands = false;
+        _barCount = 0;
     }
 
     /// <inheritdoc/>

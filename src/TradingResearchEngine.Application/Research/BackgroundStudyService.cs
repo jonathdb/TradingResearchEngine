@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using TradingResearchEngine.Core.Engine;
 
 namespace TradingResearchEngine.Application.Research;
 
@@ -56,6 +57,17 @@ public class BackgroundStudyService : IDisposable
         OnProgress?.Invoke(new StudyProgressUpdate(studyId, current, total, label));
     }
 
+    /// <summary>
+    /// Creates an <see cref="IProgress{ProgressUpdate}"/> adapter that routes progress
+    /// reports to this service's <see cref="OnProgress"/> event for the specified study.
+    /// </summary>
+    /// <param name="studyId">The study identifier to associate progress with.</param>
+    /// <returns>An <see cref="IProgress{ProgressUpdate}"/> instance that emits progress events.</returns>
+    public IProgress<ProgressUpdate> CreateProgressReporter(string studyId)
+    {
+        return new StudyProgressAdapter(this, studyId);
+    }
+
     /// <summary>Marks a study as complete and removes it from active tracking.</summary>
     public void Complete(string studyId, StudyStatus status, string? errorMessage = null)
     {
@@ -88,5 +100,27 @@ public class BackgroundStudyService : IDisposable
         _activeCts.Clear();
         _activeStudies.Clear();
         GC.SuppressFinalize(this);
+    }
+
+    /// <summary>
+    /// Adapter that bridges <see cref="IProgress{ProgressUpdate}"/> to
+    /// <see cref="BackgroundStudyService.ReportProgress"/>.
+    /// Thread-safe: invoked from parallel workflow iterations.
+    /// </summary>
+    private sealed class StudyProgressAdapter : IProgress<ProgressUpdate>
+    {
+        private readonly BackgroundStudyService _service;
+        private readonly string _studyId;
+
+        public StudyProgressAdapter(BackgroundStudyService service, string studyId)
+        {
+            _service = service;
+            _studyId = studyId;
+        }
+
+        public void Report(ProgressUpdate value)
+        {
+            _service.ReportProgress(_studyId, value.CurrentStep, value.TotalSteps, value.Message);
+        }
     }
 }

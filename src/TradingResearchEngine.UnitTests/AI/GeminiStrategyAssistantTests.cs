@@ -5,7 +5,7 @@ using Microsoft.Extensions.Options;
 using Moq;
 using TradingResearchEngine.Application.AI;
 using TradingResearchEngine.Application.Configuration;
-using TradingResearchEngine.Application.Strategy;
+using TradingResearchEngine.Application.Strategies;
 using TradingResearchEngine.Core.Configuration;
 using TradingResearchEngine.Core.Engine;
 using TradingResearchEngine.Core.Results;

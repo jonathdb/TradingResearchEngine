@@ -8,7 +8,8 @@ using Microsoft.Extensions.Options;
 using Moq;
 using TradingResearchEngine.Application.AI;
 using TradingResearchEngine.Application.Configuration;
-using TradingResearchEngine.Application.Strategy;
+using TradingResearchEngine.Application.Strategies;
+using TradingResearchEngine.Application.Strategies.Composite;
 using TradingResearchEngine.Core.Configuration;
 using TradingResearchEngine.Infrastructure.AI;
 
@@ -16,6 +17,7 @@ namespace TradingResearchEngine.UnitTests.AI;
 
 // Feature: trading-research-engine, Property 1: AI Strategy Draft JSON round-trip
 // Feature: trading-research-engine, Property 2: Unknown strategy type triggers exactly one retry
+// Feature: trading-engine-stories, Property 11: AIStrategyDraft JSON Round-Trip
 
 /// <summary>
 /// Property-based tests for AI Strategy Draft serialization and retry behaviour.
@@ -206,6 +208,164 @@ public class AIStrategyDraftProperties
         });
     }
 
+    /// <summary>
+    /// Property 11: AIStrategyDraft JSON Round-Trip.
+    /// For any valid AIStrategyDraft (including RefinementHistory), serializing to JSON
+    /// and deserializing back produces an equivalent object with all fields preserved.
+    /// **Validates: Requirements 21.6**
+    /// </summary>
+    [Property(MaxTest = 100)]
+    // Feature: trading-engine-stories, Property 11: AIStrategyDraft JSON Round-Trip
+    public Property AIStrategyDraft_WithRefinementHistory_JsonRoundTrip_ProducesEquivalentObject()
+    {
+        var strategyNames = new[] { "Alpha Strategy", "Mean Reversion", "Trend Following", "Breakout System", "Momentum Play", "Range Bound" };
+        var hypotheses = new[] { "Markets mean-revert", "Trends persist", "Breakouts signal momentum", "Volatility clusters", "Regime changes" };
+        var rationales = new[] { "Based on academic research", "Empirical evidence", "Statistical analysis", "Market microstructure", "Behavioural finance" };
+        var caveatOptions = new[] { "May underperform in trending markets", "Requires sufficient liquidity", "Sensitive to parameter choice", "High drawdown risk", "Needs large sample" };
+        var refinementOptions = new[] { "Increase lookback period", "Add stop loss", "Reduce position size", "Filter by volatility regime", "Add trend confirmation", "Use tighter entry" };
+        var paramKeys = new[] { "period", "fastPeriod", "slowPeriod", "threshold", "lookback" };
+
+        var gen =
+            from nameIdx in Gen.Choose(0, strategyNames.Length - 1)
+            from hypothesisIdx in Gen.Choose(0, hypotheses.Length - 1)
+            from strategyTypeIdx in Gen.Choose(0, KnownStrategyTypes.Length - 1)
+            from paramCount in Gen.Choose(0, 4)
+            from initialCash in Gen.Elements(50_000m, 100_000m, 200_000m)
+            from riskFreeRate in Gen.Elements(0.02m, 0.05m, 0.08m)
+            from rationaleIdx in Gen.Choose(0, rationales.Length - 1)
+            from caveatCount in Gen.Choose(0, 4)
+            from refinementCount in Gen.Choose(0, 5)
+            from includeComposite in Gen.Elements(true, false)
+            select (nameIdx, hypothesisIdx, strategyTypeIdx, paramCount, initialCash, riskFreeRate, rationaleIdx, caveatCount, refinementCount, includeComposite);
+
+        return Prop.ForAll(gen.ToArbitrary(), t =>
+        {
+            // Build parameters with simple string/decimal values to avoid JsonElement comparison issues
+            var parameters = new Dictionary<string, object>();
+            for (int i = 0; i < t.paramCount && i < paramKeys.Length; i++)
+            {
+                parameters[paramKeys[i]] = ((i + 1) * 10).ToString();
+            }
+
+            // Build caveats
+            var caveats = new List<string>();
+            for (int i = 0; i < t.caveatCount && i < caveatOptions.Length; i++)
+            {
+                caveats.Add(caveatOptions[i]);
+            }
+
+            // Build refinement history
+            var refinementHistory = new List<string>();
+            for (int i = 0; i < t.refinementCount && i < refinementOptions.Length; i++)
+            {
+                refinementHistory.Add(refinementOptions[i]);
+            }
+
+            // Build risk config with string values in RiskParameters
+            var riskParams = new Dictionary<string, object>
+            {
+                ["maxRiskPercent"] = "2.0",
+                ["maxPositions"] = "5"
+            };
+            var suggestedRisk = new RiskConfig(riskParams, t.initialCash, t.riskFreeRate);
+
+            // Optionally include CompositeConfig
+            CompositeStrategyConfig? compositeConfig = null;
+            if (t.includeComposite)
+            {
+                compositeConfig = new CompositeStrategyConfig(
+                    Name: "TestComposite",
+                    Indicators: new List<IndicatorConfig>
+                    {
+                        new IndicatorConfig("sma20", "sma", new Dictionary<string, object> { ["period"] = "20" }),
+                        new IndicatorConfig("rsi14", "rsi", new Dictionary<string, object> { ["period"] = "14" })
+                    },
+                    EntryCondition: "sma20 > price",
+                    ExitCondition: "rsi14 > 70");
+            }
+
+            var draft = new AIStrategyDraft(
+                StrategyName: strategyNames[t.nameIdx],
+                Hypothesis: hypotheses[t.hypothesisIdx],
+                StrategyType: KnownStrategyTypes[t.strategyTypeIdx],
+                Parameters: parameters,
+                SuggestedRisk: suggestedRisk,
+                Rationale: rationales[t.rationaleIdx],
+                Caveats: caveats,
+                CompositeConfig: compositeConfig,
+                SourceType: SourceType.AIGenerated,
+                RefinementHistory: refinementHistory);
+
+            // Serialize to JSON
+            var json = JsonSerializer.Serialize(draft, JsonOptions);
+
+            // Deserialize back
+            var deserialized = JsonSerializer.Deserialize<AIStrategyDraftFullDto>(json, JsonOptions);
+
+            // Verify all fields preserved
+            Assert.NotNull(deserialized);
+            Assert.Equal(draft.StrategyName, deserialized!.StrategyName);
+            Assert.Equal(draft.Hypothesis, deserialized.Hypothesis);
+            Assert.Equal(draft.StrategyType, deserialized.StrategyType);
+            Assert.Equal(draft.Rationale, deserialized.Rationale);
+            Assert.Equal(draft.SourceType.ToString(), deserialized.SourceType);
+
+            // Verify parameters
+            Assert.Equal(draft.Parameters.Count, deserialized.Parameters!.Count);
+            foreach (var kvp in draft.Parameters)
+            {
+                Assert.True(deserialized.Parameters.ContainsKey(kvp.Key),
+                    $"Parameter key '{kvp.Key}' missing after round-trip");
+                Assert.Equal(kvp.Value.ToString(), deserialized.Parameters[kvp.Key]?.ToString());
+            }
+
+            // Verify risk config
+            Assert.NotNull(deserialized.SuggestedRisk);
+            Assert.Equal(draft.SuggestedRisk.InitialCash, deserialized.SuggestedRisk!.InitialCash);
+            Assert.Equal(draft.SuggestedRisk.AnnualRiskFreeRate, deserialized.SuggestedRisk.AnnualRiskFreeRate);
+            Assert.Equal(draft.SuggestedRisk.RiskParameters.Count, deserialized.SuggestedRisk.RiskParameters!.Count);
+            foreach (var kvp in draft.SuggestedRisk.RiskParameters)
+            {
+                Assert.True(deserialized.SuggestedRisk.RiskParameters.ContainsKey(kvp.Key));
+                Assert.Equal(kvp.Value.ToString(), deserialized.SuggestedRisk.RiskParameters[kvp.Key]?.ToString());
+            }
+
+            // Verify caveats
+            Assert.Equal(draft.Caveats.Count, deserialized.Caveats!.Count);
+            for (int i = 0; i < draft.Caveats.Count; i++)
+            {
+                Assert.Equal(draft.Caveats[i], deserialized.Caveats[i]);
+            }
+
+            // Verify refinement history
+            Assert.Equal(draft.RefinementHistory.Count, deserialized.RefinementHistory!.Count);
+            for (int i = 0; i < draft.RefinementHistory.Count; i++)
+            {
+                Assert.Equal(draft.RefinementHistory[i], deserialized.RefinementHistory[i]);
+            }
+
+            // Verify composite config if present
+            if (draft.CompositeConfig is not null)
+            {
+                Assert.NotNull(deserialized.CompositeConfig);
+                Assert.Equal(draft.CompositeConfig.Name, deserialized.CompositeConfig!.Name);
+                Assert.Equal(draft.CompositeConfig.EntryCondition, deserialized.CompositeConfig.EntryCondition);
+                Assert.Equal(draft.CompositeConfig.ExitCondition, deserialized.CompositeConfig.ExitCondition);
+                Assert.Equal(draft.CompositeConfig.DirectionMode.ToString(), deserialized.CompositeConfig.DirectionMode);
+                Assert.Equal(draft.CompositeConfig.Indicators.Count, deserialized.CompositeConfig.Indicators!.Count);
+                for (int i = 0; i < draft.CompositeConfig.Indicators.Count; i++)
+                {
+                    Assert.Equal(draft.CompositeConfig.Indicators[i].Id, deserialized.CompositeConfig.Indicators[i].Id);
+                    Assert.Equal(draft.CompositeConfig.Indicators[i].Type, deserialized.CompositeConfig.Indicators[i].Type);
+                }
+            }
+            else
+            {
+                Assert.Null(deserialized.CompositeConfig);
+            }
+        });
+    }
+
     private static string BuildJsonWithStrategyType(string strategyType)
     {
         var dto = new
@@ -243,6 +403,45 @@ public class AIStrategyDraftProperties
         public string? Rationale { get; set; }
         public List<string>? Caveats { get; set; }
         public string? SourceType { get; set; }
+    }
+
+    /// <summary>
+    /// Full DTO for Property 11 round-trip test including RefinementHistory and CompositeConfig.
+    /// </summary>
+    private sealed class AIStrategyDraftFullDto
+    {
+        public string? StrategyName { get; set; }
+        public string? Hypothesis { get; set; }
+        public string? StrategyType { get; set; }
+        public Dictionary<string, object>? Parameters { get; set; }
+        public RiskConfigDto? SuggestedRisk { get; set; }
+        public string? Rationale { get; set; }
+        public List<string>? Caveats { get; set; }
+        public string? SourceType { get; set; }
+        public CompositeConfigDto? CompositeConfig { get; set; }
+        public List<string>? RefinementHistory { get; set; }
+    }
+
+    /// <summary>
+    /// DTO for CompositeStrategyConfig deserialization in round-trip test.
+    /// </summary>
+    private sealed class CompositeConfigDto
+    {
+        public string? Name { get; set; }
+        public List<IndicatorConfigDto>? Indicators { get; set; }
+        public string? EntryCondition { get; set; }
+        public string? ExitCondition { get; set; }
+        public string? DirectionMode { get; set; }
+    }
+
+    /// <summary>
+    /// DTO for IndicatorConfig deserialization in round-trip test.
+    /// </summary>
+    private sealed class IndicatorConfigDto
+    {
+        public string? Id { get; set; }
+        public string? Type { get; set; }
+        public Dictionary<string, object>? Parameters { get; set; }
     }
 
     private sealed class RiskConfigDto

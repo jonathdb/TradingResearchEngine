@@ -14,7 +14,7 @@ public static class StudyRendererRegistry
         [StudyType.WalkForward] = typeof(WalkForwardResultRenderer),
         [StudyType.AnchoredWalkForward] = typeof(WalkForwardResultRenderer),
         [StudyType.ParameterSweep] = typeof(SweepResultRenderer),
-        [StudyType.Sensitivity] = typeof(SweepResultRenderer),
+        [StudyType.Sensitivity] = typeof(SensitivityResultRenderer),
         [StudyType.Realism] = typeof(RealismResultRenderer),
         [StudyType.BenchmarkComparison] = typeof(BenchmarkResultRenderer),
         [StudyType.Cpcv] = typeof(CpcvResultRenderer),

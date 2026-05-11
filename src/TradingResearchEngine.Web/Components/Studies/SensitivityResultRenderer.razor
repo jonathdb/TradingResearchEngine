@@ -1,0 +1,113 @@
+@using TradingResearchEngine.Application.Research
+@using TradingResearchEngine.Application.Research.Results
+@using System.Text.Json
+
+@if (_result is not null)
+{
+    <MudGrid>
+        <MudItem xs="4">
+            <MetricCard Label="Cost Sensitivity" Value="@_result.CostSensitivity.ToString("F3")" />
+        </MudItem>
+        <MudItem xs="4">
+            <MetricCard Label="Delay Sensitivity" Value="@_result.DelaySensitivity.ToString("F3")" />
+        </MudItem>
+        <MudItem xs="4">
+            <MetricCard Label="Robustness Score" Value="@_result.ExecutionRobustnessScore.ToString("F2")" />
+        </MudItem>
+    </MudGrid>
+
+    <MudText Typo="Typo.subtitle2" Class="mt-4 mb-2">Perturbation Matrix</MudText>
+    <MudSimpleTable Dense="true" Hover="true" aria-label="Sensitivity perturbation results">
+        <thead>
+            <tr>
+                <th>Perturbation</th>
+                <th>CAGR</th>
+                <th>Sharpe</th>
+                <th>Max DD</th>
+                <th>Profit Factor</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var row in _result.Matrix)
+            {
+                <tr class="@GetRowClass(row)">
+                    <td>@row.PerturbationName</td>
+                    <td>@row.CAGR.ToString("P2")</td>
+                    <td>@(row.Sharpe?.ToString("F2") ?? "—")</td>
+                    <td>@row.MaxDrawdown.ToString("P2")</td>
+                    <td>@(row.ProfitFactor?.ToString("F2") ?? "—")</td>
+                </tr>
+            }
+        </tbody>
+    </MudSimpleTable>
+
+    @if (_fillDelayRows.Count > 0)
+    {
+        <MudText Typo="Typo.subtitle2" Class="mt-4 mb-2">Fill Delay Impact</MudText>
+        <MudSimpleTable Dense="true" Hover="true" aria-label="Fill delay perturbation results">
+            <thead>
+                <tr>
+                    <th>Delay</th>
+                    <th>Sharpe</th>
+                    <th>Sharpe Δ</th>
+                    <th>Max DD</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var row in _fillDelayRows)
+                {
+                    <tr>
+                        <td>@row.PerturbationName</td>
+                        <td>@(row.Sharpe?.ToString("F2") ?? "—")</td>
+                        <td class="@(GetDeltaClass(row))">@GetSharpeDelta(row)</td>
+                        <td>@row.MaxDrawdown.ToString("P2")</td>
+                    </tr>
+                }
+            </tbody>
+        </MudSimpleTable>
+    }
+}
+
+@code {
+    [Parameter] public StudyRecord Study { get; set; } = default!;
+    [Parameter] public string ResultJson { get; set; } = "";
+
+    private SensitivityResult? _result;
+    private IReadOnlyList<SensitivityRow> _fillDelayRows = Array.Empty<SensitivityRow>();
+    private decimal? _baseSharpe;
+
+    protected override void OnParametersSet()
+    {
+        if (!string.IsNullOrEmpty(ResultJson))
+        {
+            _result = JsonSerializer.Deserialize<SensitivityResult>(ResultJson);
+            if (_result is not null)
+            {
+                _baseSharpe = _result.Matrix.FirstOrDefault(r => r.PerturbationName == "Base")?.Sharpe;
+                _fillDelayRows = _result.Matrix
+                    .Where(r => r.PerturbationName.StartsWith("Delay", StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+            }
+        }
+    }
+
+    private string GetRowClass(SensitivityRow row)
+    {
+        if (row.PerturbationName == "Base") return "mud-theme-primary";
+        return "";
+    }
+
+    private string GetSharpeDelta(SensitivityRow row)
+    {
+        if (_baseSharpe is null || row.Sharpe is null) return "—";
+        var delta = row.Sharpe.Value - _baseSharpe.Value;
+        return delta >= 0 ? $"+{delta:F2}" : $"{delta:F2}";
+    }
+
+    private string GetDeltaClass(SensitivityRow row)
+    {
+        if (_baseSharpe is null || row.Sharpe is null) return "";
+        var delta = row.Sharpe.Value - _baseSharpe.Value;
+        return delta < 0 ? "mud-error-text" : "mud-success-text";
+    }
+}

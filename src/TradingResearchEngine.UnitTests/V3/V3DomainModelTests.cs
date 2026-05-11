@@ -4,7 +4,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using TradingResearchEngine.Application.PropFirm;
 using TradingResearchEngine.Application.PropFirm.Results;
 using TradingResearchEngine.Application.Research;
-using TradingResearchEngine.Application.Strategy;
+using TradingResearchEngine.Application.Strategies;
 using TradingResearchEngine.Core.Configuration;
 using TradingResearchEngine.Core.Engine;
 using TradingResearchEngine.Core.Events;

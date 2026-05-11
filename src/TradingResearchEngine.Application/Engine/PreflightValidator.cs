@@ -1,5 +1,5 @@
 using TradingResearchEngine.Application.Configuration;
-using TradingResearchEngine.Application.Strategy;
+using TradingResearchEngine.Application.Strategies;
 using TradingResearchEngine.Core.Configuration;
 
 namespace TradingResearchEngine.Application.Engine;

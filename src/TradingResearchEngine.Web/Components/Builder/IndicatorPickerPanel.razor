@@ -1,0 +1,135 @@
+@* Indicator picker panel with category filters, text search, and scrollable indicator cards *@
+@using TradingResearchEngine.Application.Indicators
+
+<MudPaper Class="pa-4" Elevation="1" aria-label="Indicator picker panel">
+    <MudText Typo="Typo.h6" Class="mb-3">Add Indicator</MudText>
+
+    @* Category filter chips *@
+    <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="1" Class="mb-3" aria-label="Category filters">
+        <MudChip T="string"
+                 Color="@(SelectedCategory is null ? Color.Primary : Color.Default)"
+                 Variant="@(SelectedCategory is null ? Variant.Filled : Variant.Outlined)"
+                 OnClick="@(() => SelectCategory(null))"
+                 aria-label="Show all categories">
+            All
+        </MudChip>
+        @foreach (var category in Categories)
+        {
+            <MudChip T="string"
+                     Color="@(SelectedCategory == category ? Color.Primary : Color.Default)"
+                     Variant="@(SelectedCategory == category ? Variant.Filled : Variant.Outlined)"
+                     OnClick="@(() => SelectCategory(category))"
+                     aria-label="@($"Filter by {category}")">
+                @category
+            </MudChip>
+        }
+    </MudStack>
+
+    @* Text search input *@
+    <MudTextField T="string"
+                  @bind-Value="SearchText"
+                  @bind-Value:after="OnSearchChanged"
+                  Label="Search indicators"
+                  Placeholder="Type to filter by name..."
+                  Adornment="Adornment.Start"
+                  AdornmentIcon="@Icons.Material.Filled.Search"
+                  Immediate="true"
+                  Clearable="true"
+                  Class="mb-3"
+                  aria-label="Search indicators by name" />
+
+    @* Scrollable list of matching indicator cards *@
+    <MudStack Spacing="2" Style="max-height: 400px; overflow-y: auto;" aria-label="Indicator list">
+        @if (!FilteredIndicators.Any())
+        {
+            <MudAlert Severity="Severity.Info" Dense="true" aria-label="No indicators found">
+                No indicators match the current filters.
+            </MudAlert>
+        }
+        else
+        {
+            @foreach (var indicator in FilteredIndicators)
+            {
+                <MudCard Outlined="true" Class="pa-3" aria-label="@($"Indicator: {indicator.DisplayName}")">
+                    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                        <MudStack Spacing="0" Style="flex: 1;">
+                            <MudText Typo="Typo.subtitle1">@indicator.DisplayName</MudText>
+                            <MudText Typo="Typo.body2" Color="Color.Secondary">@indicator.Description</MudText>
+                            <MudChip T="string" Size="MudBlazor.Size.Small" Variant="Variant.Text"
+                                     Color="Color.Info" aria-label="@($"Category: {indicator.Category}")">
+                                @indicator.Category
+                            </MudChip>
+                        </MudStack>
+                        <MudButton Variant="Variant.Filled"
+                                   Color="Color.Primary"
+                                   Size="MudBlazor.Size.Small"
+                                   OnClick="@(() => AddIndicator(indicator))"
+                                   aria-label="@($"Add {indicator.DisplayName} to strategy")">
+                            Add
+                        </MudButton>
+                    </MudStack>
+                </MudCard>
+            }
+        }
+    </MudStack>
+</MudPaper>
+
+@code {
+    /// <summary>
+    /// Callback invoked when the user adds an indicator to the strategy.
+    /// Emits the indicator key and a dictionary of default parameter values.
+    /// </summary>
+    [Parameter]
+    public EventCallback<(string Key, Dictionary<string, object> Parameters)> OnIndicatorAdded { get; set; }
+
+    private static readonly IReadOnlyList<string> Categories = new[]
+    {
+        "Trend", "Momentum", "Volatility", "Volume", "Trend Strength", "Oscillator", "Statistical"
+    };
+
+    private string? SelectedCategory { get; set; }
+    private string? SearchText { get; set; }
+
+    private IEnumerable<SkenderCatalogEntry> FilteredIndicators => GetFilteredIndicators();
+
+    private IEnumerable<SkenderCatalogEntry> GetFilteredIndicators()
+    {
+        var entries = SkenderIndicatorCatalog.All.AsEnumerable();
+
+        if (SelectedCategory is not null)
+        {
+            entries = entries.Where(e =>
+                string.Equals(e.Category, SelectedCategory, StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (!string.IsNullOrWhiteSpace(SearchText))
+        {
+            var search = SearchText.Trim();
+            entries = entries.Where(e =>
+                e.DisplayName.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                e.Key.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                e.Description.Contains(search, StringComparison.OrdinalIgnoreCase));
+        }
+
+        return entries;
+    }
+
+    private void SelectCategory(string? category)
+    {
+        SelectedCategory = category;
+    }
+
+    private void OnSearchChanged()
+    {
+        // Filtering is reactive via the computed property; StateHasChanged is implicit.
+    }
+
+    private async Task AddIndicator(SkenderCatalogEntry entry)
+    {
+        var defaultParams = entry.Parameters.ToDictionary(
+            p => p.Name,
+            p => p.DefaultValue);
+
+        await OnIndicatorAdded.InvokeAsync((entry.Key, defaultParams));
+    }
+}

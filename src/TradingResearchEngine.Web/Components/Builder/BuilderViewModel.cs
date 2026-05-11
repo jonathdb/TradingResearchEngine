@@ -1,4 +1,4 @@
-using TradingResearchEngine.Application.Strategy;
+using TradingResearchEngine.Application.Strategies;
 using TradingResearchEngine.Core.Configuration;
 
 namespace TradingResearchEngine.Web.Components.Builder;
@@ -88,7 +88,8 @@ public sealed class BuilderViewModel
             ExecutionConfig: new ExecutionConfig(
                 SlippageModelType, CommissionModelType,
                 FillMode.NextBarOpen,
-                ExecutionRealismProfile.StandardBacktest),
+                ExecutionRealismProfile.StandardBacktest,
+                FillDelayBars: FillDelayBars),
             RiskConfig: new RiskConfig(
                 new Dictionary<string, object>(), InitialCash, AnnualRiskFreeRate),
             PresetId: PresetId,
@@ -124,7 +125,12 @@ public sealed class BuilderViewModel
             PropFirmOptions: null,
             FillMode: FillMode.NextBarOpen,
             BarsPerYear: BarsPerYear,
-            Timeframe: Timeframe);
+            Timeframe: Timeframe,
+            Execution: new ExecutionConfig(
+                SlippageModelType, CommissionModelType,
+                FillMode.NextBarOpen,
+                ExecutionRealismProfile.StandardBacktest,
+                FillDelayBars: FillDelayBars));
     }
 
     /// <summary>Creates a StrategyVersion from the current builder state.</summary>
@@ -179,6 +185,7 @@ public sealed class BuilderViewModel
         {
             vm.SlippageModelType = draft.ExecutionConfig.SlippageModelType;
             vm.CommissionModelType = draft.ExecutionConfig.CommissionModelType;
+            vm.FillDelayBars = draft.ExecutionConfig.FillDelayBars;
         }
 
         if (draft.RiskConfig is not null)

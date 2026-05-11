@@ -8,12 +8,13 @@ using TradingResearchEngine.Application.Configuration;
 using TradingResearchEngine.Application.Engine;
 using TradingResearchEngine.Application.Execution;
 using TradingResearchEngine.Application.Export;
+using TradingResearchEngine.Application.Indicators;
 using TradingResearchEngine.Application.PaperTrading;
 using TradingResearchEngine.Application.Portfolio;
 using TradingResearchEngine.Application.PropFirm;
 using TradingResearchEngine.Application.Research;
 using TradingResearchEngine.Application.Risk;
-using TradingResearchEngine.Application.Strategy;
+using TradingResearchEngine.Application.Strategies;
 using TradingResearchEngine.Core.DataHandling;
 using TradingResearchEngine.Core.Engine;
 using TradingResearchEngine.Core.Execution;
@@ -91,6 +92,9 @@ public static class ServiceCollectionExtensions
 
         // V4: Research checklist and final validation
         services.AddScoped<ResearchChecklistService>();
+
+        // Study interpretation service — generates result-aware textual interpretations
+        services.AddScoped<StudyInterpretationService>();
         services.AddScoped<FinalValidationUseCase>();
 
         // V5: Preflight validation and resolved config
@@ -101,11 +105,17 @@ public static class ServiceCollectionExtensions
         // V4: Background study service (singleton — manages study lifecycle across navigations)
         services.AddSingleton<BackgroundStudyService>();
 
+        // Job executor (singleton — manages async job lifecycle and cleanup)
+        services.AddSingleton<JobExecutor>();
+
         // V8: Portfolio backtest runner
         services.AddScoped<PortfolioBacktestRunner>();
 
         // V8: BarDataPool singleton for hot-path allocation reduction
         services.AddSingleton<BarDataPool>();
+
+        // Register all Skender catalog indicators in the Core IndicatorRegistry
+        SkenderIndicatorCatalog.RegisterInIndicatorRegistry();
 
         // V8: AI Strategy Assistant — conditionally registered based on API key availability
         services.AddSingleton<IAIStrategyAssistant>(sp =>
