@@ -1,5 +1,21 @@
-.text-muted { opacity: 0.6; }
-.text-faint { opacity: 0.4; }
-.strategy-strip-card { border-left: 3px solid var(--mud-palette-text-disabled); }
-.strip-active        { border-left-color: var(--mud-palette-primary) !important; }
-.strip-untested      { border-left-color: var(--mud-palette-text-disabled) !important; }
+/* ═══════════════════════════════════════════════════════════════════════════
+   app.css — Application-specific overrides and extensions.
+   design-tokens.css is imported first and provides all base utilities.
+   This file contains only app-specific rules not covered by the token system.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Skip-to-content link (accessibility) */
+.skip-to-content {
+  position: absolute;
+  top: -40px;
+  left: 0;
+  background: var(--color-primary);
+  color: white;
+  padding: var(--space-2) var(--space-4);
+  z-index: 9999;
+  transition: top 0.2s ease;
+}
+
+.skip-to-content:focus {
+  top: 0;
+}

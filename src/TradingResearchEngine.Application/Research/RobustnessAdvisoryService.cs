@@ -39,4 +39,60 @@ public sealed class RobustnessAdvisoryService : IRobustnessAdvisoryService
 
         return warnings;
     }
+
+    /// <inheritdoc/>
+    public IReadOnlyList<RobustnessWarning> GetStructuredWarnings(BacktestResult result)
+    {
+        var warnings = new List<RobustnessWarning>();
+
+        if (result.SharpeRatio > _thresholds.MaxSharpeRatio)
+        {
+            warnings.Add(new RobustnessWarning(
+                RobustnessSeverity.High,
+                "HIGH_SHARPE",
+                $"Sharpe ratio ({result.SharpeRatio:F2}) exceeds {_thresholds.MaxSharpeRatio}",
+                "Run a walk-forward study to validate out-of-sample performance",
+                Cause: "Sharpe > 3.0 often indicates curve-fitting to noise in the training period",
+                Remediation: "Run walk-forward or CPCV study to confirm OOS performance",
+                CauseCategory: "Overfitting"));
+        }
+
+        if (result.TotalTrades < _thresholds.MinTotalTrades)
+        {
+            warnings.Add(new RobustnessWarning(
+                RobustnessSeverity.Medium,
+                "LOW_TRADES",
+                $"Only {result.TotalTrades} trades (minimum {_thresholds.MinTotalTrades} recommended)",
+                "Extend the backtest period or reduce entry signal selectivity",
+                Cause: "Low trade count produces unreliable statistics — confidence intervals are wide",
+                Remediation: "Use a longer data period or relax entry conditions to generate more trades",
+                CauseCategory: "InsufficientData"));
+        }
+
+        if (result.EquityCurveSmoothness < _thresholds.MinKRatio)
+        {
+            warnings.Add(new RobustnessWarning(
+                RobustnessSeverity.Medium,
+                "NEGATIVE_KRATIO",
+                "K-Ratio is negative — equity curve is deteriorating over time",
+                "Review strategy logic for regime dependency or parameter decay",
+                Cause: "A negative K-Ratio means later performance is worse than earlier, suggesting the edge is decaying",
+                Remediation: "Run regime segmentation to identify when the strategy stops working",
+                CauseCategory: "ParameterFragility"));
+        }
+
+        if (result.MaxDrawdown > _thresholds.MaxDrawdownPercent)
+        {
+            warnings.Add(new RobustnessWarning(
+                RobustnessSeverity.High,
+                "EXCESSIVE_DRAWDOWN",
+                $"Maximum drawdown ({result.MaxDrawdown:P1}) exceeds {_thresholds.MaxDrawdownPercent:P0} threshold",
+                "Review position sizing and risk management parameters",
+                Cause: "Excessive drawdown indicates inadequate risk controls or concentrated exposure",
+                Remediation: "Reduce position size, add stop-loss, or diversify across assets",
+                CauseCategory: "ExecutionUnrealism"));
+        }
+
+        return warnings;
+    }
 }

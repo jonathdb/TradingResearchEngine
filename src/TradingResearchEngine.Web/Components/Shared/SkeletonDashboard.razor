@@ -1,0 +1,43 @@
+@* Skeleton loading state matching the Dashboard layout structure.
+   Displays MudSkeleton placeholders for KPI tiles, strategy strip, and recent runs table. *@
+
+<MudText Typo="Typo.subtitle2" Class="text-muted mb-2">YOUR STRATEGIES</MudText>
+<div class="strategy-strip">
+    @for (var i = 0; i < 4; i++)
+    {
+        <MudPaper Class="pa-3 strategy-strip-card" Elevation="1">
+            <MudSkeleton Width="120px" Height="20px" Class="mb-2" />
+            <MudSkeleton Width="80px" Height="16px" Class="mb-1" />
+            <MudSkeleton Width="60px" Height="14px" />
+        </MudPaper>
+    }
+</div>
+
+<MudGrid Class="mb-4">
+    @for (var i = 0; i < 4; i++)
+    {
+        <MudItem xs="6" sm="3">
+            <MudPaper Class="pa-3" Elevation="1">
+                <MudSkeleton Width="80px" Height="14px" Class="mb-2" />
+                <MudSkeleton Width="40px" Height="28px" />
+            </MudPaper>
+        </MudItem>
+    }
+</MudGrid>
+
+<MudGrid>
+    <MudItem xs="12" md="8">
+        <MudText Typo="Typo.subtitle2" Class="text-muted mb-2">RECENT RUNS</MudText>
+        @for (var i = 0; i < 5; i++)
+        {
+            <MudSkeleton Height="36px" Class="mb-1" />
+        }
+    </MudItem>
+    <MudItem xs="12" md="4">
+        <MudText Typo="Typo.subtitle2" Class="text-muted mb-2">⚠ ROBUSTNESS FLAGS</MudText>
+        @for (var i = 0; i < 3; i++)
+        {
+            <MudSkeleton Height="48px" Class="mb-2" />
+        }
+    </MudItem>
+</MudGrid>

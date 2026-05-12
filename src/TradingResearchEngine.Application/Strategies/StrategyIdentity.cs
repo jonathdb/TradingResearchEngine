@@ -9,7 +9,7 @@ namespace TradingResearchEngine.Application.Strategies;
 public sealed record StrategyIdentity(
     string StrategyId,
     string StrategyName,
-    string StrategyType,
+    StrategyTypeId StrategyType,
     DateTimeOffset CreatedAt,
     string? Description = null,
     /// <summary>V4: Research lifecycle stage. Defaults to <see cref="DevelopmentStage.Exploring"/> for backwards-compatible JSON deserialization.</summary>

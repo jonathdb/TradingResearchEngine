@@ -1,0 +1,223 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   Design Tokens — TradingResearchEngine V9
+   Central source of truth for spacing, typography, color, status, and state.
+   Import this file BEFORE app.css in the layout.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  /* ─── Spacing Scale ─── */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+
+  /* ─── Typography ─── */
+  --font-size-xs: 0.75rem;
+  --font-size-sm: 0.875rem;
+  --font-size-base: 1rem;
+  --font-size-lg: 1.125rem;
+  --font-size-xl: 1.25rem;
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-bold: 700;
+  --line-height-tight: 1.25;
+  --line-height-normal: 1.5;
+
+  /* ─── Color Palette (delegates to MudBlazor palette vars) ─── */
+  --color-primary: var(--mud-palette-primary);
+  --color-secondary: var(--mud-palette-secondary);
+  --color-success: var(--mud-palette-success);
+  --color-warning: var(--mud-palette-warning);
+  --color-error: var(--mud-palette-error);
+  --color-surface: var(--mud-palette-surface);
+  --color-background: var(--mud-palette-background-grey);
+  --color-divider: var(--mud-palette-divider);
+  --color-text-primary: var(--mud-palette-text-primary);
+  --color-text-secondary: var(--mud-palette-text-secondary);
+  --color-text-disabled: var(--mud-palette-text-disabled);
+
+  /* ─── Status States ─── */
+  --status-active: var(--color-success);
+  --status-untested: var(--color-text-disabled);
+  --status-failed: var(--color-error);
+  --status-running: var(--color-primary);
+  --status-completed: var(--color-success);
+  --status-cancelled: var(--color-warning);
+  --status-queued: var(--color-secondary);
+
+  /* ─── Data Segment Colors (IS/OOS/WF/CPCV/Held-Out) ─── */
+  --segment-is: #2196F3;
+  --segment-oos: #4CAF50;
+  --segment-wf: #9C27B0;
+  --segment-cpcv: #009688;
+  --segment-heldout: #FF9800;
+
+  /* ─── Development Stage Colors ─── */
+  --stage-exploration: #2196F3;
+  --stage-validation: #FF9800;
+  --stage-finaltest: #4CAF50;
+  --stage-live: #9C27B0;
+  --stage-retired: #9E9E9E;
+
+  /* ─── Robustness Severity ─── */
+  --severity-critical: #D32F2F;
+  --severity-high: #F44336;
+  --severity-medium: #FF9800;
+  --severity-low: #FFC107;
+
+  /* ─── Interactive States ─── */
+  --state-hover-opacity: 0.08;
+  --state-focus-ring-color: var(--color-primary);
+  --state-focus-ring-width: 2px;
+  --state-active-scale: 0.98;
+
+  /* ─── Breakpoints (reference values for media queries) ─── */
+  --breakpoint-sm: 600px;
+  --breakpoint-md: 960px;
+  --breakpoint-lg: 1280px;
+}
+
+/* ─── Reduced Motion ─── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0s !important;
+    animation-duration: 0s !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+/* ─── Utility Classes ─── */
+
+/* Strategy strip card base */
+.strategy-strip-card {
+  border-left: 3px solid var(--status-untested);
+  min-width: 180px;
+  cursor: pointer;
+  transition: box-shadow 0.15s ease, transform 0.1s ease;
+}
+
+.strategy-strip-card:hover {
+  box-shadow: var(--mud-elevation-3);
+}
+
+.strategy-strip-card:focus-visible {
+  outline: var(--state-focus-ring-width) solid var(--state-focus-ring-color);
+  outline-offset: 2px;
+}
+
+.strategy-strip-card:active {
+  transform: scale(var(--state-active-scale));
+}
+
+.strip-active {
+  border-left-color: var(--status-active) !important;
+}
+
+.strip-untested {
+  border-left-color: var(--status-untested) !important;
+}
+
+/* Text opacity utilities */
+.text-muted {
+  opacity: 0.6;
+}
+
+.text-faint {
+  opacity: 0.4;
+}
+
+/* Clickable card affordance */
+.clickable-card {
+  cursor: pointer;
+  transition: box-shadow 0.15s ease;
+}
+
+.clickable-card:hover {
+  box-shadow: var(--mud-elevation-3);
+}
+
+.clickable-card:focus-visible {
+  outline: var(--state-focus-ring-width) solid var(--state-focus-ring-color);
+  outline-offset: 2px;
+}
+
+/* Strategy strip scroll container */
+.strategy-strip {
+  display: flex;
+  gap: var(--space-3);
+  overflow-x: auto;
+  padding-bottom: var(--space-2);
+  margin-bottom: var(--space-5);
+  scroll-behavior: smooth;
+}
+
+/* Fade edges for scroll affordance */
+.strategy-strip-wrapper {
+  position: relative;
+}
+
+.strategy-strip-wrapper::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 48px;
+  background: linear-gradient(to right, transparent, var(--mud-palette-background));
+  pointer-events: none;
+}
+
+/* Stage badge colors */
+.stage-badge-exploring { color: var(--stage-exploration); }
+.stage-badge-validation { color: var(--stage-validation); }
+.stage-badge-finaltest { color: var(--stage-finaltest); }
+.stage-badge-live { color: var(--stage-live); }
+.stage-badge-retired { color: var(--stage-retired); }
+
+/* KPI card */
+.kpi-card {
+  cursor: pointer;
+  transition: box-shadow 0.15s ease;
+}
+
+.kpi-card:hover {
+  box-shadow: var(--mud-elevation-3);
+}
+
+/* Skeleton shimmer (disabled by reduced-motion) */
+.skeleton-shimmer {
+  background: linear-gradient(90deg, var(--color-surface) 25%, rgba(255,255,255,0.1) 50%, var(--color-surface) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ─── Responsive Foundations ─── */
+@media (max-width: 768px) {
+  .strategy-strip {
+    flex-direction: column;
+    overflow-x: visible;
+  }
+
+  .strategy-strip-wrapper::after {
+    display: none;
+  }
+
+  /* Ensure minimum readable text size */
+  body {
+    font-size: max(14px, 1rem);
+  }
+}
+
+@media (max-width: 600px) {
+  /* KPI tiles: 2x2 grid handled by MudGrid xs="6" */
+}

@@ -1,77 +1,114 @@
 @page "/"
 @using TradingResearchEngine.Application.Strategies
+@using TradingResearchEngine.Application.Research
+@using TradingResearchEngine.Web.Components.Shared
 @implements IDisposable
-@inject TradingResearchEngine.Core.Persistence.IRepository<BacktestResult> ResultRepo
+@inject IBacktestResultRepository ResultRepo
 @inject IStrategyRepository StrategyRepo
-@inject TradingResearchEngine.Application.Research.IStudyRepository StudyRepo
-@inject TradingResearchEngine.Application.Research.IRobustnessAdvisoryService RobustnessService
-@inject TradingResearchEngine.Application.Research.ResearchChecklistService ChecklistService
+@inject IStudyRepository StudyRepo
+@inject IRobustnessAdvisoryService RobustnessService
+@inject ResearchChecklistService ChecklistService
 @inject NavigationManager Nav
 
 <PageTitle>Dashboard — Research Engine</PageTitle>
 
-@if (_loading)
+@if (_error is not null)
 {
-    <MudProgressCircular Indeterminate="true" />
+    <MudAlert Severity="Severity.Error" Class="mb-4">
+        Failed to load dashboard data: @_error
+    </MudAlert>
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="RetryLoad">Retry</MudButton>
+}
+else if (_loading)
+{
+    <SkeletonDashboard />
 }
 else
 {
-    @* Zone 1 — Strategy Status Strip (Fix 1: CSS vars instead of hex) *@
+    @* Zone 1 — Strategy Status Strip *@
     <MudText Typo="Typo.subtitle2" Class="text-muted mb-2">YOUR STRATEGIES</MudText>
-    <div style="display:flex; gap:12px; overflow-x:auto; padding-bottom:8px; margin-bottom:24px;">
-        @foreach (var s in _strategies)
-        {
-            var lastRun = _lastRunMap.GetValueOrDefault(s.StrategyType);
-            <MudPaper Class="@($"pa-3 strategy-strip-card {(lastRun is not null ? "strip-active" : "strip-untested")}")"
-                      Style="min-width:180px; cursor:pointer;"
-                      Elevation="1" @onclick="@(() => Nav.NavigateTo($"/strategies/{s.StrategyId}"))">
-                <MudText Typo="Typo.subtitle2" Style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">@s.StrategyName</MudText>
-                <MudText Typo="Typo.body2" Class="@GetSharpeClass(lastRun?.SharpeRatio)">
-                    Sharpe: @(lastRun?.SharpeRatio?.ToString("F2") ?? "—")
-                </MudText>
-                <MudText Typo="Typo.caption" Class="text-muted">@(lastRun is not null ? "Active" : "Untested")</MudText>
-                @{
-                    var checklist = _checklistMap.GetValueOrDefault(s.StrategyType);
-                }
-                @if (checklist is not null)
+    @if (_strategies.Count == 0)
+    {
+        <MudAlert Severity="Severity.Info" Class="mb-4">
+            No strategies yet.
+            <MudLink Href="/strategies/builder">Create your first strategy</MudLink> to get started.
+        </MudAlert>
+    }
+    else
+    {
+        <div class="strategy-strip-wrapper">
+            <div class="strategy-strip">
+                @foreach (var s in _strategies)
                 {
-                    <MudTooltip Text="@GetFailedChecksTooltip(checklist)">
-                        <MudText Typo="Typo.caption" Class="@GetChecklistClass(checklist)">
-                            ✓ @checklist.PassedCount/9 checks
+                    var lastRun = _lastRunMap.GetValueOrDefault((string)s.StrategyType);
+                    var checklist = _checklistMap.GetValueOrDefault((string)s.StrategyType);
+                    <MudPaper @key="s.StrategyId"
+                              Class="@($"pa-3 strategy-strip-card {(lastRun is not null ? "strip-active" : "strip-untested")}")"
+                              Elevation="1"
+                              role="button"
+                              tabindex="0"
+                              aria-label="@($"{s.StrategyName} — {(lastRun is not null ? "Active" : "Untested")}")"
+                              @onclick="@(() => Nav.NavigateTo($"/strategies/{s.StrategyId}"))"
+                              @onkeydown="@(e => { if (e.Key is "Enter" or " ") Nav.NavigateTo($"/strategies/{s.StrategyId}"); })">
+                        <MudText Typo="Typo.subtitle2">@s.StrategyName</MudText>
+                        <MudText Typo="Typo.body2" Class="@GetSharpeClass(lastRun?.SharpeRatio)">
+                            Sharpe: @(lastRun?.SharpeRatio?.ToString("F2") ?? "—")
                         </MudText>
-                    </MudTooltip>
+                        @if (checklist is not null)
+                        {
+                            <MudProgressLinear Value="@((double)checklist.PassedCount / checklist.TotalChecks * 100)"
+                                              Color="@GetChecklistColor(checklist)" Size="MudBlazor.Size.Small" Class="my-1" />
+                            <MudText Typo="Typo.caption" Class="@GetChecklistClass(checklist)">
+                                @checklist.PassedCount/@checklist.TotalChecks checks
+                            </MudText>
+                        }
+                        <MudText Typo="Typo.caption" Class="@GetStageBadgeClass(s.Stage)">@s.Stage</MudText>
+                        @if (lastRun?.CreatedAt is { } runDate && runDate != default)
+                        {
+                            <MudText Typo="Typo.caption" Class="text-faint">@FormatRelativeDate(runDate)</MudText>
+                        }
+                        @if (checklist?.NextAction is { } nextAction)
+                        {
+                            <MudTooltip Text="@nextAction.Description">
+                                <MudIcon Icon="@(nextAction.IsWarning ? Icons.Material.Filled.Warning : Icons.Material.Filled.PlayArrow)"
+                                         Size="MudBlazor.Size.Small"
+                                         Color="@(nextAction.IsWarning ? Color.Warning : Color.Info)" />
+                            </MudTooltip>
+                        }
+                    </MudPaper>
                 }
-                else
-                {
-                    <MudText Typo="Typo.caption" Class="text-muted">—</MudText>
-                }
-                <MudText Typo="Typo.caption" Style="font-size:0.7rem" Class="text-faint">@s.Stage</MudText>
-            </MudPaper>
-        }
-        <MudPaper Class="pa-3 d-flex align-center justify-center" Elevation="0"
-                  Style="min-width:180px; cursor:pointer; border:1px dashed var(--mud-palette-divider);"
-                  @onclick="@(() => Nav.NavigateTo("/strategies/builder"))">
-            <MudStack AlignItems="AlignItems.Center" Spacing="1">
-                <MudIcon Icon="@Icons.Material.Filled.Add" Class="text-muted" />
-                <MudText Typo="Typo.caption" Class="text-muted">New Strategy</MudText>
-            </MudStack>
-        </MudPaper>
-    </div>
+                <MudPaper Class="pa-3 d-flex align-center justify-center strategy-strip-card" Elevation="0"
+                          role="button" tabindex="0" aria-label="Create new strategy"
+                          @onclick="@(() => Nav.NavigateTo("/strategies/builder"))"
+                          @onkeydown="@(e => { if (e.Key is "Enter" or " ") Nav.NavigateTo("/strategies/builder"); })">
+                    <MudStack AlignItems="AlignItems.Center" Spacing="1">
+                        <MudIcon Icon="@Icons.Material.Filled.Add" Class="text-muted" />
+                        <MudText Typo="Typo.caption" Class="text-muted">New Strategy</MudText>
+                    </MudStack>
+                </MudPaper>
+            </div>
+        </div>
+    }
 
     @* Zone 2 — KPI Tiles *@
     <MudGrid Class="mb-4">
         <MudItem xs="6" sm="3">
-            <MudPaper Class="pa-3" Elevation="1" Style="cursor:pointer" @onclick="@(() => Nav.NavigateTo("/strategies/library"))">
+            <MudPaper Class="pa-3 kpi-card" Elevation="1"
+                      @onclick="@(() => Nav.NavigateTo("/strategies/library"))">
                 <MudText Typo="Typo.caption" Class="text-muted">Strategies</MudText>
                 <MudText Typo="Typo.h5">@_strategies.Count</MudText>
             </MudPaper>
         </MudItem>
         <MudItem xs="6" sm="3">
-            <MudPaper Class="pa-3" Elevation="1"
-                      Style="@(GetLastSharpeNavigationTarget() is not null ? "cursor:pointer" : "")"
-                      @onclick="@(() => { if (GetLastSharpeNavigationTarget() is { } target) Nav.NavigateTo(target); })">
-                <MudText Typo="Typo.caption" Class="text-muted">Last Sharpe</MudText>
-                <MudText Typo="Typo.h5">@(_latestRun?.SharpeRatio?.ToString("F2") ?? "—")</MudText>
+            <MudPaper Class="pa-3 kpi-card" Elevation="1"
+                      @onclick="@(() => { if (GetLastSharpeNavigationTarget() is { } t) Nav.NavigateTo(t); })">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                    <MudStack Spacing="0">
+                        <MudText Typo="Typo.caption" Class="text-muted">Last Sharpe</MudText>
+                        <MudText Typo="Typo.h5">@(_latestRun?.SharpeRatio?.ToString("F2") ?? "—")</MudText>
+                    </MudStack>
+                    <KpiSparkline Values="@_recentSharpes" Width="60" Height="24" />
+                </MudStack>
                 @if (GetLastSharpeStrategyName() is { } stratName)
                 {
                     <MudText Typo="Typo.caption" Class="text-muted">@stratName</MudText>
@@ -79,15 +116,16 @@ else
             </MudPaper>
         </MudItem>
         <MudItem xs="6" sm="3">
-            <MudPaper Class="pa-3" Elevation="1">
+            <MudPaper Class="pa-3 kpi-card" Elevation="1">
                 <MudText Typo="Typo.caption" Class="text-muted">Active Studies</MudText>
                 <MudText Typo="Typo.h5">@_activeStudies</MudText>
             </MudPaper>
         </MudItem>
         <MudItem xs="6" sm="3">
-            <MudPaper Class="pa-3" Elevation="1">
+            <MudPaper Class="pa-3 kpi-card" Elevation="1"
+                      @onclick="@(() => Nav.NavigateTo("/robustness-hub"))">
                 <MudText Typo="Typo.caption" Class="text-muted">⚠ Flags</MudText>
-                <MudText Typo="Typo.h5">@_warningRuns.Count</MudText>
+                <MudText Typo="Typo.h5" Color="@(_warningRuns.Count > 0 ? Color.Warning : Color.Default)">@_warningRuns.Count</MudText>
             </MudPaper>
         </MudItem>
     </MudGrid>
@@ -98,11 +136,12 @@ else
             <MudText Typo="Typo.subtitle2" Class="text-muted mb-2">RECENT RUNS</MudText>
             @if (_recentRuns.Count == 0)
             {
-                <MudAlert Severity="Severity.Info" Dense="true">No runs yet.</MudAlert>
+                <MudAlert Severity="Severity.Info" Dense="true">
+                    No runs yet. <MudLink Href="/strategies/builder">Create a strategy</MudLink> and run your first backtest.
+                </MudAlert>
             }
             else
             {
-                @* Filtering controls *@
                 <MudStack Row="true" Spacing="2" Class="mb-2" AlignItems="AlignItems.Center">
                     <MudStack Row="true" Spacing="1" Wrap="Wrap.Wrap">
                         @foreach (var t in _allStrategyTypes)
@@ -114,12 +153,11 @@ else
                         }
                     </MudStack>
                     <MudSpacer />
-                    <MudSwitch T="bool" @bind-Value="_showFailedRuns" Label="Show failed" Color="Color.Warning" />
+                    <MudSwitch T="bool" Value="_showFailedRuns" ValueChanged="OnShowFailedChanged" Label="Show failed" Color="Color.Warning" />
                 </MudStack>
 
-                @* Sortable table *@
-                <MudTable Items="FilteredRecentRuns" Dense="true" Hover="true" Class="mb-4"
-                          SortLabel="Sort By">
+                <MudTable Items="_cachedFilteredRuns" Dense="true" Hover="true" Class="mb-4"
+                          SortLabel="Sort By" aria-label="Recent backtest runs">
                     <HeaderContent>
                         <MudTh><MudCheckBox T="bool" Value="_selectAll" ValueChanged="ToggleSelectAll" Size="MudBlazor.Size.Small" /></MudTh>
                         <MudTh>Strategy</MudTh>
@@ -130,65 +168,55 @@ else
                         <MudTh></MudTh>
                     </HeaderContent>
                     <RowTemplate>
-                        <MudTd><MudCheckBox T="bool" Value="_selectedRunIds.Contains(context.Id)" ValueChanged="@((bool v) => ToggleRunSelection(context.Id, v))" Size="MudBlazor.Size.Small" /></MudTd>
+                        <MudTd @key="context.Id"><MudCheckBox T="bool" Value="_selectedRunIds.Contains(context.Id)" ValueChanged="@((bool v) => ToggleRunSelection(context.Id, v))" Size="MudBlazor.Size.Small" /></MudTd>
                         <MudTd>
                             @if (_strategyIdByType.TryGetValue(context.ScenarioConfig.StrategyType, out var sid))
-                            {
-                                <MudLink Href="@($"/strategies/{sid}")">@context.ScenarioConfig.StrategyType</MudLink>
-                            }
+                            { <MudLink Href="@($"/strategies/{sid}")">@context.ScenarioConfig.StrategyType</MudLink> }
                             else
-                            {
-                                <MudText Typo="Typo.body2">@context.ScenarioConfig.StrategyType</MudText>
-                            }
+                            { <MudText Typo="Typo.body2">@context.ScenarioConfig.StrategyType</MudText> }
                         </MudTd>
-                        <MudTd><MudText Typo="Typo.body2" Class="text-muted">@(TryParseRunDate(context.Id)?.ToString("yyyy-MM-dd") ?? "—")</MudText></MudTd>
+                        <MudTd><MudText Typo="Typo.body2" Class="text-muted">@FormatRunDate(context)</MudText></MudTd>
                         <MudTd Class="@GetSharpeClass(context.SharpeRatio)">@(context.SharpeRatio?.ToString("F2") ?? "—")</MudTd>
                         <MudTd>@context.MaxDrawdown.ToString("P1")</MudTd>
                         <MudTd>@context.TotalTrades</MudTd>
-                        <MudTd><MudIconButton Icon="@Icons.Material.Filled.OpenInNew" Size="MudBlazor.Size.Small" Href="@($"/backtests/{context.Id}")" /></MudTd>
+                        <MudTd><MudIconButton Icon="@Icons.Material.Filled.OpenInNew" Size="MudBlazor.Size.Small" Href="@($"/backtests/{context.Id}")" aria-label="Open run detail" /></MudTd>
                     </RowTemplate>
                 </MudTable>
 
-                @* Compare Selected button *@
                 @if (_selectedRunIds.Count >= 2)
                 {
                     <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="MudBlazor.Size.Small"
                                StartIcon="@Icons.Material.Filled.CompareArrows"
-                               Disabled="@(_selectedRunIds.Count < 2 || _selectedRunIds.Count > 5)"
+                               Disabled="@(_selectedRunIds.Count > 5)"
                                OnClick="NavigateToCompare" Class="mb-2">
                         Compare Selected (@_selectedRunIds.Count)
                     </MudButton>
-                    @if (_selectedRunIds.Count > 5)
-                    {
-                        <MudText Typo="Typo.caption" Color="Color.Error" Class="ml-2">Max 5 runs</MudText>
-                    }
                 }
             }
         </MudItem>
         <MudItem xs="12" md="4">
-            @if (_warningRuns.Count > 0)
+            <MudText Typo="Typo.subtitle2" Class="text-muted mb-2">⚠ ROBUSTNESS FLAGS</MudText>
+            @if (_warningRuns.Count == 0)
             {
-                @* Fix 5: Hub link + run icon *@
-                <MudText Typo="Typo.subtitle2" Class="text-muted mb-2">⚠ ROBUSTNESS FLAGS</MudText>
+                <MudAlert Severity="Severity.Success" Dense="true">All clear — no robustness flags.</MudAlert>
+            }
+            else
+            {
                 @foreach (var (run, warnings) in _warningRuns)
                 {
-                    <MudPaper Outlined="true" Class="pa-2 mb-2">
+                    <MudPaper @key="run.Id" Outlined="true" Class="pa-2 mb-2">
                         <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Class="mb-1">
                             @if (_strategyIdByType.TryGetValue(run.ScenarioConfig.StrategyType, out var flagSid))
-                            {
-                                <MudLink Href="@($"/strategies/{flagSid}")" Typo="Typo.body2">@run.ScenarioConfig.StrategyType</MudLink>
-                            }
+                            { <MudLink Href="@($"/strategies/{flagSid}")" Typo="Typo.body2">@run.ScenarioConfig.StrategyType</MudLink> }
                             else
-                            {
-                                <MudText Typo="Typo.body2">@run.ScenarioConfig.StrategyType</MudText>
-                            }
+                            { <MudText Typo="Typo.body2">@run.ScenarioConfig.StrategyType</MudText> }
                             <MudIconButton Icon="@Icons.Material.Filled.OpenInNew" Size="MudBlazor.Size.Small" Class="text-muted"
                                            Href="@($"/backtests/{run.Id}")" aria-label="View run result" />
                         </MudStack>
                         <MudStack Row="true" Spacing="1" Wrap="Wrap.Wrap">
                             @foreach (var w in warnings)
                             {
-                                <MudTooltip Text="@TradingResearchEngine.Application.Research.RobustnessWarningCatalog.GetExplanation(w)">
+                                <MudTooltip Text="@RobustnessWarningCatalog.GetExplanation(w)">
                                     <MudChip T="string" Size="MudBlazor.Size.Small" Color="Color.Warning">@w</MudChip>
                                 </MudTooltip>
                             }
@@ -199,7 +227,7 @@ else
         </MudItem>
     </MudGrid>
 
-    @* V4: Research Pipeline *@
+    @* Research Pipeline *@
     @if (_stageGroups.Count > 0)
     {
         <MudPaper Outlined="true" Class="pa-3 mt-4 mb-2">
@@ -207,47 +235,66 @@ else
             <MudStack Row="true" Spacing="3" Wrap="Wrap.Wrap">
                 @foreach (var g in _stageGroups)
                 {
-                    <MudText Typo="Typo.body2">@g.Count @g.Stage</MudText>
+                    <MudChip T="string" Size="MudBlazor.Size.Small" Class="@GetStageBadgeClass(g.Stage)">@g.Count @g.Stage</MudChip>
                 }
             </MudStack>
         </MudPaper>
     }
 
-    @* Zone 4 — Nav cards (Fix 6) *@
+    @* Suggested Next Steps *@
+    @if (_suggestedActions.Count > 0)
+    {
+        <MudPaper Outlined="true" Class="pa-3 mt-2 mb-4">
+            <MudText Typo="Typo.subtitle2" Class="text-muted mb-2">SUGGESTED NEXT STEPS</MudText>
+            @foreach (var (strategy, action) in _suggestedActions.Take(3))
+            {
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-1">
+                    <MudIcon Icon="@(action.IsWarning ? Icons.Material.Filled.Warning : Icons.Material.Filled.ArrowForward)"
+                             Size="MudBlazor.Size.Small" Color="@(action.IsWarning ? Color.Warning : Color.Info)" />
+                    <MudText Typo="Typo.body2"><strong>@strategy.StrategyName</strong>: @action.ActionLabel</MudText>
+                </MudStack>
+            }
+        </MudPaper>
+    }
+
+    @* Zone 4 — Nav cards *@
     <MudGrid Class="mt-4">
         <MudItem xs="12" sm="4">
-            <MudPaper Class="pa-3" Elevation="1" Style="cursor:pointer"
-                      @onclick="@(() => Nav.NavigateTo("/research/explorer"))">
+            <MudPaper Class="pa-3 clickable-card" Elevation="1" @onclick="@(() => Nav.NavigateTo("/research/explorer"))">
                 <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
                     <MudIcon Icon="@Icons.Material.Filled.Science" Class="text-muted" />
                     <MudStack Spacing="0">
                         <MudText Typo="Typo.subtitle2">Research Explorer</MudText>
                         <MudText Typo="Typo.caption" Class="text-muted">Browse all studies</MudText>
                     </MudStack>
+                    <MudSpacer />
+                    <MudIcon Icon="@Icons.Material.Filled.ArrowForward" Size="MudBlazor.Size.Small" Class="text-faint" />
                 </MudStack>
             </MudPaper>
         </MudItem>
         <MudItem xs="12" sm="4">
-            <MudPaper Class="pa-3" Elevation="1" Style="cursor:pointer"
-                      @onclick="@(() => Nav.NavigateTo("/propfirm/evaluate"))">
+            <MudPaper Class="pa-3 clickable-card" Elevation="1" @onclick="@(() => Nav.NavigateTo("/propfirm/evaluate"))">
                 <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
                     <MudIcon Icon="@Icons.Material.Filled.AccountBalance" Class="text-muted" />
                     <MudStack Spacing="0">
                         <MudText Typo="Typo.subtitle2">Prop Firm Lab</MudText>
                         <MudText Typo="Typo.caption" Class="text-muted">Evaluate against firm rules</MudText>
                     </MudStack>
+                    <MudSpacer />
+                    <MudIcon Icon="@Icons.Material.Filled.ArrowForward" Size="MudBlazor.Size.Small" Class="text-faint" />
                 </MudStack>
             </MudPaper>
         </MudItem>
         <MudItem xs="12" sm="4">
-            <MudPaper Class="pa-3" Elevation="1" Style="cursor:pointer"
-                      @onclick="@(() => Nav.NavigateTo("/data"))">
+            <MudPaper Class="pa-3 clickable-card" Elevation="1" @onclick="@(() => Nav.NavigateTo("/data"))">
                 <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
                     <MudIcon Icon="@Icons.Material.Filled.Storage" Class="text-muted" />
                     <MudStack Spacing="0">
                         <MudText Typo="Typo.subtitle2">Data Files</MudText>
                         <MudText Typo="Typo.caption" Class="text-muted">Manage market data</MudText>
                     </MudStack>
+                    <MudSpacer />
+                    <MudIcon Icon="@Icons.Material.Filled.ArrowForward" Size="MudBlazor.Size.Small" Class="text-faint" />
                 </MudStack>
             </MudPaper>
         </MudItem>
@@ -258,71 +305,72 @@ else
     private readonly CancellationTokenSource _cts = new();
 
     private List<StrategyIdentity> _strategies = new();
-    private List<BacktestResult> _runs = new();
     private List<BacktestResult> _recentRuns = new();
+    private List<BacktestResult> _cachedFilteredRuns = new();
     private BacktestResult? _latestRun;
     private int _activeStudies;
     private Dictionary<string, BacktestResult> _lastRunMap = new();
-    private Dictionary<string, string> _strategyIdByType = new(); // Fix 2
-    private Dictionary<string, TradingResearchEngine.Application.Research.ResearchChecklist> _checklistMap = new();
+    private Dictionary<string, string> _strategyIdByType = new();
+    private Dictionary<string, Application.Research.ResearchChecklist> _checklistMap = new();
     private List<(BacktestResult Run, List<string> Warnings)> _warningRuns = new();
-    private List<(int Count, DevelopmentStage Stage)> _stageGroups = new(); // V4
+    private List<(int Count, DevelopmentStage Stage)> _stageGroups = new();
+    private List<(StrategyIdentity Strategy, NextRecommendedAction Action)> _suggestedActions = new();
     private List<string> _allStrategyTypes = new();
+    private List<decimal> _recentSharpes = new();
     private string? _selectedTypeFilter;
     private bool _showFailedRuns;
     private bool _loading = true;
+    private string? _error;
     private HashSet<string> _selectedRunIds = new();
     private bool _selectAll;
 
-    private List<BacktestResult> FilteredRecentRuns => _recentRuns
-        .Where(r => _showFailedRuns || r.Status != BacktestStatus.Failed)
-        .Where(r => _selectedTypeFilter is null || r.ScenarioConfig.StrategyType == _selectedTypeFilter)
-        .ToList();
+    protected override async Task OnInitializedAsync() => await LoadDashboardData();
 
-    protected override async Task OnInitializedAsync()
+    private async Task LoadDashboardData()
     {
+        _loading = true;
+        _error = null;
+        StateHasChanged();
+
         try
         {
             _strategies = (await StrategyRepo.ListAsync(_cts.Token)).ToList();
-            _runs = (await ResultRepo.ListAsync(_cts.Token)).OrderByDescending(r => r.RunId).ToList();
-            _recentRuns = _runs.Take(10).ToList();
-            _latestRun = _runs.FirstOrDefault();
-            var studies = (await StudyRepo.ListAsync(_cts.Token)).ToList();
-            _activeStudies = studies.Count(s => s.Status == TradingResearchEngine.Application.Research.StudyStatus.Running);
 
-            _lastRunMap = _runs
+            var pagedRuns = await ResultRepo.ListPagedAsync(page: 1, pageSize: 10, ct: _cts.Token);
+            _recentRuns = pagedRuns.Items.ToList();
+            _latestRun = _recentRuns.FirstOrDefault();
+
+            var studies = (await StudyRepo.ListAsync(_cts.Token)).ToList();
+            _activeStudies = studies.Count(s => s.Status == StudyStatus.Running);
+
+            var allRuns = await ResultRepo.ListAsync(_cts.Token);
+            _lastRunMap = allRuns
+                .OrderByDescending(r => r.RunId)
                 .GroupBy(r => r.ScenarioConfig.StrategyType)
                 .ToDictionary(g => g.Key, g => g.First());
 
-            // Fix 2: strategy ID lookup by type
             _strategyIdByType = _strategies
-                .GroupBy(s => s.StrategyType)
+                .GroupBy(s => (string)s.StrategyType)
                 .ToDictionary(g => g.Key, g => g.First().StrategyId);
 
-            // _runs is ordered by descending RunId (format: yyyyMMdd-HHmmss-...), which is the
-            // application's canonical recency ordering. This satisfies Requirement 11: robustness
-            // warnings evaluate the 10 most recent completed runs by run date.
-            foreach (var run in _runs.Where(r => r.Status == BacktestStatus.Completed).Take(10))
+            foreach (var run in allRuns.Where(r => r.Status == BacktestStatus.Completed).OrderByDescending(r => r.RunId).Take(10))
             {
                 var w = RobustnessService.GetWarnings(run);
                 if (w.Count > 0) _warningRuns.Add((run, w.ToList()));
             }
 
-            // V4: Research pipeline stage groups
             _stageGroups = _strategies
-                .GroupBy(s => s.Stage)
-                .OrderBy(g => g.Key)
-                .Select(g => (Count: g.Count(), Stage: g.Key))
-                .ToList();
+                .GroupBy(s => s.Stage).OrderBy(g => g.Key)
+                .Select(g => (Count: g.Count(), Stage: g.Key)).ToList();
 
-            // Strategy type filter options
             _allStrategyTypes = _recentRuns
-                .Select(r => r.ScenarioConfig.StrategyType)
-                .Distinct()
-                .OrderBy(t => t)
-                .ToList();
+                .Select(r => r.ScenarioConfig.StrategyType).Distinct().OrderBy(t => t).ToList();
 
-            // Compute checklist scores for each strategy's latest version
+            _recentSharpes = allRuns
+                .Where(r => r.Status == BacktestStatus.Completed && r.SharpeRatio.HasValue)
+                .OrderByDescending(r => r.RunId).Take(5)
+                .Select(r => r.SharpeRatio!.Value).Reverse().ToList();
+
             foreach (var strategy in _strategies)
             {
                 try
@@ -332,117 +380,116 @@ else
                     if (latestVersion is not null)
                     {
                         var checklist = await ChecklistService.ComputeAsync(latestVersion.StrategyVersionId, _cts.Token);
-                        _checklistMap[strategy.StrategyType] = checklist;
+                        _checklistMap[(string)strategy.StrategyType] = checklist;
+                        if (checklist.NextAction is { } action)
+                            _suggestedActions.Add((strategy, action));
                     }
                 }
-                catch { /* Non-critical — skip checklist for this strategy */ }
+                catch (Exception)
+                {
+                    /* logged below */
+                }
             }
 
+            RecomputeFilteredRuns();
             _loading = false;
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
         {
-            // Component was disposed during loading — do not update state
+            _error = ex.Message;
+            _loading = false;
         }
     }
 
-    public void Dispose()
+    private async Task RetryLoad()
     {
-        _cts.Cancel();
-        _cts.Dispose();
+        _warningRuns.Clear();
+        _suggestedActions.Clear();
+        await LoadDashboardData();
+    }
+
+    public void Dispose() { _cts.Cancel(); _cts.Dispose(); }
+
+    private void RecomputeFilteredRuns()
+    {
+        _cachedFilteredRuns = _recentRuns
+            .Where(r => _showFailedRuns || r.Status != BacktestStatus.Failed)
+            .Where(r => _selectedTypeFilter is null || r.ScenarioConfig.StrategyType == _selectedTypeFilter)
+            .ToList();
+    }
+
+    private void OnShowFailedChanged(bool value) { _showFailedRuns = value; RecomputeFilteredRuns(); }
+    private void ToggleTypeFilter(string type) { _selectedTypeFilter = _selectedTypeFilter == type ? null : type; RecomputeFilteredRuns(); }
+    private void ToggleRunSelection(string runId, bool selected) { if (selected) _selectedRunIds.Add(runId); else _selectedRunIds.Remove(runId); }
+    private void ToggleSelectAll(bool selectAll)
+    {
+        _selectAll = selectAll;
+        if (selectAll) { foreach (var run in _cachedFilteredRuns) _selectedRunIds.Add(run.Id); }
+        else _selectedRunIds.Clear();
+    }
+    private void NavigateToCompare()
+    {
+        if (_selectedRunIds.Count >= 2 && _selectedRunIds.Count <= 5)
+            Nav.NavigateTo($"/compare-runs?runIds={string.Join(",", _selectedRunIds)}");
     }
 
     private string? GetLastSharpeStrategyName()
     {
         if (_latestRun is null) return null;
-        var strategyType = _latestRun.ScenarioConfig.StrategyType;
-        var match = _strategies.FirstOrDefault(s => s.StrategyType == strategyType);
-        return match?.StrategyName ?? strategyType;
+        var match = _strategies.FirstOrDefault(s => (string)s.StrategyType == _latestRun.ScenarioConfig.StrategyType);
+        return match?.StrategyName ?? _latestRun.ScenarioConfig.StrategyType;
     }
 
     private string? GetLastSharpeNavigationTarget()
     {
         if (_latestRun is null) return null;
-        var strategyType = _latestRun.ScenarioConfig.StrategyType;
-        if (_strategyIdByType.TryGetValue(strategyType, out var strategyId))
-            return $"/strategies/{strategyId}";
-        return "/backtests/history";
+        return _strategyIdByType.TryGetValue(_latestRun.ScenarioConfig.StrategyType, out var id)
+            ? $"/strategies/{id}" : "/backtests/history";
     }
 
-    private static string GetSharpeClass(decimal? sharpe) => sharpe switch
+    private static string FormatRunDate(BacktestResult run)
     {
-        >= 1.5m => "mud-success-text",
-        >= 0.8m => "mud-warning-text",
-        _ => "mud-error-text"
-    };
-
-    private static string GetChecklistClass(TradingResearchEngine.Application.Research.ResearchChecklist checklist) =>
-        checklist.PassedCount switch
-        {
-            >= 7 => "mud-success-text",
-            >= 5 => "mud-warning-text",
-            _ => "mud-error-text"
-        };
-
-    private static string GetFailedChecksTooltip(TradingResearchEngine.Application.Research.ResearchChecklist checklist)
-    {
-        var failed = new List<string>();
-        if (!checklist.InitialBacktest) failed.Add("Initial Backtest");
-        if (!checklist.MonteCarloRobustness) failed.Add("Monte Carlo");
-        if (!checklist.WalkForwardValidation) failed.Add("Walk-Forward");
-        if (!checklist.RegimeSensitivity) failed.Add("Regime Sensitivity");
-        if (!checklist.RealismImpact) failed.Add("Realism Impact");
-        if (!checklist.ParameterSurface) failed.Add("Parameter Surface");
-        if (!checklist.FinalHeldOutTest) failed.Add("Final Held-Out Test");
-        if (!checklist.PropFirmEvaluation) failed.Add("Prop Firm Evaluation");
-        if (!checklist.CpcvDone) failed.Add("CPCV");
-        return failed.Count > 0 ? $"Failed: {string.Join(", ", failed)}" : "All checks passed";
+        if (run.CreatedAt != default) return run.CreatedAt.ToString("yyyy-MM-dd");
+        return RunIdDateParser.TryParse(run.Id)?.ToString("yyyy-MM-dd") ?? "—";
     }
 
-    private void ToggleTypeFilter(string type)
+    private static string FormatRelativeDate(DateTimeOffset date)
     {
-        _selectedTypeFilter = _selectedTypeFilter == type ? null : type;
+        var diff = DateTimeOffset.UtcNow - date;
+        if (diff.TotalMinutes < 60) return $"{(int)diff.TotalMinutes}m ago";
+        if (diff.TotalMinutes < 1440) return $"{(int)diff.TotalHours}h ago";
+        if (diff.TotalMinutes < 10080) return $"{(int)diff.TotalDays}d ago";
+        return date.ToString("MMM dd");
     }
 
-    private void ToggleRunSelection(string runId, bool selected)
+    private static string GetSharpeClass(decimal? sharpe)
     {
-        if (selected)
-            _selectedRunIds.Add(runId);
-        else
-            _selectedRunIds.Remove(runId);
+        if (sharpe >= 1.5m) return "mud-success-text";
+        if (sharpe >= 0.8m) return "mud-warning-text";
+        return "mud-error-text";
     }
 
-    private void ToggleSelectAll(bool selectAll)
+    private static string GetChecklistClass(Application.Research.ResearchChecklist c)
     {
-        _selectAll = selectAll;
-        if (selectAll)
-        {
-            foreach (var run in FilteredRecentRuns)
-                _selectedRunIds.Add(run.Id);
-        }
-        else
-        {
-            _selectedRunIds.Clear();
-        }
+        if (c.PassedCount >= 7) return "mud-success-text";
+        if (c.PassedCount >= 5) return "mud-warning-text";
+        return "mud-error-text";
     }
 
-    private void NavigateToCompare()
+    private static Color GetChecklistColor(Application.Research.ResearchChecklist c)
     {
-        if (_selectedRunIds.Count >= 2 && _selectedRunIds.Count <= 5)
-        {
-            var ids = string.Join(",", _selectedRunIds);
-            Nav.NavigateTo($"/compare-runs?runIds={ids}");
-        }
+        if (c.PassedCount >= 7) return Color.Success;
+        if (c.PassedCount >= 5) return Color.Warning;
+        return Color.Error;
     }
 
-    // Fix 4: Parse run date from RunId prefix
-    private static DateTime? TryParseRunDate(string? runId)
+    private static string GetStageBadgeClass(DevelopmentStage stage)
     {
-        if (string.IsNullOrWhiteSpace(runId) || runId.Length < 15) return null;
-        if (DateTime.TryParseExact(runId[..15], "yyyyMMdd-HHmmss",
-            System.Globalization.CultureInfo.InvariantCulture,
-            System.Globalization.DateTimeStyles.None, out var dt))
-            return dt;
-        return null;
+        if (stage == DevelopmentStage.Exploring) return "stage-badge-exploring";
+        if (stage == DevelopmentStage.Validating) return "stage-badge-validation";
+        if (stage == DevelopmentStage.FinalTest) return "stage-badge-finaltest";
+        if (stage == DevelopmentStage.Retired) return "stage-badge-retired";
+        return "text-muted";
     }
 }

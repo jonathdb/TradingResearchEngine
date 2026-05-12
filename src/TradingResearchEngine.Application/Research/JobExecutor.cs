@@ -265,6 +265,34 @@ public sealed class JobExecutor : IDisposable
         => _jobRepo.ListAsync(ct);
 
     /// <summary>
+    /// Returns a snapshot of the current job queue with position information.
+    /// Jobs are ordered by submission time. Running jobs are included at position 0.
+    /// </summary>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Queue entries with position, status, and timing metadata.</returns>
+    public async Task<IReadOnlyList<JobQueueEntry>> GetQueueSnapshotAsync(CancellationToken ct = default)
+    {
+        var allJobs = await _jobRepo.ListAsync(ct);
+        var activeJobs = allJobs
+            .Where(j => j.Status is JobStatus.Queued or JobStatus.Running)
+            .OrderBy(j => j.SubmittedAt)
+            .ToList();
+
+        var entries = new List<JobQueueEntry>(activeJobs.Count);
+        int position = 1;
+        foreach (var job in activeJobs)
+        {
+            entries.Add(new JobQueueEntry(
+                job.JobId,
+                job.JobType,
+                job.SubmittedAt,
+                job.Status,
+                job.Status == JobStatus.Running ? 0 : position++));
+        }
+        return entries;
+    }
+
+    /// <summary>
     /// Returns up to <paramref name="limit"/> queued jobs using the status-based repository query.
     /// More efficient than loading all jobs and filtering in memory when the repository
     /// supports indexed status queries.

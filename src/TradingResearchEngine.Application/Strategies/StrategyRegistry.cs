@@ -41,6 +41,12 @@ public sealed class StrategyRegistry
     /// Returns the <see cref="Type"/> for the given strategy name.
     /// Throws <see cref="StrategyNotFoundException"/> when not found.
     /// </summary>
+    public Type Resolve(StrategyTypeId strategyType) => Resolve(strategyType.Value);
+
+    /// <summary>
+    /// Returns the <see cref="Type"/> for the given strategy name string.
+    /// Throws <see cref="StrategyNotFoundException"/> when not found.
+    /// </summary>
     public Type Resolve(string strategyName)
     {
         if (_registry.TryGetValue(strategyName, out var type)) return type;

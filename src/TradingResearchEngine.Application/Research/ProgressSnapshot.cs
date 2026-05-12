@@ -17,4 +17,17 @@ public sealed record ProgressSnapshot(
     string Stage,
     string? CurrentItemLabel,
     TimeSpan ElapsedTime,
-    IReadOnlyList<string> Warnings);
+    IReadOnlyList<string> Warnings)
+{
+    /// <summary>
+    /// Estimated time remaining based on linear extrapolation.
+    /// Null when <see cref="Current"/> is 0 or <see cref="Total"/> is 0 (indeterminate progress).
+    /// Formula: (ElapsedTime / Current) * (Total - Current).
+    /// </summary>
+    public TimeSpan? EstimatedTimeRemaining => Current > 0 && Total > 0
+        ? TimeSpan.FromTicks((long)(ElapsedTime.Ticks / (double)Current * (Total - Current)))
+        : null;
+
+    /// <summary>Number of warnings accumulated so far.</summary>
+    public int WarningCount => Warnings.Count;
+}

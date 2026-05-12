@@ -65,4 +65,39 @@ public sealed class JsonStudyRepository : IStudyRepository
         if (study is null) return;
         await SaveAsync(study with { ResultJson = resultJson }, ct);
     }
+
+    /// <inheritdoc/>
+    public async Task<PagedResult<StudyRecord>> ListPagedAsync(
+        int page,
+        int pageSize,
+        StudyType? typeFilter = null,
+        StudyStatus? statusFilter = null,
+        string? strategyVersionId = null,
+        CancellationToken ct = default)
+    {
+        // Load all studies (in-memory filtering for JSON store).
+        // Safe for up to ~5000 records. Beyond that, extend to SQLite index.
+        var all = await ListAsync(ct);
+
+        IEnumerable<StudyRecord> filtered = all;
+
+        if (typeFilter is { } type)
+            filtered = filtered.Where(s => s.Type == type);
+
+        if (statusFilter is { } status)
+            filtered = filtered.Where(s => s.Status == status);
+
+        if (!string.IsNullOrEmpty(strategyVersionId))
+            filtered = filtered.Where(s => s.StrategyVersionId == strategyVersionId);
+
+        var materialised = filtered.ToList();
+        var totalCount = materialised.Count;
+
+        var items = materialised
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToList();
+
+        return new PagedResult<StudyRecord>(items, totalCount, page, pageSize);
+    }
 }

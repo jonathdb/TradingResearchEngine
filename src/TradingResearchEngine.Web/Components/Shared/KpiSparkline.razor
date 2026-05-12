@@ -1,0 +1,54 @@
+@* Mini SVG sparkline for KPI cards. Renders up to 5 data points as a polyline. *@
+
+@if (Values is { Count: > 1 })
+{
+    <svg width="@Width" height="@Height" viewBox="0 0 @Width @Height"
+         class="kpi-sparkline" aria-hidden="true">
+        <polyline points="@ComputePoints()"
+                  fill="none"
+                  stroke="@StrokeColor"
+                  stroke-width="1.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round" />
+    </svg>
+}
+
+@code {
+    /// <summary>Data values to plot (most recent last).</summary>
+    [Parameter] public IReadOnlyList<decimal>? Values { get; set; }
+
+    /// <summary>SVG width in pixels.</summary>
+    [Parameter] public int Width { get; set; } = 60;
+
+    /// <summary>SVG height in pixels.</summary>
+    [Parameter] public int Height { get; set; } = 24;
+
+    /// <summary>Stroke color (CSS color string).</summary>
+    [Parameter] public string StrokeColor { get; set; } = "var(--color-primary)";
+
+    private string ComputePoints()
+    {
+        if (Values is null || Values.Count < 2) return "";
+
+        var min = Values.Min();
+        var max = Values.Max();
+        var range = max - min;
+        if (range == 0m) range = 1m; // flat line at midpoint
+
+        var padding = 2;
+        var usableWidth = Width - padding * 2;
+        var usableHeight = Height - padding * 2;
+        var step = (double)usableWidth / (Values.Count - 1);
+
+        var points = new List<string>(Values.Count);
+        for (var i = 0; i < Values.Count; i++)
+        {
+            var x = padding + i * step;
+            var normalised = (double)(Values[i] - min) / (double)range;
+            var y = padding + usableHeight - normalised * usableHeight;
+            points.Add($"{x:F1},{y:F1}");
+        }
+
+        return string.Join(" ", points);
+    }
+}

@@ -1,5 +1,6 @@
 ﻿@inject IJSRuntime JS
 
+<nav aria-label="Main navigation">
 <MudNavMenu Dense="true">
     <MudText Typo="Typo.overline" Class="px-4 pt-3 pb-1 text-faint">DASHBOARD</MudText>
     <MudNavLink Href="/" Match="NavLinkMatch.All" Class="pl-4"
@@ -17,6 +18,8 @@
                  Icon="@Icons.Material.Filled.Science">
         <MudNavLink Href="/research/explorer"
                     Icon="@Icons.Material.Filled.Explore">Explorer</MudNavLink>
+        <MudNavLink Href="/robustness-hub"
+                    Icon="@Icons.Material.Filled.Shield">Robustness Hub</MudNavLink>
         <MudNavLink Href="/research/sweep"
                     Icon="@Icons.Material.Filled.GridOn">Parameter Sweep</MudNavLink>
         <MudNavLink Href="/research/montecarlo"
@@ -53,6 +56,7 @@
     <MudNavLink Href="/settings" Class="pl-4"
                 Icon="@Icons.Material.Filled.Settings">Settings</MudNavLink>
 </MudNavMenu>
+</nav>
 
 @code {
     private bool _strategiesExpanded = true;

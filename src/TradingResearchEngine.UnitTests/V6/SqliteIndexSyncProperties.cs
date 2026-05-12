@@ -67,6 +67,22 @@ public class SqliteIndexSyncProperties
 
         public Task<IReadOnlyList<BacktestResult>> GetRunSummariesByStrategyAsync(string strategyId, CancellationToken ct = default)
             => ListByStrategyAsync(strategyId, ct);
+
+        public Task<PagedResult<BacktestResult>> ListPagedAsync(
+            int page, int pageSize,
+            Application.Strategies.StrategyTypeId? strategyTypeFilter = null,
+            BacktestStatus? statusFilter = null,
+            CancellationToken ct = default)
+        {
+            IEnumerable<BacktestResult> filtered = _store.Values;
+            if (strategyTypeFilter is { } tf)
+                filtered = filtered.Where(r => r.ScenarioConfig.StrategyType == (string)tf);
+            if (statusFilter is { } sf)
+                filtered = filtered.Where(r => r.Status == sf);
+            var list = filtered.ToList();
+            var items = list.Skip((page - 1) * pageSize).Take(pageSize).ToList();
+            return Task.FromResult(new PagedResult<BacktestResult>(items, list.Count, page, pageSize));
+        }
     }
 
     private static BacktestResult MakeResult(string versionId)
