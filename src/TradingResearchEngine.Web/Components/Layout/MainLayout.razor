@@ -81,54 +81,65 @@
     {
         PaletteDark = new PaletteDark
         {
-            Primary         = "#4F98A3",
-            PrimaryDarken   = "#3A7A85",
-            PrimaryLighten  = "#6ABAC6",
-            Secondary       = "#2C7873",
-            SecondaryDarken = "#1E5552",
-            Info            = "#5BA4CF",
-            Success         = "#4CAF74",
-            Warning         = "#E8A838",
-            Error           = "#E05C5C",
-            AppbarBackground = "#0C0C0C",
-            AppbarText      = "#E4E4E4",
-            Background      = "#111111",
-            BackgroundGray  = "#161616",
-            Surface         = "#1A1A1A",
-            DrawerBackground = "#161616",
-            DrawerText      = "#D0D0D0",
-            DrawerIcon      = "#909090",
-            Divider         = "rgba(255,255,255,0.08)",
-            DividerLight    = "rgba(255,255,255,0.05)",
-            TextPrimary     = "#E4E4E4",
-            TextSecondary   = "#909090",
-            TextDisabled    = "rgba(255,255,255,0.28)",
-            ActionDefault   = "#909090",
-            LinesDefault    = "rgba(255,255,255,0.06)",
-            LinesInputs     = "rgba(255,255,255,0.18)",
-            TableLines      = "rgba(255,255,255,0.06)",
-            TableHover      = "rgba(79,152,163,0.06)",
-            TableStriped    = "rgba(255,255,255,0.02)",
-            OverlayLight    = "rgba(0,0,0,0.5)",
-            OverlayDark     = "rgba(0,0,0,0.75)",
+            // ── Accent ──────────────────────────────────────────────
+            Primary         = "#60A5FA",   // bright sky blue — readable and electric
+            PrimaryDarken   = "#3B82F6",
+            PrimaryLighten  = "#93C5FD",
+            Secondary       = "#818CF8",   // indigo — warm complement to blue
+            SecondaryDarken = "#6366F1",
+            Info            = "#38BDF8",   // cyan info
+            Success         = "#34D399",   // emerald green
+            Warning         = "#FBBF24",   // amber — pops against navy
+            Error           = "#F87171",   // soft red
+
+            // ── Chrome ──────────────────────────────────────────────
+            AppbarBackground = "#0D1117",  // deepest — GitHub-style near-black navy
+            AppbarText       = "#F0F6FC",
+
+            // ── Backgrounds (4 depth levels) ────────────────────────
+            Background       = "#0D1117",  // page canvas
+            BackgroundGray   = "#161B22",  // slightly raised (drawer, sidebar)
+            Surface          = "#1C2330",  // cards / papers — clearly distinct from bg
+            DrawerBackground = "#161B22",
+            DrawerText       = "#CDD9E5",
+            DrawerIcon       = "#768390",
+
+            // ── Borders & Lines ─────────────────────────────────────
+            Divider          = "rgba(99,130,162,0.15)",   // blue-tinted dividers
+            DividerLight     = "rgba(99,130,162,0.08)",
+            LinesDefault     = "rgba(99,130,162,0.10)",
+            LinesInputs      = "rgba(99,130,162,0.30)",
+            TableLines       = "rgba(99,130,162,0.10)",
+            TableHover       = "rgba(96,165,250,0.07)",
+            TableStriped     = "rgba(255,255,255,0.02)",
+
+            // ── Text ────────────────────────────────────────────────
+            TextPrimary      = "#F0F6FC",  // crisp white with slight blue cast
+            TextSecondary    = "#8B949E",
+            TextDisabled     = "rgba(139,148,158,0.45)",
+            ActionDefault    = "#8B949E",
+
+            // ── Overlays ────────────────────────────────────────────
+            OverlayLight     = "rgba(13,17,23,0.6)",
+            OverlayDark      = "rgba(13,17,23,0.85)",
         },
         Typography = new Typography
         {
-            Default = new DefaultTypography { FontFamily = new[] { "Inter", "Roboto", "sans-serif" } },
-            H4 = new H4Typography { FontWeight = "700", LetterSpacing = "-0.02em" },
-            H5 = new H5Typography { FontWeight = "700", LetterSpacing = "-0.015em" },
-            H6 = new H6Typography { FontWeight = "600", LetterSpacing = "-0.01em" },
+            Default   = new DefaultTypography { FontFamily = new[] { "Inter", "system-ui", "sans-serif" } },
+            H4        = new H4Typography     { FontWeight = "700", LetterSpacing = "-0.025em" },
+            H5        = new H5Typography     { FontWeight = "700", LetterSpacing = "-0.02em" },
+            H6        = new H6Typography     { FontWeight = "600", LetterSpacing = "-0.01em" },
             Subtitle1 = new Subtitle1Typography { FontWeight = "600" },
-            Subtitle2 = new Subtitle2Typography { FontWeight = "600", LetterSpacing = "0.01em" },
-            Body1 = new Body1Typography { FontSize = "0.875rem" },
-            Body2 = new Body2Typography { FontSize = "0.8125rem" },
-            Caption = new CaptionTypography { FontSize = "0.72rem", LetterSpacing = "0.01em" },
+            Subtitle2 = new Subtitle2Typography { FontWeight = "600", LetterSpacing = "0.005em" },
+            Body1     = new Body1Typography  { FontSize = "0.875rem", LineHeight = "1.6" },
+            Body2     = new Body2Typography  { FontSize = "0.8125rem", LineHeight = "1.55" },
+            Caption   = new CaptionTypography { FontSize = "0.72rem", LetterSpacing = "0.01em" },
         },
         LayoutProperties = new LayoutProperties
         {
-            DrawerWidthLeft   = "220px",
-            AppbarHeight      = "52px",
-            DefaultBorderRadius = "6px",
+            DrawerWidthLeft     = "224px",
+            AppbarHeight        = "52px",
+            DefaultBorderRadius = "8px",
         }
     };
 }
