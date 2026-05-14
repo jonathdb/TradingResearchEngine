@@ -5,70 +5,108 @@
 
 @if (_activeStudies.Count > 0 || _recentCompletions.Count > 0 || _activeJobs.Count > 0)
 {
-    <div style="position:fixed; bottom:0; left:0; right:0; z-index:1000; background:var(--mud-palette-surface); border-top:1px solid var(--mud-palette-divider); padding:4px 16px; min-height:32px;"
-         role="status" aria-label="Execution status bar">
-        <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap">
-            @* V5: Job-based progress snapshots *@
+    <div class="execution-bar" role="status" aria-label="Execution status">
+        <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center" Style="width:100%;" Wrap="Wrap.Wrap">
+
+            @* Active backtest jobs *@
             @foreach (var job in _activeJobs)
             {
-                var pct = job.Progress?.Percentage ?? 0m;
-                var stage = job.Progress?.Stage ?? "Queued";
+                var pct     = (double)(job.Progress?.Percentage ?? 0m);
+                var stage   = job.Progress?.Stage ?? "Queued";
                 var current = job.Progress?.Current ?? 0;
-                var total = job.Progress?.Total ?? 0;
+                var total   = job.Progress?.Total ?? 0;
                 var elapsed = job.Progress?.ElapsedTime ?? TimeSpan.Zero;
-                <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
-                    <MudProgressCircular Size="MudBlazor.Size.Small" Value="@((int)pct)"
-                                         aria-label="@($"Job {job.JobId}: {pct:F0}% complete")" />
-                    <MudText Typo="Typo.caption" aria-label="@($"Stage: {stage}, {current} of {total}")">
-                        @job.JobType — @stage: @pct.ToString("F0")%
+
+                <div class="execution-bar__job" aria-label="@($"{job.JobType}: {pct:F0}%")">
+                    <MudIcon Icon="@Icons.Material.Filled.Loop"
+                             Style="font-size:0.9rem; color:var(--mud-palette-primary); animation: spin 2s linear infinite;" />
+                    <MudText Typo="Typo.caption" Style="font-weight:600; white-space:nowrap;">
+                        @job.JobType
                     </MudText>
-                    <MudText Typo="Typo.caption" Class="text-muted" aria-label="@($"Progress: {current} of {total}")">
-                        (@current/@total)
+                    <MudText Typo="Typo.caption" Class="text-muted" Style="white-space:nowrap;">
+                        @stage · @pct.ToString("F0")%
                     </MudText>
-                    <MudText Typo="Typo.caption" Class="text-muted" aria-label="@($"Elapsed: {elapsed:mm\\:ss}")">
-                        @elapsed.ToString(@"mm\:ss")
+                    <MudProgressLinear Value="@pct" Style="width:72px; height:4px; border-radius:2px;" Color="Color.Primary" />
+                    <MudText Typo="Typo.caption" Class="text-faint" Style="white-space:nowrap; font-variant-numeric: tabular-nums;">
+                        @current/@total · @elapsed.ToString(@"mm\:ss")
                     </MudText>
-                    <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Text" Color="Color.Error"
-                               OnClick="@(() => CancelJob(job.JobId))"
-                               aria-label="@($"Cancel job {job.JobId}")">Stop</MudButton>
-                </MudStack>
+                    <MudIconButton Icon="@Icons.Material.Filled.StopCircle" Size="MudBlazor.Size.Small"
+                                   Color="Color.Error" Style="padding:2px; margin:-2px;"
+                                   OnClick="@(() => CancelJob(job.JobId))"
+                                   aria-label="Cancel job" />
+                </div>
             }
 
-            @* Existing study-based progress *@
+            @* Active research studies *@
             @foreach (var study in _activeStudies)
             {
-                var pct = study.Total > 0 ? (int)(100.0 * study.Current / study.Total) : 0;
+                var pct     = study.Total > 0 ? (100.0 * study.Current / study.Total) : 0.0;
                 var elapsed = DateTimeOffset.UtcNow - study.StartedAt;
-                <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
-                    <MudProgressCircular Size="MudBlazor.Size.Small" Indeterminate="@(study.Total == 0)" Value="@pct"
-                                         aria-label="@($"Study {study.Type}: {pct}% complete")" />
-                    <MudText Typo="Typo.caption">@study.Type (@GetStrategyLabel(study)): @pct%</MudText>
-                    <MudText Typo="Typo.caption" Class="text-muted">(@study.Current/@study.Total)</MudText>
-                    <MudText Typo="Typo.caption" Class="text-muted">@elapsed.ToString(@"mm\:ss")</MudText>
-                    <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Text"
-                               OnClick="@(() => Nav.NavigateTo($"/research/study/{study.StudyId}"))"
-                               aria-label="@($"View study {study.StudyId}")">View</MudButton>
-                    <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Text" Color="Color.Error"
-                               OnClick="@(() => StudyService.CancelStudy(study.StudyId))"
-                               aria-label="@($"Cancel study {study.StudyId}")">Stop</MudButton>
-                </MudStack>
+
+                <div class="execution-bar__job" aria-label="@($"Study {study.Type}: {pct:F0}%")">
+                    <MudIcon Icon="@Icons.Material.Filled.Loop"
+                             Style="font-size:0.9rem; color:var(--mud-palette-secondary); animation: spin 2s linear infinite;" />
+                    <MudText Typo="Typo.caption" Style="font-weight:600; white-space:nowrap;">@study.Type</MudText>
+                    <MudText Typo="Typo.caption" Class="text-muted" Style="white-space:nowrap;">
+                        @GetStrategyLabel(study) · @pct.ToString("F0")%
+                    </MudText>
+                    @if (study.Total > 0)
+                    {
+                        <MudProgressLinear Value="@pct" Style="width:72px; height:4px; border-radius:2px;" Color="Color.Secondary" />
+                    }
+                    else
+                    {
+                        <MudProgressLinear Indeterminate="true" Style="width:72px; height:4px; border-radius:2px;" Color="Color.Secondary" />
+                    }
+                    <MudText Typo="Typo.caption" Class="text-faint" Style="white-space:nowrap; font-variant-numeric: tabular-nums;">
+                        @study.Current/@study.Total · @elapsed.ToString(@"mm\:ss")
+                    </MudText>
+                    <MudIconButton Icon="@Icons.Material.Outlined.OpenInNew" Size="MudBlazor.Size.Small"
+                                   Color="Color.Inherit" Style="padding:2px; margin:-2px; opacity:0.6;"
+                                   OnClick="@(() => Nav.NavigateTo($"/research/study/{study.StudyId}"))"
+                                   aria-label="View study" />
+                    <MudIconButton Icon="@Icons.Material.Filled.StopCircle" Size="MudBlazor.Size.Small"
+                                   Color="Color.Error" Style="padding:2px; margin:-2px;"
+                                   OnClick="@(() => StudyService.CancelStudy(study.StudyId))"
+                                   aria-label="Cancel study" />
+                </div>
             }
-            @foreach (var completion in _recentCompletions)
+
+            @* Recent completions *@
+            @foreach (var c in _recentCompletions)
             {
-                var icon = completion.Status == TradingResearchEngine.Application.Research.StudyStatus.Completed ? "✅" : "❌";
-                <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
-                    <MudText Typo="Typo.caption">@icon @completion.StudyId</MudText>
+                var success = c.Status == TradingResearchEngine.Application.Research.StudyStatus.Completed;
+                <div class="execution-bar__job" style="border-color: @(success ? "rgba(76,175,116,0.3)" : "rgba(224,92,92,0.3)"); background: @(success ? "rgba(76,175,116,0.08)" : "rgba(224,92,92,0.08)");">
+                    <MudIcon Icon="@(success ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.Error)"
+                             Style="@($"font-size:0.9rem; color:{( success ? "var(--mud-palette-success)" : "var(--mud-palette-error)")}")" />
+                    <MudText Typo="Typo.caption" Style="font-weight:600; white-space:nowrap;">
+                        @(success ? "Completed" : "Failed")
+                    </MudText>
+                    <MudText Typo="Typo.caption" Class="text-faint monospace" Style="white-space:nowrap;">
+                        @c.StudyId[..Math.Min(8, c.StudyId.Length)]…
+                    </MudText>
                     <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Text"
-                               OnClick="@(() => Nav.NavigateTo($"/research/study/{completion.StudyId}"))"
-                               aria-label="@($"View results for {completion.StudyId}")">View Results</MudButton>
+                               Style="padding: 1px 6px; min-width:0; height:22px; font-size:0.7rem;"
+                               OnClick="@(() => Nav.NavigateTo($"/research/study/{c.StudyId}"))">
+                        View
+                    </MudButton>
                     <MudIconButton Icon="@Icons.Material.Filled.Close" Size="MudBlazor.Size.Small"
-                                   OnClick="@(() => DismissCompletion(completion.StudyId))"
-                                   aria-label="Dismiss notification" />
-                </MudStack>
+                                   Style="padding:2px; margin:-2px; opacity:0.5;"
+                                   OnClick="@(() => DismissCompletion(c.StudyId))"
+                                   aria-label="Dismiss" />
+                </div>
             }
+
         </MudStack>
     </div>
 }
+
+<style>
+    @@keyframes spin {
+        from { transform: rotate(0deg); }
+        to   { transform: rotate(360deg); }
+    }
+</style>
 
 @code {
     private List<TradingResearchEngine.Application.Research.ActiveStudy> _activeStudies = new();
@@ -78,11 +116,10 @@
 
     protected override void OnInitialized()
     {
-        StudyService.OnProgress += OnProgress;
+        StudyService.OnProgress  += OnProgress;
         StudyService.OnCompleted += OnCompleted;
         _activeStudies = StudyService.GetActiveStudies().ToList();
 
-        // V5: Poll for active job progress snapshots
         _pollTimer = new System.Timers.Timer(2000);
         _pollTimer.Elapsed += async (_, _) => await PollJobProgress();
         _pollTimer.Start();
@@ -99,10 +136,7 @@
                 .ToList();
             await InvokeAsync(StateHasChanged);
         }
-        catch
-        {
-            // Silently ignore polling errors
-        }
+        catch { /* Silently ignore polling errors */ }
     }
 
     private void CancelJob(string jobId)
@@ -132,13 +166,13 @@
     }
 
     private static string GetStrategyLabel(TradingResearchEngine.Application.Research.ActiveStudy study) =>
-        study.StrategyVersionId.Length > 12
-            ? study.StrategyVersionId[..12] + "…"
+        study.StrategyVersionId.Length > 10
+            ? study.StrategyVersionId[..10] + "…"
             : study.StrategyVersionId;
 
     public void Dispose()
     {
-        StudyService.OnProgress -= OnProgress;
+        StudyService.OnProgress  -= OnProgress;
         StudyService.OnCompleted -= OnCompleted;
         _pollTimer?.Stop();
         _pollTimer?.Dispose();

@@ -1,43 +1,76 @@
 @inject NavigationManager Nav
 
-@if (_visible)
-{
-    <div style="position:fixed; inset:0; z-index:2000; background:rgba(0,0,0,0.7); display:flex; align-items:center; justify-content:center;"
-         @onclick="Close" @onkeydown="OnKeyDown" tabindex="0">
-        <MudPaper Class="pa-6" Elevation="4" Style="min-width:320px; max-width:480px;">
-            <MudText Typo="Typo.h6" Class="mb-3">Keyboard Shortcuts</MudText>
-            <MudSimpleTable Dense="true" Hover="true" aria-label="Keyboard shortcuts reference">
-                <thead><tr><th>Shortcut</th><th>Action</th></tr></thead>
-                <tbody>
-                    <tr><td><kbd>N</kbd></td><td>New Strategy</td></tr>
-                    <tr><td><kbd>R</kbd></td><td>Re-run last config</td></tr>
-                    <tr><td><kbd>?</kbd></td><td>Show this overlay</td></tr>
-                    <tr><td><kbd>Esc</kbd></td><td>Close modal / cancel</td></tr>
-                </tbody>
-            </MudSimpleTable>
-            <MudButton Class="mt-3" Variant="Variant.Text" OnClick="Close" FullWidth="true">Close</MudButton>
-        </MudPaper>
-    </div>
-}
+<div style="position:fixed; inset:0; z-index:2000; background:rgba(0,0,0,0.72); display:flex; align-items:center; justify-content:center; backdrop-filter:blur(4px);"
+     @onclick="Close" @onkeydown="OnKeyDown" tabindex="0">
+    <MudPaper Class="pa-6" Elevation="8"
+              Style="min-width:340px; max-width:500px; border:1px solid var(--mud-palette-divider); border-radius:var(--tre-radius);"
+              @onclick:stopPropagation="true">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-4">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                <MudIcon Icon="@Icons.Material.Outlined.Keyboard" Style="opacity:0.6;" />
+                <MudText Typo="Typo.h6">Keyboard Shortcuts</MudText>
+            </MudStack>
+            <MudIconButton Icon="@Icons.Material.Filled.Close" Size="MudBlazor.Size.Small"
+                           OnClick="Close" Style="opacity:0.5;" />
+        </MudStack>
+
+        <MudSimpleTable Dense="true" Hover="true" aria-label="Keyboard shortcuts reference"
+                        Style="background:transparent;">
+            <thead>
+                <tr>
+                    <th style="font-size:0.68rem; opacity:0.5; padding-bottom:8px;">SHORTCUT</th>
+                    <th style="font-size:0.68rem; opacity:0.5; padding-bottom:8px;">ACTION</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><kbd style="@_kbdStyle">N</kbd></td>
+                    <td><MudText Typo="Typo.body2">New Strategy</MudText></td>
+                </tr>
+                <tr>
+                    <td><kbd style="@_kbdStyle">R</kbd></td>
+                    <td><MudText Typo="Typo.body2">Re-run last config</MudText></td>
+                </tr>
+                <tr>
+                    <td><kbd style="@_kbdStyle">?</kbd></td>
+                    <td><MudText Typo="Typo.body2">Show this overlay</MudText></td>
+                </tr>
+                <tr>
+                    <td><kbd style="@_kbdStyle">Esc</kbd></td>
+                    <td><MudText Typo="Typo.body2">Close modal / cancel</MudText></td>
+                </tr>
+            </tbody>
+        </MudSimpleTable>
+
+        <MudText Typo="Typo.caption" Class="text-faint mt-4" Style="display:block; text-align:center;">
+            Press Esc or click outside to close
+        </MudText>
+    </MudPaper>
+</div>
 
 @code {
-    private bool _visible;
+    [Parameter] public EventCallback OnClose { get; set; }
 
-    public void Show() { _visible = true; StateHasChanged(); }
-    public void Close() { _visible = false; StateHasChanged(); }
+    private const string _kbdStyle =
+        "display:inline-block; padding:2px 7px; background:rgba(255,255,255,0.08); " +
+        "border:1px solid rgba(255,255,255,0.18); border-radius:4px; " +
+        "font-family:monospace; font-size:0.78rem; color:var(--mud-palette-text-primary);";
+
+    private async Task Close()
+    {
+        await OnClose.InvokeAsync();
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") await Close();
+    }
 
     public void HandleGlobalKey(string key)
     {
         switch (key)
         {
-            case "?": Show(); break;
             case "n" or "N": Nav.NavigateTo("/strategies/builder"); break;
-            case "Escape": Close(); break;
         }
-    }
-
-    private void OnKeyDown(KeyboardEventArgs e)
-    {
-        if (e.Key == "Escape") Close();
     }
 }
