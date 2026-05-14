@@ -140,6 +140,10 @@ else
             <MudButton Variant="Variant.Text" Color="Color.Primary"
                        Href="@($"/backtests/{_study.SourceRunId}")">View Source Run</MudButton>
         }
+        @if (_sourceResult is not null)
+        {
+            <ExportMenu Result="_sourceResult" />
+        }
     </MudStack>
 }
 
@@ -153,6 +157,7 @@ else
     private int _progressTotal;
     private string _progressLabel = "";
     private IReadOnlyList<string> _warnings = Array.Empty<string>();
+    private BacktestResult? _sourceResult;
 
     protected override async Task OnInitializedAsync()
     {
@@ -179,6 +184,7 @@ else
                 var sourceRun = await ResultRepo.GetByIdAsync(_study.SourceRunId);
                 if (sourceRun is not null)
                 {
+                    _sourceResult = sourceRun;
                     _warnings = RobustnessService.GetWarnings(sourceRun);
                 }
             }

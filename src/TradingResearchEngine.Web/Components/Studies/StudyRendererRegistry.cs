@@ -19,6 +19,7 @@ public static class StudyRendererRegistry
         [StudyType.BenchmarkComparison] = typeof(BenchmarkResultRenderer),
         [StudyType.Cpcv] = typeof(CpcvResultRenderer),
         [StudyType.Variance] = typeof(VarianceResultRenderer),
+        [StudyType.RandomisedOos] = typeof(RandomizedOosResultRenderer),
     };
 
     /// <summary>

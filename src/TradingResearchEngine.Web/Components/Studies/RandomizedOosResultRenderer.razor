@@ -1,0 +1,234 @@
+@rendermode InteractiveServer
+@using Plotly.Blazor
+@using Plotly.Blazor.Traces
+@using Plotly.Blazor.LayoutLib
+@using TradingResearchEngine.Application.Research
+@using System.Text.Json
+
+@if (_result is not null)
+{
+    @* Summary stats row *@
+    <MudGrid Class="mb-4">
+        <MudItem xs="6" sm="3">
+            <MetricCard Label="Mean Efficiency" Value="@($"{_meanEfficiency:F3}")" />
+        </MudItem>
+        <MudItem xs="6" sm="3">
+            <MetricCard Label="% Ratio ≥ 0.5" Value="@($"{_pctAboveHalf:F1}%")" />
+        </MudItem>
+        <MudItem xs="6" sm="3">
+            <MetricCard Label="Failed Iterations" Value="@($"{_result.FailedIterationCount}")" />
+        </MudItem>
+        <MudItem xs="6" sm="3">
+            <MudPaper Class="pa-3" Elevation="1">
+                <MudText Typo="Typo.caption" Class="text-muted">Overall Rating</MudText>
+                <MudChip T="string" Size="MudBlazor.Size.Small" Color="@_badgeColor">@_badgeLabel</MudChip>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    @* Failed iteration warning *@
+    @if (_result.FailedIterationCount > 0)
+    {
+        <MudAlert Severity="Severity.Warning" Dense="true" Class="mb-3">
+            @_result.FailedIterationCount iteration(s) failed. Mean OOS Sharpe is computed over @_result.Iterations.Count succeeded iterations only.
+        </MudAlert>
+    }
+
+    @* Advisories *@
+    @if (_result.Advisories is { Count: > 0 })
+    {
+        @foreach (var advisory in _result.Advisories)
+        {
+            <MudAlert Severity="Severity.Warning" Dense="true" Class="mb-2">@advisory</MudAlert>
+        }
+    }
+
+    @* Efficiency Ratio Histogram *@
+    <MudPaper Class="pa-3 mb-4" Elevation="1">
+        <MudText Typo="Typo.subtitle2" Class="mb-2">IS/OOS Efficiency Ratio Distribution</MudText>
+        <PlotlyChart @ref="_chart" Config="_config" Layout="_layout" Data="_data"
+                     style="width:100%; height:320px;" />
+    </MudPaper>
+
+    @* OOS Sharpe summary *@
+    <MudGrid>
+        <MudItem xs="6" sm="3">
+            <MetricCard Label="Mean OOS Sharpe" Value="@($"{_result.MeanOosSharpe:F3}")" />
+        </MudItem>
+        <MudItem xs="6" sm="3">
+            <MetricCard Label="StdDev OOS Sharpe" Value="@($"{_result.StdDevOosSharpe:F3}")" />
+        </MudItem>
+        <MudItem xs="6" sm="3">
+            <MetricCard Label="Mean IS Sharpe" Value="@($"{_result.MeanIsSharpe:F3}")" />
+        </MudItem>
+        <MudItem xs="6" sm="3">
+            <MetricCard Label="Iterations" Value="@($"{_result.Iterations.Count + _result.FailedIterationCount}")" />
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    [Parameter] public StudyRecord Study { get; set; } = default!;
+    [Parameter] public string ResultJson { get; set; } = "";
+
+    private RandomizedOosResult? _result;
+    private PlotlyChart? _chart;
+    private Config _config = new() { Responsive = true, DisplayModeBar = Plotly.Blazor.ConfigLib.DisplayModeBarEnum.Hover };
+    private Layout _layout = new();
+    private IList<ITrace> _data = new List<ITrace>();
+
+    private decimal _meanEfficiency;
+    private double _pctAboveHalf;
+    private Color _badgeColor = Color.Default;
+    private string _badgeLabel = "";
+
+    protected override void OnParametersSet()
+    {
+        if (string.IsNullOrEmpty(ResultJson)) return;
+
+        _result = JsonSerializer.Deserialize<RandomizedOosResult>(ResultJson);
+        if (_result is null) return;
+
+        // Compute summary stats from efficiency ratios
+        var ratios = _result.Iterations
+            .Where(i => i.EfficiencyRatio.HasValue)
+            .Select(i => i.EfficiencyRatio!.Value)
+            .ToList();
+
+        if (ratios.Count > 0)
+        {
+            _meanEfficiency = ratios.Average();
+            _pctAboveHalf = ratios.Count(r => r >= 0.5m) * 100.0 / ratios.Count;
+        }
+        else
+        {
+            _meanEfficiency = 0m;
+            _pctAboveHalf = 0;
+        }
+
+        // Colour-coded badge
+        if (_meanEfficiency >= 0.7m)
+        {
+            _badgeColor = Color.Success;
+            _badgeLabel = "Strong";
+        }
+        else if (_meanEfficiency >= 0.4m)
+        {
+            _badgeColor = Color.Warning;
+            _badgeLabel = "Moderate";
+        }
+        else
+        {
+            _badgeColor = Color.Error;
+            _badgeLabel = "Weak";
+        }
+
+        BuildHistogram(ratios);
+    }
+
+    private void BuildHistogram(List<decimal> ratios)
+    {
+        if (ratios.Count == 0)
+        {
+            _data = new List<ITrace>();
+            return;
+        }
+
+        // Build 10-bin histogram
+        const int binCount = 10;
+        var min = ratios.Min();
+        var max = ratios.Max();
+
+        // Ensure range is at least 0 to 2 for meaningful display
+        var rangeMin = Math.Min(min, 0m);
+        var rangeMax = Math.Max(max, 2m);
+        var binWidth = (rangeMax - rangeMin) / binCount;
+
+        var bins = new int[binCount];
+        var binEdges = new decimal[binCount + 1];
+        for (int i = 0; i <= binCount; i++)
+            binEdges[i] = rangeMin + i * binWidth;
+
+        foreach (var r in ratios)
+        {
+            int idx = (int)((r - rangeMin) / binWidth);
+            if (idx >= binCount) idx = binCount - 1;
+            if (idx < 0) idx = 0;
+            bins[idx]++;
+        }
+
+        // X values are bin centres
+        var xValues = new List<object>();
+        var yValues = new List<object>();
+        for (int i = 0; i < binCount; i++)
+        {
+            xValues.Add((double)(binEdges[i] + binWidth / 2));
+            yValues.Add(bins[i]);
+        }
+
+        _data = new List<ITrace>
+        {
+            new Bar
+            {
+                X = xValues,
+                Y = yValues,
+                Name = "Efficiency Ratio",
+                Marker = new Plotly.Blazor.Traces.BarLib.Marker
+                {
+                    Color = "#42A5F5"
+                }
+            }
+        };
+
+        _layout = new Layout
+        {
+            Title = new Plotly.Blazor.LayoutLib.Title { Text = "Efficiency Ratio Distribution" },
+            Margin = new Plotly.Blazor.LayoutLib.Margin { L = 50, R = 30, T = 40, B = 40 },
+            BarMode = Plotly.Blazor.LayoutLib.BarModeEnum.Overlay,
+            XAxis = new List<Plotly.Blazor.LayoutLib.XAxis>
+            {
+                new()
+                {
+                    Title = new Plotly.Blazor.LayoutLib.XAxisLib.Title { Text = "Efficiency Ratio (OOS Sharpe / IS Sharpe)" }
+                }
+            },
+            YAxis = new List<Plotly.Blazor.LayoutLib.YAxis>
+            {
+                new()
+                {
+                    Title = new Plotly.Blazor.LayoutLib.YAxisLib.Title { Text = "Count" }
+                }
+            },
+            Shapes = new List<Plotly.Blazor.LayoutLib.Shape>
+            {
+                new()
+                {
+                    Type = Plotly.Blazor.LayoutLib.ShapeLib.TypeEnum.Line,
+                    X0 = (object)1.0,
+                    X1 = (object)1.0,
+                    Y0 = (object)0,
+                    Y1 = (object)1,
+                    YRef = "paper",
+                    Line = new Plotly.Blazor.LayoutLib.ShapeLib.Line
+                    {
+                        Color = "#FF5252",
+                        Width = 2m,
+                        Dash = "dash"
+                    }
+                }
+            },
+            Annotations = new List<Plotly.Blazor.LayoutLib.Annotation>
+            {
+                new()
+                {
+                    X = (object)1.0,
+                    Y = (object)1.0,
+                    YRef = "paper",
+                    Text = "Ratio = 1.0",
+                    ShowArrow = false,
+                    Font = new Plotly.Blazor.LayoutLib.AnnotationLib.Font { Color = "#FF5252", Size = 11 }
+                }
+            }
+        };
+    }
+}

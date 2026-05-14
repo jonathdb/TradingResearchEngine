@@ -27,9 +27,11 @@ public class RunScenarioUseCaseTests
         schemaProvider.Setup(s => s.GetSchema(It.IsAny<string>()))
             .Returns(Array.Empty<StrategyParameterSchema>());
         var validator = new PreflightValidator(schemaProvider.Object);
+        var engineFactory = new Mock<IBacktestEngineFactory>();
         return new RunScenarioUseCase(registry, services,
             NullLoggerFactory.Instance.CreateLogger<RunScenarioUseCase>(),
-            validator);
+            validator,
+            engineFactory.Object);
     }
 
     [Fact]

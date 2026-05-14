@@ -1,0 +1,161 @@
+@rendermode InteractiveServer
+@using TradingResearchEngine.Application.Strategies.Composite
+
+@if (Config is not null)
+{
+    <MudPaper Class="pa-3" Elevation="1">
+        <MudText Typo="Typo.subtitle2" Class="mb-2">Composite Strategy: @Config.Name</MudText>
+        <MudGrid>
+            <MudItem xs="12" md="8">
+                <MudTreeView T="TreeNode" Items="_treeItems" Hover="true" Dense="true"
+                             SelectedValueChanged="OnNodeSelected">
+                </MudTreeView>
+            </MudItem>
+            <MudItem xs="12" md="4">
+                @if (_selectedNode is not null)
+                {
+                    <MudPaper Class="pa-3" Elevation="0" Outlined="true">
+                        <MudText Typo="Typo.subtitle2" Class="mb-2">@_selectedNode.Text</MudText>
+                        @if (_selectedNode.Value?.NodeType == NodeKind.Root)
+                        {
+                            <MudText Typo="Typo.body2"><strong>Direction:</strong> @Config.DirectionMode</MudText>
+                            <MudText Typo="Typo.body2" Class="mt-1"><strong>Entry:</strong> @Config.EntryCondition</MudText>
+                            <MudText Typo="Typo.body2" Class="mt-1"><strong>Exit:</strong> @Config.ExitCondition</MudText>
+                        }
+                        else if (_selectedNode.Value?.NodeType == NodeKind.Indicator && _selectedNode.Value.Indicator is not null)
+                        {
+                            <MudText Typo="Typo.body2"><strong>Type:</strong> @_selectedNode.Value.Indicator.Type</MudText>
+                            <MudText Typo="Typo.body2" Class="mt-1"><strong>ID:</strong> @_selectedNode.Value.Indicator.Id</MudText>
+                            @if (_selectedNode.Value.Indicator.Parameters is { Count: > 0 })
+                            {
+                                <MudText Typo="Typo.caption" Class="text-muted mt-2">Parameters</MudText>
+                                <MudSimpleTable Dense="true" Hover="true" Class="mt-1">
+                                    <tbody>
+                                        @foreach (var param in _selectedNode.Value.Indicator.Parameters)
+                                        {
+                                            <tr>
+                                                <td>@param.Key</td>
+                                                <td>@param.Value</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </MudSimpleTable>
+                            }
+                        }
+                        else if (_selectedNode.Value?.NodeType == NodeKind.Condition)
+                        {
+                            <MudText Typo="Typo.body2"><strong>Expression:</strong></MudText>
+                            <MudText Typo="Typo.body2" Class="mt-1" Style="font-family:monospace;">@_selectedNode.Value.Expression</MudText>
+                        }
+                    </MudPaper>
+                }
+                else
+                {
+                    <MudText Typo="Typo.body2" Class="text-muted">Select a node to view details.</MudText>
+                }
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+}
+
+@code {
+    /// <summary>The composite strategy configuration to visualise.</summary>
+    [Parameter] public CompositeStrategyConfig? Config { get; set; }
+
+    private IReadOnlyCollection<TreeItemData<TreeNode>>? _treeItems;
+    private TreeItemData<TreeNode>? _selectedNode;
+
+    protected override void OnParametersSet()
+    {
+        if (Config is null) return;
+        _treeItems = BuildTree(Config);
+    }
+
+    private void OnNodeSelected(TreeNode? node)
+    {
+        // Find the TreeItemData matching this node
+        _selectedNode = FindItem(_treeItems, node);
+    }
+
+    private static TreeItemData<TreeNode>? FindItem(IReadOnlyCollection<TreeItemData<TreeNode>>? items, TreeNode? node)
+    {
+        if (items is null || node is null) return null;
+        foreach (var item in items)
+        {
+            if (item.Value == node) return item;
+            var found = FindItem(item.Children, node);
+            if (found is not null) return found;
+        }
+        return null;
+    }
+
+    private static IReadOnlyCollection<TreeItemData<TreeNode>> BuildTree(CompositeStrategyConfig config)
+    {
+        var rootNode = new TreeNode { NodeType = NodeKind.Root };
+        var root = new TreeItemData<TreeNode>
+        {
+            Value = rootNode,
+            Text = config.Name,
+            Icon = Icons.Material.Filled.AccountTree,
+            Expanded = true,
+            Children = new List<TreeItemData<TreeNode>>()
+        };
+
+        // Indicators group
+        var indicatorsGroupNode = new TreeNode { NodeType = NodeKind.Group };
+        var indicatorsGroup = new TreeItemData<TreeNode>
+        {
+            Value = indicatorsGroupNode,
+            Text = $"Indicators ({config.Indicators.Count})",
+            Icon = Icons.Material.Filled.ShowChart,
+            Expanded = true,
+            Children = new List<TreeItemData<TreeNode>>()
+        };
+
+        foreach (var indicator in config.Indicators)
+        {
+            var indicatorNode = new TreeNode
+            {
+                NodeType = NodeKind.Indicator,
+                Indicator = indicator
+            };
+            indicatorsGroup.Children!.Add(new TreeItemData<TreeNode>
+            {
+                Value = indicatorNode,
+                Text = $"{indicator.Id} ({indicator.Type})",
+                Icon = Icons.Material.Filled.Functions
+            });
+        }
+        root.Children!.Add(indicatorsGroup);
+
+        // Entry condition
+        var entryNode = new TreeNode { NodeType = NodeKind.Condition, Expression = config.EntryCondition };
+        root.Children!.Add(new TreeItemData<TreeNode>
+        {
+            Value = entryNode,
+            Text = "Entry Condition",
+            Icon = Icons.Material.Filled.Login
+        });
+
+        // Exit condition
+        var exitNode = new TreeNode { NodeType = NodeKind.Condition, Expression = config.ExitCondition };
+        root.Children!.Add(new TreeItemData<TreeNode>
+        {
+            Value = exitNode,
+            Text = "Exit Condition",
+            Icon = Icons.Material.Filled.Logout
+        });
+
+        return new List<TreeItemData<TreeNode>> { root };
+    }
+
+    /// <summary>Represents a node in the composite strategy tree.</summary>
+    private sealed class TreeNode
+    {
+        public NodeKind NodeType { get; init; }
+        public IndicatorConfig? Indicator { get; init; }
+        public string? Expression { get; init; }
+    }
+
+    private enum NodeKind { Root, Group, Indicator, Condition }
+}

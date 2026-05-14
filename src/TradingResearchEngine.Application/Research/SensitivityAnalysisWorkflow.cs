@@ -16,6 +16,11 @@ public sealed class SensitivityAnalysisWorkflow
     public SensitivityAnalysisWorkflow(RunScenarioUseCase runScenario) => _runScenario = runScenario;
 
     /// <summary>Runs sensitivity analysis on a base config.</summary>
+    /// <remarks>
+    /// Each variant is executed via <see cref="RunScenarioUseCase.RunAsync"/> which creates
+    /// a fresh engine instance and strategy per call via the factory pattern. This ensures
+    /// complete state isolation between variants — no strategy state leaks between runs.
+    /// </remarks>
     public async Task<SensitivityResult> RunAsync(
         ScenarioConfig baseConfig, SensitivityOptions options, CancellationToken ct = default)
     {

@@ -12,16 +12,19 @@ public sealed class FinalValidationUseCase
 {
     private readonly RunScenarioUseCase _runScenario;
     private readonly IStrategyRepository _strategyRepo;
+    private readonly SealedTestSetGuard _guard;
     private readonly ILogger<FinalValidationUseCase> _logger;
 
     /// <inheritdoc cref="FinalValidationUseCase"/>
     public FinalValidationUseCase(
         RunScenarioUseCase runScenario,
         IStrategyRepository strategyRepo,
+        SealedTestSetGuard guard,
         ILogger<FinalValidationUseCase> logger)
     {
         _runScenario = runScenario;
         _strategyRepo = strategyRepo;
+        _guard = guard;
         _logger = logger;
     }
 
@@ -61,7 +64,7 @@ public sealed class FinalValidationUseCase
         // Run the backtest (bypasses sealed-set guard — this IS the final validation)
         var result = await _runScenario.RunAsync(config, ct, autoSave: true);
 
-        // On success, mark the strategy as FinalTest
+        // On success, mark the strategy as FinalTest and record the unlock
         if (result.IsSuccess && result.Result?.Status == BacktestStatus.Completed)
         {
             var strategy = await _strategyRepo.GetAsync(version.StrategyId, ct);
@@ -69,6 +72,13 @@ public sealed class FinalValidationUseCase
             {
                 var updated = strategy with { Stage = DevelopmentStage.FinalTest };
                 await _strategyRepo.SaveAsync(updated, ct);
+
+                // Record the unlock in the audit log
+                if (Guid.TryParse(version.StrategyVersionId, out var versionGuid))
+                {
+                    await _guard.RecordUnlockAsync(versionGuid, "Final validation run completed successfully.", ct);
+                }
+
                 _logger.LogInformation(
                     "Strategy '{StrategyId}' marked as FinalTest after final validation run.",
                     strategy.StrategyId);

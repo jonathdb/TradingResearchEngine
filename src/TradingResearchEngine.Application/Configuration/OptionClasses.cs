@@ -63,11 +63,29 @@ public sealed class RepositoryOptions
     public string BaseDirectory { get; set; } = string.Empty;
 }
 
+/// <summary>Metric used to rank parameter sweep results.</summary>
+public enum SweepSortMetric
+{
+    /// <summary>Rank by annualised Sharpe ratio (descending).</summary>
+    SharpeRatio,
+    /// <summary>Rank by maximum drawdown (ascending — smallest drawdown first).</summary>
+    MaxDrawdown,
+    /// <summary>Rank by profit factor (descending).</summary>
+    ProfitFactor,
+    /// <summary>Rank by win rate (descending).</summary>
+    WinRate,
+    /// <summary>Rank by Calmar ratio (descending).</summary>
+    CalmarRatio
+}
+
 /// <summary>Options for parameter sweep parallelism.</summary>
 public sealed class SweepOptions
 {
     /// <summary>Maximum number of concurrent engine runs during a sweep.</summary>
     public int MaxDegreeOfParallelism { get; set; } = Environment.ProcessorCount;
+
+    /// <summary>Metric used to sort sweep results. Defaults to Sharpe ratio descending.</summary>
+    public SweepSortMetric SortBy { get; set; } = SweepSortMetric.SharpeRatio;
 }
 
 /// <summary>Options for walk-forward analysis windowing.</summary>

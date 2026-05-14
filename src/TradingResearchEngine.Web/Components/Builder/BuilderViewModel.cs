@@ -47,6 +47,20 @@ public sealed class BuilderViewModel
     public bool IsDirty { get; set; }
     public string DraftId { get; set; } = Guid.NewGuid().ToString();
 
+    // V9: Condition Builder state
+    /// <summary>Parsed entry condition AST for the visual condition builder. Null when using raw text mode.</summary>
+    public TradingResearchEngine.Application.Strategies.Composite.Conditions.ConditionNode? ParsedEntryCondition { get; set; }
+    /// <summary>Parsed exit condition AST for the visual condition builder. Null when using raw text mode.</summary>
+    public TradingResearchEngine.Application.Strategies.Composite.Conditions.ConditionNode? ParsedExitCondition { get; set; }
+    /// <summary>Raw entry condition expression string (used when visual builder cannot parse).</summary>
+    public string? EntryConditionText { get; set; }
+    /// <summary>Raw exit condition expression string (used when visual builder cannot parse).</summary>
+    public string? ExitConditionText { get; set; }
+
+    // V9: Builder mode
+    /// <summary>When true, hides advanced parameters and shows contextual help. Persisted in user settings.</summary>
+    public bool IsBeginnerMode { get; set; } = true;
+
     /// <summary>Canonical BarsPerYear for the current timeframe.</summary>
     public int BarsPerYear => Timeframe switch
     {

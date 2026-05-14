@@ -1,3 +1,4 @@
+using TradingResearchEngine.Application.Strategies;
 using TradingResearchEngine.Core.Persistence;
 using TradingResearchEngine.Core.Results;
 
@@ -6,9 +7,30 @@ namespace TradingResearchEngine.Application.Research;
 /// <summary>
 /// Extended persistence interface for backtest results with indexed queries.
 /// V6: Adds version- and strategy-scoped lookups backed by SQLite index.
+/// V9: Adds paginated listing with optional filters.
 /// </summary>
 public interface IBacktestResultRepository : IRepository<BacktestResult>
 {
+    /// <summary>
+    /// Lists results with pagination and optional filters.
+    /// Results are ordered by creation date descending (most recent first).
+    /// </summary>
+    /// <param name="page">1-based page number.</param>
+    /// <param name="pageSize">Maximum items per page.</param>
+    /// <param name="strategyTypeFilter">Optional filter by strategy type.</param>
+    /// <param name="statusFilter">Optional filter by backtest status.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>A paginated result with items and total count metadata.</returns>
+    /// <remarks>
+    /// Implementation note: JSON file repository uses in-memory filtering.
+    /// Safe for up to ~5000 records (&lt;100ms). Beyond that, use SQLite index.
+    /// </remarks>
+    Task<PagedResult<BacktestResult>> ListPagedAsync(
+        int page,
+        int pageSize,
+        StrategyTypeId? strategyTypeFilter = null,
+        BacktestStatus? statusFilter = null,
+        CancellationToken ct = default);
     /// <summary>Lists results for a specific strategy version via SQLite index.</summary>
     Task<IReadOnlyList<BacktestResult>> ListByVersionAsync(
         string versionId, CancellationToken ct = default);

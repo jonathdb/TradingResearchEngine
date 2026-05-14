@@ -91,9 +91,14 @@ public sealed class ParameterSweepWorkflow : IResearchWorkflow<SweepOptions, Swe
                 }
             });
 
-        var ranked = results
-            .OrderByDescending(r => r.SharpeRatio ?? decimal.MinValue)
-            .ToList();
+        var ranked = options.SortBy switch
+        {
+            SweepSortMetric.MaxDrawdown => results.OrderBy(r => r.MaxDrawdown).ToList(),
+            SweepSortMetric.ProfitFactor => results.OrderByDescending(r => r.ProfitFactor ?? decimal.MinValue).ToList(),
+            SweepSortMetric.WinRate => results.OrderByDescending(r => r.WinRate ?? decimal.MinValue).ToList(),
+            SweepSortMetric.CalmarRatio => results.OrderByDescending(r => r.CalmarRatio ?? decimal.MinValue).ToList(),
+            _ => results.OrderByDescending(r => r.SharpeRatio ?? decimal.MinValue).ToList()
+        };
 
         var sensitivity = ComputeSensitivity(ranked, grid);
 
@@ -147,11 +152,13 @@ public sealed class ParameterSweepWorkflow : IResearchWorkflow<SweepOptions, Swe
 
     private static ScenarioConfig MergeParameters(ScenarioConfig baseConfig, Dictionary<string, object> overrides)
     {
-        var merged = new Dictionary<string, object>(baseConfig.StrategyParameters);
+        // DeepClone ensures all dictionary properties are independent per parallel worker
+        var cloned = baseConfig.DeepClone();
+        var merged = new Dictionary<string, object>(cloned.StrategyParameters);
         foreach (var (key, value) in overrides)
             merged[key] = value;
 
-        return baseConfig with { StrategyParameters = merged };
+        return cloned with { StrategyParameters = merged };
     }
 
     /// <summary>

@@ -15,4 +15,12 @@ public interface IRobustnessAdvisoryService
     /// <param name="result">The backtest result to evaluate.</param>
     /// <returns>A read-only list of warning descriptions.</returns>
     IReadOnlyList<string> GetWarnings(BacktestResult result);
+
+    /// <summary>
+    /// Returns structured robustness warnings with severity, cause, and recommended action.
+    /// An empty list indicates no warnings.
+    /// </summary>
+    /// <param name="result">The backtest result to evaluate.</param>
+    /// <returns>A read-only list of <see cref="RobustnessWarning"/> records.</returns>
+    IReadOnlyList<RobustnessWarning> GetStructuredWarnings(BacktestResult result);
 }

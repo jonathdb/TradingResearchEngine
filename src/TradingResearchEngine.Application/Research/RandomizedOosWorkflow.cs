@@ -18,14 +18,28 @@ public sealed class RandomizedOosOptions
 
     /// <summary>Optional RNG seed for reproducibility.</summary>
     public int? Seed { get; set; }
+
+    /// <summary>
+    /// Number of bars prepended to the OOS window as indicator warmup context.
+    /// These bars are fed to the engine but not counted in OOS performance measurement.
+    /// Default is 200 to accommodate common long-period indicators.
+    /// </summary>
+    public int WarmupBars { get; set; } = 200;
 }
 
-/// <summary>Result of randomized OOS testing.</summary>
+/// <summary>
+/// Result of randomized OOS testing.
+/// <para><see cref="MeanOosSharpe"/> is computed as the arithmetic mean of succeeded iterations only.</para>
+/// </summary>
 public sealed record RandomizedOosResult(
     IReadOnlyList<RandomizedOosIteration> Iterations,
     decimal MeanOosSharpe,
     decimal StdDevOosSharpe,
-    decimal MeanIsSharpe);
+    decimal MeanIsSharpe,
+    /// <summary>Number of iterations that threw or returned invalid results.</summary>
+    int FailedIterationCount,
+    /// <summary>Realism advisories emitted when failure rate exceeds thresholds.</summary>
+    IReadOnlyList<string>? Advisories = null);
 
 /// <summary>A single iteration of randomized OOS testing.</summary>
 public sealed record RandomizedOosIteration(
@@ -71,36 +85,48 @@ public sealed class RandomizedOosWorkflow
         await foreach (var bar in _dataProvider.GetBars(symbol, interval, from, to, ct))
             allBars.Add(bar);
 
-        if (allBars.Count < 10)
-            throw new InvalidOperationException($"Insufficient data: {allBars.Count} bars. Need at least 10.");
+        int oosCount = Math.Max(1, (int)(allBars.Count * options.OosFraction));
+        int warmupBuffer = options.WarmupBars;
+
+        // Validate sufficient data for OOS fraction + warmup
+        if (allBars.Count < oosCount + warmupBuffer + 10)
+            throw new InvalidOperationException(
+                $"Insufficient data for OOS fraction {options.OosFraction} with warmup {warmupBuffer} bars. " +
+                $"Have {allBars.Count} bars, need at least {oosCount + warmupBuffer + 10}.");
 
         var rng = options.Seed.HasValue ? new Random(options.Seed.Value) : new Random();
-        int oosCount = Math.Max(1, (int)(allBars.Count * options.OosFraction));
         var iterations = new List<RandomizedOosIteration>();
+        int failedCount = 0;
 
         for (int iter = 0; iter < options.Iterations; iter++)
         {
             ct.ThrowIfCancellationRequested();
 
-            // Randomly select OOS indices
-            var indices = Enumerable.Range(0, allBars.Count).ToList();
-            Shuffle(indices, rng);
-            var oosIndices = new HashSet<int>(indices.Take(oosCount));
+            // Pick a random OOS start index leaving room for a full OOS window
+            int maxOosStart = allBars.Count - oosCount;
+            int oosStart = rng.Next(warmupBuffer, maxOosStart + 1);
 
-            var isBars = allBars.Where((_, i) => !oosIndices.Contains(i)).ToList();
-            var oosBars = allBars.Where((_, i) => oosIndices.Contains(i)).OrderBy(b => b.Timestamp).ToList();
+            var oosBars = allBars.Skip(oosStart).Take(oosCount).ToList();
+            var isBars = allBars.Take(oosStart)
+                               .Concat(allBars.Skip(oosStart + oosCount))
+                               .ToList();
+
+            // Prepend warmup bars before OOS start for indicator warmup context
+            int warmupStart = Math.Max(0, oosStart - warmupBuffer);
+            var oosWithWarmup = allBars.Skip(warmupStart).Take(oosStart - warmupStart)
+                                       .Concat(oosBars).ToList();
 
             // Create in-memory data provider configs with filtered bars
-            // We pass the bar lists via a convention key that the engine can use
-            var isConfig = baseConfig with
+            var isConfig = baseConfig.DeepClone() with
             {
                 DataProviderType = "memory",
                 DataProviderOptions = WithBarIndices(baseConfig.DataProviderOptions, isBars)
             };
-            var oosConfig = baseConfig with
+            var oosConfig = baseConfig.DeepClone() with
             {
                 DataProviderType = "memory",
-                DataProviderOptions = WithBarIndices(baseConfig.DataProviderOptions, oosBars)
+                DataProviderOptions = WithBarIndices(baseConfig.DataProviderOptions, oosWithWarmup,
+                    warmupBars: oosStart - warmupStart)
             };
 
             var isResult = await _runScenario.RunAsync(isConfig, ct, autoSave: false);
@@ -115,6 +141,10 @@ public sealed class RandomizedOosWorkflow
 
                 iterations.Add(new RandomizedOosIteration(iter, isResult.Result, oosResult.Result, efficiency));
             }
+            else
+            {
+                Interlocked.Increment(ref failedCount);
+            }
         }
 
         if (iterations.Count == 0)
@@ -123,37 +153,40 @@ public sealed class RandomizedOosWorkflow
         var oosSharpes = iterations.Select(i => i.OutOfSampleResult.SharpeRatio ?? 0m).ToList();
         var isSharpes = iterations.Select(i => i.InSampleResult.SharpeRatio ?? 0m).ToList();
 
+        // Emit realism advisory when failure rate exceeds 20%
+        List<string>? advisories = null;
+        if (failedCount > 0 && (double)failedCount / options.Iterations > 0.20)
+        {
+            advisories = [$"High OOS iteration failure rate: {failedCount}/{options.Iterations} iterations failed ({(double)failedCount / options.Iterations:P0}). Mean OOS Sharpe is computed over {iterations.Count} succeeded iterations only."];
+        }
+
         return new RandomizedOosResult(
             iterations,
             oosSharpes.Average(),
             StdDev(oosSharpes),
-            isSharpes.Average());
+            isSharpes.Average(),
+            failedCount,
+            advisories);
     }
 
     private static Dictionary<string, object> WithBarIndices(
-        Dictionary<string, object> original, List<BarRecord> bars)
+        Dictionary<string, object> original, List<BarRecord> bars, int warmupBars = 0)
     {
         var copy = new Dictionary<string, object>(original)
         {
             ["FilteredBars"] = bars
         };
+        if (warmupBars > 0)
+            copy["WarmupBars"] = warmupBars;
         return copy;
-    }
-
-    private static void Shuffle<T>(List<T> list, Random rng)
-    {
-        for (int i = list.Count - 1; i > 0; i--)
-        {
-            int j = rng.Next(i + 1);
-            (list[i], list[j]) = (list[j], list[i]);
-        }
     }
 
     private static decimal StdDev(List<decimal> values)
     {
         if (values.Count < 2) return 0m;
-        decimal mean = values.Average();
-        decimal variance = values.Sum(v => (v - mean) * (v - mean)) / (values.Count - 1);
-        return (decimal)Math.Sqrt((double)variance);
+        var doubles = values.Select(v => (double)v).ToList();
+        double mean = doubles.Average();
+        double variance = doubles.Sum(v => (v - mean) * (v - mean)) / doubles.Count;
+        return (decimal)Math.Sqrt(variance);
     }
 }

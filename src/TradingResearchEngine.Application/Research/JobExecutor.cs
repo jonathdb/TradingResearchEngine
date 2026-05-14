@@ -29,6 +29,7 @@ public sealed class JobExecutor : IDisposable
     private const int JobRetentionHours = 24;
 
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _active = new();
+    private readonly ConcurrentDictionary<string, ProgressSnapshot> _progressCache = new();
     private readonly IRepository<BacktestJob> _jobRepo;
     private readonly ILogger<JobExecutor> _logger;
 
@@ -115,6 +116,7 @@ public sealed class JobExecutor : IDisposable
 
     /// <summary>
     /// Transitions a job to <see cref="JobStatus.Completed"/> with the given result identifier.
+    /// Flushes any cached progress before persisting the terminal state.
     /// </summary>
     /// <param name="jobId">The job identifier.</param>
     /// <param name="resultId">The identifier of the persisted result.</param>
@@ -126,6 +128,9 @@ public sealed class JobExecutor : IDisposable
         ReproducibilitySnapshot? reproducibility = null,
         CancellationToken ct = default)
     {
+        // Flush cached progress before terminal state
+        await FlushProgressAsync(jobId, ct);
+
         var job = await _jobRepo.GetByIdAsync(jobId, ct);
         if (job is null) return;
 
@@ -142,12 +147,16 @@ public sealed class JobExecutor : IDisposable
 
     /// <summary>
     /// Transitions a job to <see cref="JobStatus.Failed"/> with the given error message.
+    /// Flushes any cached progress before persisting the terminal state.
     /// </summary>
     /// <param name="jobId">The job identifier.</param>
     /// <param name="errorMessage">User-friendly error message (no stack traces).</param>
     /// <param name="ct">Cancellation token.</param>
     public async Task MarkFailedAsync(string jobId, string errorMessage, CancellationToken ct = default)
     {
+        // Flush cached progress before terminal state
+        await FlushProgressAsync(jobId, ct);
+
         var job = await _jobRepo.GetByIdAsync(jobId, ct);
         if (job is null) return;
 
@@ -162,18 +171,47 @@ public sealed class JobExecutor : IDisposable
     }
 
     /// <summary>
-    /// Updates the progress snapshot on a running job and persists the update.
+    /// Updates the progress snapshot for a running job. Progress is cached in memory
+    /// and only persisted on flush (every ~2 seconds or on job completion) to reduce I/O.
     /// </summary>
     /// <param name="jobId">The job identifier.</param>
     /// <param name="progress">The latest progress snapshot.</param>
     /// <param name="ct">Cancellation token.</param>
-    public async Task UpdateProgressAsync(string jobId, ProgressSnapshot progress, CancellationToken ct = default)
+    public Task UpdateProgressAsync(string jobId, ProgressSnapshot progress, CancellationToken ct = default)
     {
+        _progressCache[jobId] = progress;
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Persists the cached progress snapshot for the specified job to the repository.
+    /// Called periodically by the worker service and before terminal state transitions.
+    /// </summary>
+    /// <param name="jobId">The job identifier.</param>
+    /// <param name="ct">Cancellation token.</param>
+    public async Task FlushProgressAsync(string jobId, CancellationToken ct = default)
+    {
+        if (!_progressCache.TryRemove(jobId, out var progress)) return;
+
         var job = await _jobRepo.GetByIdAsync(jobId, ct);
         if (job is null) return;
 
         var updated = job with { Progress = progress };
         await _jobRepo.SaveAsync(updated, ct);
+    }
+
+    /// <summary>
+    /// Flushes all cached progress snapshots to the repository.
+    /// Called periodically by the worker service.
+    /// </summary>
+    /// <param name="ct">Cancellation token.</param>
+    public async Task FlushAllProgressAsync(CancellationToken ct = default)
+    {
+        var keys = _progressCache.Keys.ToList();
+        foreach (var key in keys)
+        {
+            await FlushProgressAsync(key, ct);
+        }
     }
 
     /// <summary>
@@ -225,6 +263,48 @@ public sealed class JobExecutor : IDisposable
     /// <returns>All job records.</returns>
     public Task<IReadOnlyList<BacktestJob>> ListJobsAsync(CancellationToken ct = default)
         => _jobRepo.ListAsync(ct);
+
+    /// <summary>
+    /// Returns a snapshot of the current job queue with position information.
+    /// Jobs are ordered by submission time. Running jobs are included at position 0.
+    /// </summary>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Queue entries with position, status, and timing metadata.</returns>
+    public async Task<IReadOnlyList<JobQueueEntry>> GetQueueSnapshotAsync(CancellationToken ct = default)
+    {
+        var allJobs = await _jobRepo.ListAsync(ct);
+        var activeJobs = allJobs
+            .Where(j => j.Status is JobStatus.Queued or JobStatus.Running)
+            .OrderBy(j => j.SubmittedAt)
+            .ToList();
+
+        var entries = new List<JobQueueEntry>(activeJobs.Count);
+        int position = 1;
+        foreach (var job in activeJobs)
+        {
+            entries.Add(new JobQueueEntry(
+                job.JobId,
+                job.JobType,
+                job.SubmittedAt,
+                job.Status,
+                job.Status == JobStatus.Running ? 0 : position++));
+        }
+        return entries;
+    }
+
+    /// <summary>
+    /// Returns up to <paramref name="limit"/> queued jobs using the status-based repository query.
+    /// More efficient than loading all jobs and filtering in memory when the repository
+    /// supports indexed status queries.
+    /// </summary>
+    /// <param name="limit">Maximum number of queued jobs to return.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Queued jobs, up to the specified limit.</returns>
+    public async Task<IReadOnlyList<BacktestJob>> ListQueuedJobsAsync(int limit, CancellationToken ct = default)
+    {
+        var queued = await _jobRepo.ListByStatusAsync(nameof(JobStatus.Queued), ct);
+        return queued.Take(limit).ToList();
+    }
 
     /// <summary>
     /// Returns the <see cref="CancellationToken"/> for an active job, or

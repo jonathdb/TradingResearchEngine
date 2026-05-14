@@ -1,0 +1,47 @@
+@using TradingResearchEngine.Application.Strategies.Composite.Conditions
+
+@* Recursive component for rendering logical groups (AND/OR) in the condition builder. *@
+
+<MudPaper Class="pa-2 mb-1 ml-3" Outlined="true" Elevation="0">
+    @if (Node is LogicalNode logical)
+    {
+        <MudStack Spacing="1">
+            @* Left operand *@
+            @if (logical.Left is LogicalNode leftLogical)
+            {
+                <ConditionGroupNode Node="@leftLogical" Depth="@(Depth + 1)" OnChanged="OnChanged" />
+            }
+            else
+            {
+                <ConditionRow Node="@logical.Left" />
+            }
+
+            @* Operator toggle *@
+            <MudChip T="string" Size="MudBlazor.Size.Small"
+                     Color="@(logical.Operator == LogicalOperator.And ? Color.Primary : Color.Secondary)"
+                     Variant="Variant.Filled">
+                @(logical.Operator == LogicalOperator.And ? "AND" : "OR")
+            </MudChip>
+
+            @* Right operand *@
+            @if (logical.Right is LogicalNode rightLogical)
+            {
+                <ConditionGroupNode Node="@rightLogical" Depth="@(Depth + 1)" OnChanged="OnChanged" />
+            }
+            else
+            {
+                <ConditionRow Node="@logical.Right" />
+            }
+        </MudStack>
+    }
+    else
+    {
+        <ConditionRow Node="@Node" />
+    }
+</MudPaper>
+
+@code {
+    [Parameter, EditorRequired] public ConditionNode Node { get; set; } = default!;
+    [Parameter] public int Depth { get; set; }
+    [Parameter] public EventCallback OnChanged { get; set; }
+}

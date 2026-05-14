@@ -1,0 +1,204 @@
+@page "/compare-runs"
+@rendermode InteractiveServer
+@inject TradingResearchEngine.Core.Persistence.IRepository<BacktestResult> ResultRepo
+@inject NavigationManager Nav
+
+<PageTitle>Compare Runs — TradingResearchEngine</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Compare Backtest Runs</MudText>
+
+@if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-4">@_error</MudAlert>
+}
+else if (_loading)
+{
+    <MudProgressCircular Indeterminate="true" />
+}
+else if (_results.Count > 0)
+{
+    @* Overlaid equity curve chart *@
+    <MudPaper Class="pa-4 mb-4" Elevation="2">
+        <MudText Typo="Typo.h6" Class="mb-2">Equity Curves</MudText>
+        <OverlaidEquityCurves Results="_results" />
+    </MudPaper>
+
+    @* Metrics comparison table *@
+    <MudPaper Class="pa-4 mb-4" Elevation="2">
+        <MudText Typo="Typo.h6" Class="mb-2">Metrics Comparison</MudText>
+        <MudSimpleTable Dense="true" Hover="true" Striped="true">
+            <thead>
+                <tr>
+                    <th>Metric</th>
+                    @foreach (var r in _results)
+                    {
+                        <th>@GetRunLabel(r)</th>
+                    }
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>Sharpe</strong></td>
+                    @foreach (var r in _results)
+                    {
+                        <td style="@GetHighlightStyle(r, "Sharpe")">@(r.SharpeRatio?.ToString("F3") ?? "—")</td>
+                    }
+                </tr>
+                <tr>
+                    <td><strong>Sortino</strong></td>
+                    @foreach (var r in _results)
+                    {
+                        <td style="@GetHighlightStyle(r, "Sortino")">@(r.SortinoRatio?.ToString("F3") ?? "—")</td>
+                    }
+                </tr>
+                <tr>
+                    <td><strong>Max Drawdown</strong></td>
+                    @foreach (var r in _results)
+                    {
+                        <td style="@GetHighlightStyle(r, "MaxDD")">@r.MaxDrawdown.ToString("P2")</td>
+                    }
+                </tr>
+                <tr>
+                    <td><strong>Win Rate</strong></td>
+                    @foreach (var r in _results)
+                    {
+                        <td style="@GetHighlightStyle(r, "WinRate")">@(r.WinRate?.ToString("P1") ?? "—")</td>
+                    }
+                </tr>
+                <tr>
+                    <td><strong>Profit Factor</strong></td>
+                    @foreach (var r in _results)
+                    {
+                        <td style="@GetHighlightStyle(r, "ProfitFactor")">@(r.ProfitFactor?.ToString("F2") ?? "—")</td>
+                    }
+                </tr>
+                <tr>
+                    <td><strong>Calmar</strong></td>
+                    @foreach (var r in _results)
+                    {
+                        <td style="@GetHighlightStyle(r, "Calmar")">@(r.CalmarRatio?.ToString("F3") ?? "—")</td>
+                    }
+                </tr>
+                <tr>
+                    <td><strong>DSR</strong></td>
+                    @foreach (var r in _results)
+                    {
+                        <td style="@GetHighlightStyle(r, "DSR")">@(r.DeflatedSharpeRatio?.ToString("F3") ?? "—")</td>
+                    }
+                </tr>
+            </tbody>
+        </MudSimpleTable>
+    </MudPaper>
+}
+else
+{
+    <MudAlert Severity="Severity.Info">No runs to compare. Select runs from the Dashboard.</MudAlert>
+}
+
+@code {
+    [SupplyParameterFromQuery(Name = "runIds")]
+    public string? RunIdsParam { get; set; }
+
+    private List<BacktestResult> _results = new();
+    private string? _error;
+    private bool _loading = true;
+
+    // Best value tracking per metric
+    private Dictionary<string, BacktestResult?> _bestByMetric = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (string.IsNullOrWhiteSpace(RunIdsParam))
+        {
+            _error = "No run IDs provided. Use ?runIds=id1,id2,...";
+            _loading = false;
+            return;
+        }
+
+        var ids = RunIdsParam.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        if (ids.Length > 5)
+        {
+            _error = "Maximum 5 runs can be compared at once. Please select fewer runs.";
+            _loading = false;
+            return;
+        }
+
+        if (ids.Length < 2)
+        {
+            _error = "At least 2 runs are required for comparison.";
+            _loading = false;
+            return;
+        }
+
+        foreach (var id in ids)
+        {
+            var result = await ResultRepo.GetByIdAsync(id);
+            if (result is not null)
+                _results.Add(result);
+        }
+
+        if (_results.Count < 2)
+        {
+            _error = "Could not load enough valid runs for comparison.";
+            _loading = false;
+            return;
+        }
+
+        ComputeBestValues();
+        _loading = false;
+    }
+
+    private void ComputeBestValues()
+    {
+        // Higher is better for Sharpe, Sortino, WinRate, ProfitFactor, Calmar, DSR
+        // Lower (less negative) is better for MaxDD
+        _bestByMetric["Sharpe"] = _results
+            .Where(r => r.SharpeRatio.HasValue)
+            .OrderByDescending(r => r.SharpeRatio!.Value)
+            .FirstOrDefault();
+
+        _bestByMetric["Sortino"] = _results
+            .Where(r => r.SortinoRatio.HasValue)
+            .OrderByDescending(r => r.SortinoRatio!.Value)
+            .FirstOrDefault();
+
+        _bestByMetric["MaxDD"] = _results
+            .OrderByDescending(r => r.MaxDrawdown) // MaxDD is negative, so highest (closest to 0) is best
+            .FirstOrDefault();
+
+        _bestByMetric["WinRate"] = _results
+            .Where(r => r.WinRate.HasValue)
+            .OrderByDescending(r => r.WinRate!.Value)
+            .FirstOrDefault();
+
+        _bestByMetric["ProfitFactor"] = _results
+            .Where(r => r.ProfitFactor.HasValue)
+            .OrderByDescending(r => r.ProfitFactor!.Value)
+            .FirstOrDefault();
+
+        _bestByMetric["Calmar"] = _results
+            .Where(r => r.CalmarRatio.HasValue)
+            .OrderByDescending(r => r.CalmarRatio!.Value)
+            .FirstOrDefault();
+
+        _bestByMetric["DSR"] = _results
+            .Where(r => r.DeflatedSharpeRatio.HasValue)
+            .OrderByDescending(r => r.DeflatedSharpeRatio!.Value)
+            .FirstOrDefault();
+    }
+
+    private string GetHighlightStyle(BacktestResult result, string metric)
+    {
+        if (_bestByMetric.TryGetValue(metric, out var best) && best == result)
+            return "background-color: rgba(76, 175, 80, 0.15);";
+        return "";
+    }
+
+    private static string GetRunLabel(BacktestResult result)
+    {
+        var stratType = result.ScenarioConfig.StrategyType;
+        var shortId = result.Id.Length > 8 ? result.Id[..8] : result.Id;
+        return $"{stratType} ({shortId})";
+    }
+}

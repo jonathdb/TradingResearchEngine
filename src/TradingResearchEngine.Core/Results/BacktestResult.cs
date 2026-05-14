@@ -47,7 +47,17 @@ public sealed record BacktestResult(
     /// <summary>V4: Snapshot of <c>StrategyVersion.TotalTrialsRun</c> at the time this run completed.</summary>
     int? TrialCount = null,
     /// <summary>V5: Realism warnings collected during the run (gap fills, volume warnings, session boundary fills).</summary>
-    IReadOnlyList<string>? RealismAdvisories = null) : IHasId
+    IReadOnlyList<string>? RealismAdvisories = null,
+    /// <summary>V8: Buy-and-hold benchmark equity curve normalised to InitialCash. Null when benchmark data is unavailable.</summary>
+    IReadOnlyList<EquityCurvePoint>? BenchmarkEquityCurve = null,
+    /// <summary>V9: Explicit creation timestamp. Replaces RunId prefix parsing for temporal queries.</summary>
+    DateTimeOffset CreatedAt = default,
+    /// <summary>V9: Timestamp when the run completed or failed. Null while running.</summary>
+    DateTimeOffset? CompletedAt = null,
+    /// <summary>V9: User-assigned tags for filtering and annotation.</summary>
+    IReadOnlyList<string>? Tags = null,
+    /// <summary>V9: Free-text user notes attached to this run.</summary>
+    string? Notes = null) : IHasId
 {
     /// <inheritdoc/>
     public string Id => RunId.ToString();

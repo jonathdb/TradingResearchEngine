@@ -1,0 +1,113 @@
+@using TradingResearchEngine.Application.Strategies.Composite.Conditions
+
+@* Visual tree editor for ConditionNode AST.
+   Renders the condition tree visually. Falls back to raw text editor on parse failure. *@
+
+<MudPaper Class="pa-3" Outlined="true">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2">
+        <MudText Typo="Typo.subtitle2">@Label</MudText>
+        <MudSpacer />
+        <MudSwitch T="bool" Value="_rawMode" ValueChanged="OnRawModeChanged"
+                   Label="Raw expression" Size="MudBlazor.Size.Small" Color="Color.Secondary" />
+    </MudStack>
+
+    @if (_rawMode || _parseError is not null)
+    {
+        @if (_parseError is not null)
+        {
+            <MudAlert Severity="Severity.Warning" Dense="true" Class="mb-2">
+                Could not parse expression: @_parseError. Editing in raw mode.
+            </MudAlert>
+        }
+        <MudTextField @bind-Value="_rawExpression"
+                      Label="@Label"
+                      Variant="Variant.Outlined"
+                      Lines="2"
+                      Immediate="true"
+                      TextChanged="OnRawExpressionChanged" />
+    }
+    else if (ConditionAst is not null)
+    {
+        @if (ConditionAst is LogicalNode logical)
+        {
+            <ConditionGroupNode Node="@logical" Depth="0" OnChanged="NotifyChanged" />
+        }
+        else
+        {
+            <ConditionRow Node="@ConditionAst" />
+        }
+    }
+    else
+    {
+        <MudText Typo="Typo.body2" Class="text-muted">No conditions defined. Add a condition to get started.</MudText>
+    }
+</MudPaper>
+
+@code {
+    [Parameter] public string Label { get; set; } = "Condition";
+    [Parameter] public ConditionNode? ConditionAst { get; set; }
+    [Parameter] public EventCallback<ConditionNode?> ConditionAstChanged { get; set; }
+    [Parameter] public string? RawExpression { get; set; }
+    [Parameter] public EventCallback<string?> RawExpressionChanged { get; set; }
+
+    private bool _rawMode;
+    private string? _rawExpression;
+    private string? _parseError;
+
+    protected override void OnParametersSet()
+    {
+        _rawExpression = RawExpression;
+        if (ConditionAst is null && !string.IsNullOrWhiteSpace(_rawExpression))
+        {
+            // Attempt to parse on load
+            try
+            {
+                var parsed = ConditionParser.Parse(_rawExpression);
+                ConditionAst = parsed;
+                _parseError = null;
+            }
+            catch (Exception ex)
+            {
+                _parseError = ex.Message;
+                _rawMode = true;
+            }
+        }
+    }
+
+    private void OnRawModeChanged(bool value)
+    {
+        _rawMode = value;
+        if (!value && !string.IsNullOrWhiteSpace(_rawExpression))
+        {
+            try
+            {
+                var parsed = ConditionParser.Parse(_rawExpression);
+                ConditionAst = parsed;
+                _parseError = null;
+                ConditionAstChanged.InvokeAsync(parsed);
+            }
+            catch (Exception ex)
+            {
+                _parseError = ex.Message;
+                _rawMode = true;
+            }
+        }
+    }
+
+    private void OnRawExpressionChanged(string? value)
+    {
+        _rawExpression = value;
+        RawExpressionChanged.InvokeAsync(value);
+    }
+
+    private void NotifyChanged()
+    {
+        if (ConditionAst is not null)
+        {
+            var printed = ConditionPrettyPrinter.Print(ConditionAst);
+            _rawExpression = printed;
+            RawExpressionChanged.InvokeAsync(printed);
+            ConditionAstChanged.InvokeAsync(ConditionAst);
+        }
+    }
+}

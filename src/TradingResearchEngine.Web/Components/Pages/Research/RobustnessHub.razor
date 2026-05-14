@@ -1,0 +1,178 @@
+@page "/robustness-hub"
+@using TradingResearchEngine.Application.Strategies
+@using TradingResearchEngine.Application.Research
+@implements IDisposable
+@inject IBacktestResultRepository ResultRepo
+@inject IStrategyRepository StrategyRepo
+@inject IRobustnessAdvisoryService RobustnessService
+@inject NavigationManager Nav
+
+<PageTitle>Robustness Hub — Research Engine</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-2">Robustness Hub</MudText>
+<MudText Typo="Typo.body2" Class="text-muted mb-4">All active robustness warnings across your strategies, with severity and recommended actions.</MudText>
+
+@if (_loading)
+{
+    <MudProgressCircular Indeterminate="true" />
+}
+else
+{
+    @* Summary bar *@
+    <MudPaper Outlined="true" Class="pa-3 mb-4">
+        <MudStack Row="true" Spacing="3" AlignItems="AlignItems.Center">
+            <MudText Typo="Typo.body2"><strong>@_totalWarnings</strong> warnings across <strong>@_strategiesWithWarnings</strong> strategies</MudText>
+            <MudSpacer />
+            @if (_highCount > 0)
+            {
+                <MudChip T="string" Size="MudBlazor.Size.Small" Color="Color.Error">@_highCount High</MudChip>
+            }
+            @if (_mediumCount > 0)
+            {
+                <MudChip T="string" Size="MudBlazor.Size.Small" Color="Color.Warning">@_mediumCount Medium</MudChip>
+            }
+            @if (_lowCount > 0)
+            {
+                <MudChip T="string" Size="MudBlazor.Size.Small" Color="Color.Info">@_lowCount Low</MudChip>
+            }
+        </MudStack>
+    </MudPaper>
+
+    @* Filters *@
+    <MudStack Row="true" Spacing="2" Class="mb-3" AlignItems="AlignItems.Center">
+        <MudSelect T="RobustnessSeverity?" Value="_severityFilter" ValueChanged="OnSeverityFilterChanged"
+                   Label="Filter by Severity" Clearable="true" Variant="Variant.Outlined" Dense="true">
+            <MudSelectItem Value="@((RobustnessSeverity?)RobustnessSeverity.High)">High</MudSelectItem>
+            <MudSelectItem Value="@((RobustnessSeverity?)RobustnessSeverity.Medium)">Medium</MudSelectItem>
+            <MudSelectItem Value="@((RobustnessSeverity?)RobustnessSeverity.Low)">Low</MudSelectItem>
+        </MudSelect>
+        <MudSelect T="string" Value="_strategyFilter" ValueChanged="OnStrategyFilterChanged"
+                   Label="Filter by Strategy" Clearable="true" Variant="Variant.Outlined" Dense="true">
+            @foreach (var s in _strategies)
+            {
+                <MudSelectItem Value="@s.StrategyId">@s.StrategyName</MudSelectItem>
+            }
+        </MudSelect>
+    </MudStack>
+
+    @if (FilteredGroups.Count == 0)
+    {
+        <MudAlert Severity="Severity.Success">All clear — no robustness warnings match your filters.</MudAlert>
+    }
+    else
+    {
+        @foreach (var group in FilteredGroups)
+        {
+            <MudPaper Outlined="true" Class="pa-3 mb-3">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2">
+                    <MudText Typo="Typo.subtitle1">@group.StrategyName</MudText>
+                    <MudSpacer />
+                    <MudIconButton Icon="@Icons.Material.Filled.OpenInNew" Size="MudBlazor.Size.Small"
+                                   Href="@($"/strategies/{group.StrategyId}")" aria-label="View strategy" />
+                </MudStack>
+                @foreach (var warning in group.Warnings)
+                {
+                    <MudPaper Class="pa-2 mb-2" Elevation="0" Outlined="true">
+                        <MudStack Row="true" AlignItems="AlignItems.Start" Spacing="2">
+                            <MudChip T="string" Size="MudBlazor.Size.Small" Color="@GetSeverityColor(warning.Severity)">
+                                @warning.Severity
+                            </MudChip>
+                            <MudStack Spacing="1">
+                                <MudText Typo="Typo.body2"><strong>@warning.Explanation</strong></MudText>
+                                @if (warning.Cause is not null)
+                                {
+                                    <MudText Typo="Typo.caption" Class="text-muted">@warning.Cause</MudText>
+                                }
+                                <MudButton Variant="Variant.Text" Color="Color.Primary" Size="MudBlazor.Size.Small"
+                                           StartIcon="@Icons.Material.Filled.PlayArrow">
+                                    @warning.RecommendedAction
+                                </MudButton>
+                            </MudStack>
+                        </MudStack>
+                    </MudPaper>
+                }
+            </MudPaper>
+        }
+    }
+}
+
+@code {
+    private readonly CancellationTokenSource _cts = new();
+    private bool _loading = true;
+    private List<StrategyIdentity> _strategies = new();
+    private List<WarningGroup> _allGroups = new();
+    private int _totalWarnings;
+    private int _strategiesWithWarnings;
+    private int _highCount;
+    private int _mediumCount;
+    private int _lowCount;
+    private RobustnessSeverity? _severityFilter;
+    private string? _strategyFilter;
+
+    private record WarningGroup(string StrategyId, string StrategyName, List<RobustnessWarning> Warnings);
+
+    private List<WarningGroup> FilteredGroups
+    {
+        get
+        {
+            var groups = _allGroups.AsEnumerable();
+            if (_strategyFilter is not null)
+                groups = groups.Where(g => g.StrategyId == _strategyFilter);
+            if (_severityFilter is { } sev)
+                groups = groups.Select(g => g with { Warnings = g.Warnings.Where(w => w.Severity == sev).ToList() })
+                               .Where(g => g.Warnings.Count > 0);
+            return groups.ToList();
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _strategies = (await StrategyRepo.ListAsync(_cts.Token)).ToList();
+            var allRuns = await ResultRepo.ListAsync(_cts.Token);
+
+            var strategyIdByType = _strategies
+                .GroupBy(s => (string)s.StrategyType)
+                .ToDictionary(g => g.Key, g => g.First());
+
+            // Get latest completed run per strategy type
+            var latestPerType = allRuns
+                .Where(r => r.Status == BacktestStatus.Completed)
+                .OrderByDescending(r => r.RunId)
+                .GroupBy(r => r.ScenarioConfig.StrategyType)
+                .ToDictionary(g => g.Key, g => g.First());
+
+            foreach (var (stratType, run) in latestPerType)
+            {
+                var warnings = RobustnessService.GetStructuredWarnings(run);
+                if (warnings.Count > 0 && strategyIdByType.TryGetValue(stratType, out var strategy))
+                {
+                    _allGroups.Add(new WarningGroup(strategy.StrategyId, strategy.StrategyName, warnings.ToList()));
+                }
+            }
+
+            _totalWarnings = _allGroups.Sum(g => g.Warnings.Count);
+            _strategiesWithWarnings = _allGroups.Count;
+            _highCount = _allGroups.Sum(g => g.Warnings.Count(w => w.Severity is RobustnessSeverity.High or RobustnessSeverity.Critical));
+            _mediumCount = _allGroups.Sum(g => g.Warnings.Count(w => w.Severity == RobustnessSeverity.Medium));
+            _lowCount = _allGroups.Sum(g => g.Warnings.Count(w => w.Severity == RobustnessSeverity.Low));
+
+            _loading = false;
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    public void Dispose() { _cts.Cancel(); _cts.Dispose(); }
+
+    private void OnSeverityFilterChanged(RobustnessSeverity? value) { _severityFilter = value; }
+    private void OnStrategyFilterChanged(string? value) { _strategyFilter = value; }
+
+    private static Color GetSeverityColor(RobustnessSeverity severity)
+    {
+        if (severity == RobustnessSeverity.Critical) return Color.Error;
+        if (severity == RobustnessSeverity.High) return Color.Error;
+        if (severity == RobustnessSeverity.Medium) return Color.Warning;
+        return Color.Info;
+    }
+}

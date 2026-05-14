@@ -253,7 +253,7 @@ else
                     _strategiesWithWarnings.Add(type);
             }
 
-            _allTypes = _strategies.Select(s => s.StrategyType).Distinct().OrderBy(t => t).ToList();
+            _allTypes = _strategies.Select(s => (string)s.StrategyType).Distinct().OrderBy(t => t).ToList();
             _loading = false;
         }
         catch (OperationCanceledException)

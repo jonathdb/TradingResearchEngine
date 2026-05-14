@@ -281,7 +281,38 @@ public sealed class PreflightValidator
                 PreflightSeverity.Warning,
                 "BARS_PER_YEAR_MISMATCH"));
         }
+
+        // Check BarsPerYear vs Interval in DataProviderOptions
+        var data = config.EffectiveDataConfig;
+        var opts = data.DataProviderOptions;
+        if (opts.TryGetValue("Interval", out var intervalObj) && intervalObj is string interval
+            && !string.IsNullOrWhiteSpace(interval))
+        {
+            if (BarsPerYearByInterval.TryGetValue(interval, out var range)
+                && (data.BarsPerYear < range.Min || data.BarsPerYear > range.Max))
+            {
+                findings.Add(new PreflightFinding(
+                    "BarsPerYear",
+                    $"BarsPerYear={data.BarsPerYear} appears inconsistent with Interval='{interval}'. " +
+                    $"Expected range: {range.Min}\u2013{range.Max}. Metrics may be annualised incorrectly.",
+                    PreflightSeverity.Warning,
+                    "BARSYEAR_INTERVAL_MISMATCH"));
+            }
+        }
     }
+
+    /// <summary>Expected BarsPerYear ranges per interval for consistency checking.</summary>
+    private static readonly Dictionary<string, (int Min, int Max)> BarsPerYearByInterval =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["1D"] = (200, 260),
+            ["1H"] = (1500, 2000),
+            ["4H"] = (500, 700),
+            ["30m"] = (3000, 4500),
+            ["15m"] = (6000, 9000),
+            ["5m"] = (18000, 28000),
+            ["1m"] = (80000, 140000),
+        };
 
     private static void ValidatePrecedenceConflicts(ScenarioConfig config, List<PreflightFinding> findings)
     {

@@ -366,7 +366,7 @@
         results.AddRange(
             _strategies
                 .Where(s => s.StrategyName.Contains(q, StringComparison.OrdinalIgnoreCase)
-                         || s.StrategyType.Contains(q, StringComparison.OrdinalIgnoreCase))
+                         || ((string)s.StrategyType).Contains(q, StringComparison.OrdinalIgnoreCase))
                 .Take(5)
                 .Select(s => new SearchResult(
                     s.StrategyName, s.StrategyType, "Strategy",

@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TradingResearchEngine.Application.Configuration;
 using TradingResearchEngine.Application.Research;
+using TradingResearchEngine.Application.Strategies;
 using TradingResearchEngine.Core.Persistence;
 using TradingResearchEngine.Core.Results;
 
@@ -272,6 +273,37 @@ public sealed class SqliteIndexRepository : IBacktestResultRepository
     public async Task<IReadOnlyList<BacktestResult>> GetRunSummariesByStrategyAsync(string strategyId, CancellationToken ct = default)
     {
         return await QueryByColumnAsync("StrategyId", strategyId, ct);
+    }
+
+    /// <inheritdoc/>
+    public async Task<PagedResult<BacktestResult>> ListPagedAsync(
+        int page,
+        int pageSize,
+        StrategyTypeId? strategyTypeFilter = null,
+        BacktestStatus? statusFilter = null,
+        CancellationToken ct = default)
+    {
+        // Load all results (in-memory filtering for JSON store).
+        // Safe for up to ~5000 records. Beyond that, extend SQLite queries.
+        var all = await ListAsync(ct);
+
+        IEnumerable<BacktestResult> filtered = all;
+
+        if (strategyTypeFilter is { } typeFilter)
+            filtered = filtered.Where(r => r.ScenarioConfig.StrategyType == (string)typeFilter);
+
+        if (statusFilter is { } status)
+            filtered = filtered.Where(r => r.Status == status);
+
+        var materialised = filtered.ToList();
+        var totalCount = materialised.Count;
+
+        var items = materialised
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToList();
+
+        return new PagedResult<BacktestResult>(items, totalCount, page, pageSize);
     }
 
     private async Task<IReadOnlyList<BacktestResult>> QueryByColumnAsync(

@@ -22,7 +22,17 @@ public sealed record StudyRecord(
     /// <summary>V4: Total planned units (paths, windows, combinations).</summary>
     int TotalCount = 0,
     /// <summary>V7: Serialized JSON of the workflow result. Null until the study completes.</summary>
-    string? ResultJson = null) : IHasId
+    string? ResultJson = null,
+    /// <summary>V9: Timestamp when the study started executing. Defaults to CreatedAt for legacy records.</summary>
+    DateTimeOffset StartedAt = default,
+    /// <summary>V9: Timestamp when the study completed, failed, or was cancelled. Null while running.</summary>
+    DateTimeOffset? CompletedAt = null,
+    /// <summary>V9: User-assigned tags for filtering and annotation.</summary>
+    IReadOnlyList<string>? Tags = null,
+    /// <summary>V9: Free-text user notes attached to this study.</summary>
+    string? Notes = null,
+    /// <summary>V9: IDs of completed sub-results when a study fails partway through (e.g., walk-forward folds).</summary>
+    IReadOnlyList<string>? PartialResultIds = null) : IHasId
 {
     /// <inheritdoc/>
     public string Id => StudyId;

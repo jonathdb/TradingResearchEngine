@@ -13,5 +13,11 @@ public enum PortfolioRebalanceMode
     EqualWeight,
 
     /// <summary>Inverse-volatility weighting — symbols with lower volatility receive higher allocation.</summary>
-    VolatilityParity
+    VolatilityParity,
+
+    /// <summary>Risk parity — allocates so each symbol contributes equally to total portfolio risk.</summary>
+    RiskParity,
+
+    /// <summary>Custom user-defined weights per symbol.</summary>
+    CustomWeights
 }

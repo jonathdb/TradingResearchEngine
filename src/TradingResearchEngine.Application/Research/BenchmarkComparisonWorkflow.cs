@@ -76,6 +76,11 @@ public sealed class BenchmarkComparisonWorkflow
         decimal benchReturn = (benchCurve[^1].TotalEquity - options.InitialCash) / options.InitialCash;
         decimal alpha = stratReturn - benchReturn;
 
+        // Time window alignment: both curves start from bar[0] of the same data set.
+        // The strategy may have a warmup period where no trades occur, but its equity curve
+        // still tracks cash from bar[0]. Metrics are computed using Math.Min(stratReturns.Count,
+        // benchReturns.Count) to align period returns, ensuring no index mismatch when curves
+        // differ in length due to early exits or data edge effects.
         // Compute beta, tracking error, information ratio from period returns
         var stratReturns = ComputePeriodReturns(stratResult.Result.EquityCurve);
         var benchReturns = ComputePeriodReturns(benchCurve);

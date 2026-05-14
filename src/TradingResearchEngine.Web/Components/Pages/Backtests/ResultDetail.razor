@@ -170,7 +170,7 @@ else
     @* Chart tabs *@
     <MudTabs Elevation="1" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-4">
         <MudTabPanel Text="Equity">
-            <EquityCurveChart Curve="_result.EquityCurve" Title="Equity Curve" />
+            <EquityCurveChart Curve="_result.EquityCurve" BenchmarkCurve="_result.BenchmarkEquityCurve" Title="Equity Curve" />
         </MudTabPanel>
         <MudTabPanel Text="Drawdown">
             <DrawdownChart Data="_result.EquityCurve" />

@@ -1,3 +1,21 @@
+/* ── Skip-to-content accessibility ──────────────────── */
+.skip-to-content {
+    position: absolute;
+    top: -40px;
+    left: 0;
+    background: var(--mud-palette-primary);
+    color: white;
+    padding: 8px 16px;
+    z-index: 10000;
+    text-decoration: none;
+    font-weight: 500;
+    transition: top 0.2s ease;
+}
+
+.skip-to-content:focus {
+    top: 0;
+}
+
 /* ═══════════════════════════════════════════════════════
    DESIGN TOKENS & BASE UTILITIES
 ═══════════════════════════════════════════════════════ */

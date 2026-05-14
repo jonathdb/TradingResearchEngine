@@ -202,6 +202,26 @@ public sealed class JsonStrategyRepository : IStrategyRepository
             .ToList();
     }
 
+    private static readonly SemaphoreSlim _incrementLock = new(1, 1);
+
+    /// <inheritdoc/>
+    public async Task IncrementTrialCountAsync(string strategyVersionId, CancellationToken ct = default)
+    {
+        await _incrementLock.WaitAsync(ct);
+        try
+        {
+            var version = await GetVersionAsync(strategyVersionId, ct);
+            if (version is null) return;
+
+            var updated = version with { TotalTrialsRun = version.TotalTrialsRun + 1 };
+            await SaveVersionAsync(updated, ct);
+        }
+        finally
+        {
+            _incrementLock.Release();
+        }
+    }
+
     private string StrategyPath(string id) => Path.Combine(_baseDir, $"{id}.json");
     private string VersionDir(string strategyId) => Path.Combine(_baseDir, strategyId, "versions");
 }

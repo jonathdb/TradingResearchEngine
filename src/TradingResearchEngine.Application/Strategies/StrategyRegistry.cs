@@ -10,6 +10,7 @@ namespace TradingResearchEngine.Application.Strategies;
 public sealed class StrategyRegistry
 {
     private readonly Dictionary<string, Type> _registry = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, IReadOnlyList<StrategyParameterInfo>> _paramInfoCache = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>All strategy names currently registered.</summary>
     public IReadOnlyList<string> KnownNames => _registry.Keys.ToList();
@@ -40,6 +41,12 @@ public sealed class StrategyRegistry
     /// Returns the <see cref="Type"/> for the given strategy name.
     /// Throws <see cref="StrategyNotFoundException"/> when not found.
     /// </summary>
+    public Type Resolve(StrategyTypeId strategyType) => Resolve(strategyType.Value);
+
+    /// <summary>
+    /// Returns the <see cref="Type"/> for the given strategy name string.
+    /// Throws <see cref="StrategyNotFoundException"/> when not found.
+    /// </summary>
     public Type Resolve(string strategyName)
     {
         if (_registry.TryGetValue(strategyName, out var type)) return type;
@@ -48,23 +55,33 @@ public sealed class StrategyRegistry
 
     /// <summary>
     /// Returns parameter metadata for the given strategy name.
-    /// Inspects the constructor with the most parameters.
+    /// Inspects the constructor with the most parameters. Results are cached.
     /// </summary>
     public IReadOnlyList<StrategyParameterInfo> GetParameterInfo(string strategyName)
     {
+        if (_paramInfoCache.TryGetValue(strategyName, out var cached))
+            return cached;
+
         var type = Resolve(strategyName);
         var ctor = type.GetConstructors()
             .OrderByDescending(c => c.GetParameters().Length)
             .FirstOrDefault();
 
-        if (ctor is null) return Array.Empty<StrategyParameterInfo>();
+        if (ctor is null)
+        {
+            _paramInfoCache[strategyName] = Array.Empty<StrategyParameterInfo>();
+            return Array.Empty<StrategyParameterInfo>();
+        }
 
-        return ctor.GetParameters()
+        var result = ctor.GetParameters()
             .Select(p => new StrategyParameterInfo(
                 p.Name ?? "",
                 p.ParameterType.Name,
                 p.HasDefaultValue ? p.DefaultValue : null))
             .ToList();
+
+        _paramInfoCache[strategyName] = result;
+        return result;
     }
 }
 
