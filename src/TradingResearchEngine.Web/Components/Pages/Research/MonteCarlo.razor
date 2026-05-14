@@ -2,9 +2,14 @@
 @inject TradingResearchEngine.Application.Research.MonteCarloWorkflow McWorkflow
 @inject ISnackbar Snackbar
 
-<PageTitle>Monte Carlo — TradingResearchEngine</PageTitle>
+<PageTitle>Monte Carlo — Research Engine</PageTitle>
 
-<MudText Typo="Typo.h4" Class="mb-4">Monte Carlo Simulation</MudText>
+<div class="page-header">
+    <div class="page-header__title">
+        <MudText Typo="Typo.h5">Monte Carlo Simulation</MudText>
+        <MudText Typo="Typo.caption" Class="text-muted">Stress-test a strategy by simulating thousands of randomised trade sequences</MudText>
+    </div>
+</div>
 
 <MudGrid>
     <MudItem xs="12" md="5">

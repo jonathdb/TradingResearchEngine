@@ -2,71 +2,131 @@
 @inject TradingResearchEngine.Core.Persistence.IRepository<BacktestResult> ResultRepo
 @inject ISnackbar Snackbar
 
-<PageTitle>Run History — TradingResearchEngine</PageTitle>
+<PageTitle>Backtest History — Research Engine</PageTitle>
 
-<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-4">
-    <MudText Typo="Typo.h4">Run History</MudText>
-    <MudSpacer />
-    @if (_results.Count > 0)
-    {
-        <MudButton Variant="Variant.Outlined" Color="Color.Error" Size="MudBlazor.Size.Small"
-                   StartIcon="@Icons.Material.Filled.DeleteSweep"
-                   OnClick="DeleteAllRuns">
-            Delete All (@_results.Count)
+<div class="page-header">
+    <div class="page-header__title">
+        <MudText Typo="Typo.h5">Backtest History</MudText>
+        @if (!_loading)
+        {
+            <MudText Typo="Typo.caption" Class="text-muted">@_results.Count @(_results.Count == 1 ? "run" : "runs") total</MudText>
+        }
+    </div>
+    <div class="page-header__actions">
+        <MudButton Href="/strategies/builder" Variant="Variant.Filled" Color="Color.Primary"
+                   StartIcon="@Icons.Material.Filled.Add" Size="MudBlazor.Size.Small">
+            New Backtest
         </MudButton>
-    }
-</MudStack>
+        @if (_results.Count > 0)
+        {
+            <MudButton Variant="Variant.Outlined" Color="Color.Error" Size="MudBlazor.Size.Small"
+                       StartIcon="@Icons.Material.Outlined.DeleteSweep"
+                       OnClick="DeleteAllRuns">
+                Delete All
+            </MudButton>
+        }
+    </div>
+</div>
 
 @if (_loading)
 {
-    <MudProgressCircular Indeterminate="true" />
+    <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:40vh; gap:12px;">
+        <MudProgressCircular Indeterminate="true" Color="Color.Primary" />
+        <MudText Typo="Typo.caption" Class="text-muted">Loading run history…</MudText>
+    </div>
 }
 else if (_results.Count == 0)
 {
-    <MudAlert Severity="Severity.Info">
-        No saved results. <MudLink Href="/strategies/builder">Create a strategy</MudLink> and run a backtest to see results here.
-    </MudAlert>
+    <MudPaper Class="pa-8" Elevation="0"
+              Style="text-align:center; border:1px dashed var(--mud-palette-divider); border-radius:var(--tre-radius); max-width:500px; margin:0 auto;">
+        <MudIcon Icon="@Icons.Material.Outlined.History" Style="font-size:2.5rem; opacity:0.2;" Class="mb-3" />
+        <MudText Typo="Typo.h6" Class="mb-1">No runs yet</MudText>
+        <MudText Typo="Typo.body2" Class="text-muted mb-4">
+            Run your first backtest to see results here.
+        </MudText>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                   StartIcon="@Icons.Material.Filled.Add"
+                   Href="/strategies/builder">Create a Strategy</MudButton>
+    </MudPaper>
 }
 else
 {
-    <MudTable Items="_results" Dense="true" Hover="true" Striped="true"
+    <MudTable Items="_results" Dense="true" Hover="true"
               Filter="new Func<BacktestResult, bool>(FilterFunc)"
-              SortLabel="Sort By">
+              SortLabel="Sort By"
+              Style="border-radius:var(--tre-radius); overflow:hidden;">
         <ToolBarContent>
-            <MudTextField @bind-Value="_searchString" Placeholder="Search..."
-                          Adornment="Adornment.Start"
-                          AdornmentIcon="@Icons.Material.Filled.Search"
-                          IconSize="MudBlazor.Size.Medium" Class="mt-0" />
+            <MudTextField @bind-Value="_searchString" Placeholder="Search by strategy or scenario…"
+                          Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Outlined.Search"
+                          Variant="Variant.Outlined" Margin="Margin.Dense"
+                          Style="max-width:340px;" Immediate="true" />
         </ToolBarContent>
         <HeaderContent>
-            <MudTh><MudTableSortLabel SortBy="new Func<BacktestResult, object>(x => x.ScenarioConfig.ScenarioId)">Scenario</MudTableSortLabel></MudTh>
-            <MudTh>Strategy</MudTh>
-            <MudTh>Status</MudTh>
-            <MudTh><MudTableSortLabel SortBy="new Func<BacktestResult, object>(x => x.SharpeRatio ?? 0m)">Sharpe</MudTableSortLabel></MudTh>
-            <MudTh><MudTableSortLabel SortBy="new Func<BacktestResult, object>(x => x.MaxDrawdown)">Max DD</MudTableSortLabel></MudTh>
-            <MudTh>Trades</MudTh>
-            <MudTh>Actions</MudTh>
+            <MudTh Style="@_thStyle">
+                <MudTableSortLabel SortBy="new Func<BacktestResult, object>(x => x.ScenarioConfig.ScenarioId)">
+                    Scenario
+                </MudTableSortLabel>
+            </MudTh>
+            <MudTh Style="@_thStyle">Strategy</MudTh>
+            <MudTh Style="@_thStyle">Status</MudTh>
+            <MudTh Style="@_thStyle">
+                <MudTableSortLabel SortBy="new Func<BacktestResult, object>(x => x.SharpeRatio ?? decimal.MinValue)">
+                    Sharpe
+                </MudTableSortLabel>
+            </MudTh>
+            <MudTh Style="@_thStyle">
+                <MudTableSortLabel SortBy="new Func<BacktestResult, object>(x => x.MaxDrawdown)">
+                    Max DD
+                </MudTableSortLabel>
+            </MudTh>
+            <MudTh Style="@_thStyle">
+                <MudTableSortLabel SortBy="new Func<BacktestResult, object>(x => x.TotalTrades)">
+                    Trades
+                </MudTableSortLabel>
+            </MudTh>
+            <MudTh Style="@_thStyle"></MudTh>
         </HeaderContent>
         <RowTemplate>
-            <MudTd><MudLink Href="@($"/backtests/{context.Id}")">@context.ScenarioConfig.ScenarioId</MudLink></MudTd>
-            <MudTd>@context.ScenarioConfig.StrategyType</MudTd>
+            <MudTd>
+                <MudLink Href="@($"/backtests/{context.Id}")" Style="font-weight:500; font-family:monospace; font-size:0.8rem;">
+                    @context.ScenarioConfig.ScenarioId
+                </MudLink>
+            </MudTd>
+            <MudTd>
+                <MudText Typo="Typo.body2">@context.ScenarioConfig.StrategyType</MudText>
+            </MudTd>
             <MudTd>
                 <MudChip T="string" Size="MudBlazor.Size.Small"
-                         Color="@(context.Status == BacktestStatus.Completed ? Color.Success : Color.Error)">
+                         Color="@(context.Status == BacktestStatus.Completed ? Color.Success : Color.Error)"
+                         Style="height:20px; font-size:0.65rem;">
                     @context.Status
                 </MudChip>
             </MudTd>
-            <MudTd>@(context.SharpeRatio?.ToString("F2") ?? "—")</MudTd>
-            <MudTd>@context.MaxDrawdown.ToString("P1")</MudTd>
-            <MudTd>@context.TotalTrades</MudTd>
             <MudTd>
-                <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error"
-                               Size="MudBlazor.Size.Small"
-                               OnClick="@(() => DeleteRun(context.Id))" />
+                <span class="@GetSharpeClass(context.SharpeRatio)" style="font-weight:600; font-variant-numeric:tabular-nums;">
+                    @(context.SharpeRatio?.ToString("F2") ?? "—")
+                </span>
+            </MudTd>
+            <MudTd>
+                <MudText Typo="Typo.body2" Style="font-variant-numeric:tabular-nums;">
+                    @context.MaxDrawdown.ToString("P1")
+                </MudText>
+            </MudTd>
+            <MudTd>
+                <MudText Typo="Typo.body2" Style="font-variant-numeric:tabular-nums;">@context.TotalTrades</MudText>
+            </MudTd>
+            <MudTd>
+                <MudStack Row="true" Spacing="0">
+                    <MudIconButton Icon="@Icons.Material.Outlined.OpenInNew" Size="MudBlazor.Size.Small"
+                                   Style="opacity:0.5;" Href="@($"/backtests/{context.Id}")" />
+                    <MudIconButton Icon="@Icons.Material.Outlined.Delete" Color="Color.Error"
+                                   Size="MudBlazor.Size.Small" Style="opacity:0.5;"
+                                   OnClick="@(() => DeleteRun(context.Id))" />
+                </MudStack>
             </MudTd>
         </RowTemplate>
         <PagerContent>
-            <MudTablePager />
+            <MudTablePager PageSizeOptions="new int[]{25, 50, 100}" />
         </PagerContent>
     </MudTable>
 }
@@ -76,6 +136,8 @@ else
     private string _searchString = "";
     private bool _loading = true;
 
+    private const string _thStyle = "font-size:0.68rem; opacity:0.5;";
+
     protected override async Task OnInitializedAsync()
     {
         var all = await ResultRepo.ListAsync();
@@ -83,12 +145,19 @@ else
         _loading = false;
     }
 
-    private bool FilterFunc(BacktestResult result)
+    private bool FilterFunc(BacktestResult r)
     {
         if (string.IsNullOrWhiteSpace(_searchString)) return true;
-        return result.ScenarioConfig.ScenarioId.Contains(_searchString, StringComparison.OrdinalIgnoreCase)
-            || result.ScenarioConfig.StrategyType.Contains(_searchString, StringComparison.OrdinalIgnoreCase);
+        return r.ScenarioConfig.ScenarioId.Contains(_searchString, StringComparison.OrdinalIgnoreCase)
+            || r.ScenarioConfig.StrategyType.Contains(_searchString, StringComparison.OrdinalIgnoreCase);
     }
+
+    private static string GetSharpeClass(decimal? sharpe) => sharpe switch
+    {
+        >= 1.5m => "mud-success-text",
+        >= 0.8m => "mud-warning-text",
+        _ => "mud-error-text"
+    };
 
     private async Task DeleteRun(string id)
     {

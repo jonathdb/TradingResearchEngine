@@ -1,0 +1,435 @@
+@using TradingResearchEngine.Application.Strategies
+@using TradingResearchEngine.Application.Research
+@inject IStrategyRepository StrategyRepo
+@inject IStudyRepository StudyRepo
+@inject TradingResearchEngine.Core.Persistence.IRepository<BacktestResult> ResultRepo
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+<div class="global-search-wrap @(_open ? "global-search-wrap--open" : "")">
+    <div class="global-search-trigger" @onclick="Open" title="Search (Ctrl+K)">
+        <MudIcon Icon="@Icons.Material.Outlined.Search" Style="font-size:1rem; opacity:0.5;" />
+        <span class="global-search-placeholder">Search…</span>
+        <kbd class="global-search-kbd">Ctrl K</kbd>
+    </div>
+</div>
+
+@if (_open)
+{
+    <div class="search-overlay" @onclick="Close">
+        <div class="search-dialog" @onclick:stopPropagation="true">
+            <div class="search-input-wrap">
+                <MudIcon Icon="@Icons.Material.Outlined.Search" Style="font-size:1.1rem; opacity:0.6; flex-shrink:0;" />
+                <input @ref="_inputRef"
+                       class="search-input"
+                       placeholder="Search strategies, backtests, studies…"
+                       value="@_query"
+                       @oninput="OnInput"
+                       @onkeydown="OnKeyDown"
+                       autocomplete="off"
+                       spellcheck="false" />
+                @if (!string.IsNullOrEmpty(_query))
+                {
+                    <MudIconButton Icon="@Icons.Material.Filled.Close" Size="MudBlazor.Size.Small"
+                                   Style="padding:2px; opacity:0.4; flex-shrink:0;"
+                                   OnClick="ClearQuery" />
+                }
+            </div>
+
+            @if (_loading)
+            {
+                <div class="search-empty">
+                    <MudProgressCircular Indeterminate="true" Size="MudBlazor.Size.Small" />
+                </div>
+            }
+            else if (string.IsNullOrEmpty(_query))
+            {
+                <div class="search-empty">
+                    <MudText Typo="Typo.caption" Class="text-faint">Type to search across strategies, backtests, and studies</MudText>
+                </div>
+            }
+            else if (_results.Count == 0)
+            {
+                <div class="search-empty">
+                    <MudIcon Icon="@Icons.Material.Outlined.SearchOff" Style="font-size:1.4rem; opacity:0.3;" />
+                    <MudText Typo="Typo.caption" Class="text-faint mt-1">No results for "@_query"</MudText>
+                </div>
+            }
+            else
+            {
+                <div class="search-results">
+                    @for (int i = 0; i < _results.Count; i++)
+                    {
+                        var result = _results[i];
+                        var idx = i;
+                        <div class="search-result-item @(_selectedIndex == idx ? "search-result-item--selected" : "")"
+                             @onclick="@(() => Navigate(result))"
+                             @onmouseenter="@(() => _selectedIndex = idx)">
+                            <div class="search-result-icon" style="color:@result.Color">
+                                <MudIcon Icon="@result.Icon" Style="font-size:1rem;" />
+                            </div>
+                            <div class="search-result-body">
+                                <div class="search-result-title">@result.Title</div>
+                                @if (result.Subtitle is not null)
+                                {
+                                    <div class="search-result-sub">@result.Subtitle</div>
+                                }
+                            </div>
+                            <div class="search-result-type">@result.Category</div>
+                        </div>
+                    }
+                </div>
+
+                <div class="search-footer">
+                    <span><kbd class="search-kbd">↑↓</kbd> Navigate</span>
+                    <span><kbd class="search-kbd">↵</kbd> Open</span>
+                    <span><kbd class="search-kbd">Esc</kbd> Close</span>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+<style>
+    /* ── Trigger ── */
+    .global-search-wrap {
+        display: flex;
+        align-items: center;
+    }
+
+    .global-search-trigger {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10px;
+        border: 1px solid rgba(255,255,255,0.12);
+        border-radius: 6px;
+        cursor: pointer;
+        min-width: 160px;
+        transition: all 150ms ease;
+        background: rgba(255,255,255,0.04);
+    }
+
+    .global-search-trigger:hover {
+        border-color: rgba(79,152,163,0.4);
+        background: rgba(79,152,163,0.06);
+    }
+
+    .global-search-placeholder {
+        font-size: 0.78rem;
+        opacity: 0.4;
+        flex: 1;
+    }
+
+    .global-search-kbd {
+        font-size: 0.58rem;
+        opacity: 0.3;
+        border: 1px solid rgba(255,255,255,0.2);
+        border-radius: 3px;
+        padding: 1px 4px;
+        font-family: monospace;
+        white-space: nowrap;
+    }
+
+    /* ── Overlay ── */
+    .search-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 3000;
+        background: rgba(0,0,0,0.65);
+        backdrop-filter: blur(4px);
+        display: flex;
+        align-items: flex-start;
+        justify-content: center;
+        padding-top: 80px;
+        animation: fadeIn 120ms ease;
+    }
+
+    .search-dialog {
+        width: 100%;
+        max-width: 580px;
+        background: var(--mud-palette-surface);
+        border: 1px solid var(--mud-palette-divider);
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 24px 64px rgba(0,0,0,0.6);
+    }
+
+    /* ── Input ── */
+    .search-input-wrap {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 14px 16px;
+        border-bottom: 1px solid var(--mud-palette-divider);
+    }
+
+    .search-input {
+        flex: 1;
+        background: none;
+        border: none;
+        outline: none;
+        color: var(--mud-palette-text-primary);
+        font-size: 1rem;
+        font-family: inherit;
+    }
+
+    .search-input::placeholder { opacity: 0.35; }
+
+    /* ── Empty / loading ── */
+    .search-empty {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 28px 16px;
+        gap: 4px;
+    }
+
+    /* ── Results ── */
+    .search-results {
+        max-height: 340px;
+        overflow-y: auto;
+        padding: 4px 0;
+    }
+
+    .search-result-item {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 8px 16px;
+        cursor: pointer;
+        transition: background 100ms ease;
+    }
+
+    .search-result-item:hover,
+    .search-result-item--selected {
+        background: rgba(79,152,163,0.1);
+    }
+
+    .search-result-icon {
+        width: 28px;
+        height: 28px;
+        border-radius: 6px;
+        background: rgba(255,255,255,0.06);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+    }
+
+    .search-result-body { flex: 1; min-width: 0; }
+
+    .search-result-title {
+        font-size: 0.85rem;
+        font-weight: 500;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        color: var(--mud-palette-text-primary);
+    }
+
+    .search-result-sub {
+        font-size: 0.7rem;
+        opacity: 0.5;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .search-result-type {
+        font-size: 0.65rem;
+        opacity: 0.35;
+        white-space: nowrap;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+    }
+
+    /* ── Footer ── */
+    .search-footer {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 8px 16px;
+        border-top: 1px solid var(--mud-palette-divider);
+        font-size: 0.68rem;
+        opacity: 0.5;
+    }
+
+    .search-kbd {
+        display: inline-block;
+        padding: 1px 5px;
+        border: 1px solid rgba(255,255,255,0.2);
+        border-radius: 3px;
+        font-family: monospace;
+        font-size: 0.65rem;
+        margin-right: 3px;
+    }
+</style>
+
+@code {
+    private bool _open;
+    private string _query = "";
+    private bool _loading;
+    private List<SearchResult> _results = new();
+    private int _selectedIndex = 0;
+    private ElementReference _inputRef;
+
+    private List<StrategyIdentity> _strategies = new();
+    private List<BacktestResult> _backtests = new();
+    private List<StudyRecord> _studies = new();
+
+    private DotNetObjectReference<GlobalSearch>? _selfRef;
+    private IJSObjectReference? _jsModule;
+
+    private record SearchResult(string Title, string? Subtitle, string Category, string Icon, string Color, string Url);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _selfRef = DotNetObjectReference.Create(this);
+            try
+            {
+                await JS.InvokeVoidAsync("globalSearch.register", _selfRef);
+            }
+            catch { }
+        }
+    }
+
+    private async Task LoadData()
+    {
+        try
+        {
+            _strategies = (await StrategyRepo.ListAsync()).ToList();
+            _backtests  = (await ResultRepo.ListAsync()).OrderByDescending(r => r.RunId).Take(200).ToList();
+            _studies    = (await StudyRepo.ListAsync()).OrderByDescending(s => s.CreatedAt).Take(200).ToList();
+        }
+        catch { }
+    }
+
+    [JSInvokable]
+    public async Task OpenFromJs()
+    {
+        await Open();
+        StateHasChanged();
+    }
+
+    private async Task Open()
+    {
+        _open = true;
+        _query = "";
+        _results = new();
+        _selectedIndex = 0;
+        StateHasChanged();
+        await Task.Delay(60);
+        try { await JS.InvokeVoidAsync("eval", "document.querySelector('.search-input')?.focus()"); } catch { }
+    }
+
+    private void Close()
+    {
+        _open = false;
+        _query = "";
+        _results = new();
+    }
+
+    private void ClearQuery()
+    {
+        _query = "";
+        _results = new();
+    }
+
+    private void OnInput(ChangeEventArgs e)
+    {
+        _query = e.Value?.ToString() ?? "";
+        RunSearch();
+    }
+
+    private void RunSearch()
+    {
+        if (string.IsNullOrWhiteSpace(_query))
+        {
+            _results = new();
+            _selectedIndex = 0;
+            return;
+        }
+
+        var q = _query.Trim();
+        var results = new List<SearchResult>();
+
+        results.AddRange(
+            _strategies
+                .Where(s => s.StrategyName.Contains(q, StringComparison.OrdinalIgnoreCase)
+                         || s.StrategyType.Contains(q, StringComparison.OrdinalIgnoreCase))
+                .Take(5)
+                .Select(s => new SearchResult(
+                    s.StrategyName, s.StrategyType, "Strategy",
+                    Icons.Material.Outlined.Psychology,
+                    "var(--mud-palette-primary)",
+                    $"/strategies/{s.StrategyId}"))
+        );
+
+        results.AddRange(
+            _backtests
+                .Where(b => b.ScenarioConfig.StrategyType.Contains(q, StringComparison.OrdinalIgnoreCase)
+                         || b.Id.Contains(q, StringComparison.OrdinalIgnoreCase))
+                .Take(4)
+                .Select(b => new SearchResult(
+                    b.ScenarioConfig.StrategyType,
+                    $"Sharpe {b.SharpeRatio?.ToString("F2") ?? "—"} · {b.Id[..Math.Min(12, b.Id.Length)]}",
+                    "Backtest",
+                    Icons.Material.Outlined.History,
+                    "var(--mud-palette-info)",
+                    $"/backtests/{b.Id}"))
+        );
+
+        results.AddRange(
+            _studies
+                .Where(s => s.StudyId.Contains(q, StringComparison.OrdinalIgnoreCase)
+                         || s.Type.ToString().Contains(q, StringComparison.OrdinalIgnoreCase))
+                .Take(4)
+                .Select(s => new SearchResult(
+                    $"{s.Type} Study",
+                    $"{s.Status} · {s.CreatedAt:yyyy-MM-dd}",
+                    "Study",
+                    Icons.Material.Outlined.Science,
+                    "var(--mud-palette-secondary)",
+                    $"/research/study/{s.StudyId}"))
+        );
+
+        _results = results;
+        _selectedIndex = 0;
+    }
+
+    private void Navigate(SearchResult result)
+    {
+        Close();
+        Nav.NavigateTo(result.Url);
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case "Escape": Close(); break;
+            case "ArrowDown": _selectedIndex = Math.Min(_selectedIndex + 1, Math.Max(0, _results.Count - 1)); break;
+            case "ArrowUp":   _selectedIndex = Math.Max(_selectedIndex - 1, 0); break;
+            case "Enter":
+                if (_selectedIndex >= 0 && _selectedIndex < _results.Count)
+                    Navigate(_results[_selectedIndex]);
+                break;
+        }
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        _selfRef?.Dispose();
+        return _jsModule is not null ? _jsModule.DisposeAsync() : ValueTask.CompletedTask;
+    }
+}

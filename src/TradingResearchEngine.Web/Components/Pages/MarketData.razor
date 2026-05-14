@@ -9,9 +9,14 @@
 @inject ISnackbar Snackbar
 @implements IDisposable
 
-<PageTitle>Market Data — TradingResearchEngine</PageTitle>
+<PageTitle>Market Data — Research Engine</PageTitle>
 
-<MudText Typo="Typo.h4" Class="mb-4">Market Data</MudText>
+<div class="page-header">
+    <div class="page-header__title">
+        <MudText Typo="Typo.h5">Market Data</MudText>
+        <MudText Typo="Typo.caption" Class="text-muted">Import tick and OHLCV data from providers, or manage existing datasets</MudText>
+    </div>
+</div>
 
 @* Tick Import Form *@
 <MudPaper Class="pa-4 mb-4" Elevation="1">

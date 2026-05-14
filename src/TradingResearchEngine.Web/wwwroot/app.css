@@ -243,6 +243,92 @@
     background: rgba(79, 152, 163, 0.06) !important;
 }
 
+.mud-table-head th {
+    font-size: 0.68rem !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.06em !important;
+    text-transform: uppercase !important;
+    opacity: 0.5;
+    border-bottom: 1px solid var(--mud-palette-divider) !important;
+}
+
+.mud-table-container {
+    border-radius: var(--tre-radius) !important;
+    overflow: hidden;
+}
+
+/* ═══════════════════════════════════════════════════════
+   FORM FIELD POLISH
+═══════════════════════════════════════════════════════ */
+.mud-input-outlined .mud-input-outlined-border {
+    border-color: rgba(255,255,255,0.12) !important;
+    transition: border-color var(--tre-transition) !important;
+}
+
+.mud-input-outlined:hover .mud-input-outlined-border,
+.mud-input-outlined.mud-input-focused .mud-input-outlined-border {
+    border-color: var(--mud-palette-primary) !important;
+}
+
+/* ═══════════════════════════════════════════════════════
+   PAPER / SECTION POLISH
+═══════════════════════════════════════════════════════ */
+.mud-paper {
+    border: 1px solid rgba(255,255,255,0.05);
+}
+
+.mud-expansion-panel {
+    border: 1px solid rgba(255,255,255,0.06) !important;
+    border-radius: var(--tre-radius) !important;
+}
+
+/* ═══════════════════════════════════════════════════════
+   LOADING STATES
+═══════════════════════════════════════════════════════ */
+.page-loader {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 40vh;
+    gap: 14px;
+}
+
+.page-loader__label {
+    font-size: 0.78rem;
+    opacity: 0.45;
+}
+
+/* ═══════════════════════════════════════════════════════
+   EMPTY STATES
+═══════════════════════════════════════════════════════ */
+.empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 56px 32px;
+    border: 1px dashed var(--mud-palette-divider);
+    border-radius: var(--tre-radius);
+    max-width: 480px;
+    margin: 0 auto;
+    gap: 8px;
+}
+
+.empty-state__icon {
+    font-size: 2.4rem !important;
+    opacity: 0.18;
+    margin-bottom: 8px;
+}
+
+/* ═══════════════════════════════════════════════════════
+   ALERT POLISH
+═══════════════════════════════════════════════════════ */
+.mud-alert {
+    border-radius: var(--tre-radius) !important;
+}
+
 /* ═══════════════════════════════════════════════════════
    SCROLLBAR STYLING
 ═══════════════════════════════════════════════════════ */

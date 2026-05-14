@@ -4,12 +4,14 @@
 @inject IStrategyRepository StrategyRepo
 @inject ISnackbar Snackbar
 
-<PageTitle>Benchmark Comparison — TradingResearchEngine</PageTitle>
+<PageTitle>Benchmark Comparison — Research Engine</PageTitle>
 
-<MudText Typo="Typo.h4" Class="mb-4">Benchmark Comparison</MudText>
-<MudText Typo="Typo.body2" Class="mb-4">
-    Compares your strategy against a buy-and-hold benchmark on the same data.
-</MudText>
+<div class="page-header">
+    <div class="page-header__title">
+        <MudText Typo="Typo.h5">Benchmark Comparison</MudText>
+        <MudText Typo="Typo.caption" Class="text-muted">Compare a strategy's performance against a buy-and-hold benchmark</MudText>
+    </div>
+</div>
 
 <MudGrid>
     <MudItem xs="12" md="6">
