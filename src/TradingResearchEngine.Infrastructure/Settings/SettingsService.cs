@@ -41,25 +41,41 @@ public sealed class SettingsService
     }
 }
 
-/// <summary>Application-wide settings.</summary>
-public sealed record AppSettings(
-    string DataDirectory,
-    string ExportDirectory,
-    string? QdmWatchDirectory,
-    string QdmTimezoneId,
-    ExecutionRealismProfile DefaultRealismProfile,
-    decimal DefaultInitialCash,
-    decimal DefaultRiskFreeRate,
-    string DefaultSizingPolicy)
+/// <summary>
+/// Application-wide user settings persisted as JSON.
+/// Uses property-based record syntax so new fields deserialise safely from
+/// older JSON files (missing keys fall back to their property initialisers).
+/// </summary>
+public sealed record AppSettings
 {
-    /// <summary>Default settings.</summary>
-    public static AppSettings Default { get; } = new(
-        "data",
-        "exports",
-        null,
-        "UTC", 
-        ExecutionRealismProfile.StandardBacktest,
-        100_000m,
-        0.02m,
-        "PercentEquity");
+    // ── Storage ──────────────────────────────────────────────────────────
+    public string DataDirectory { get; init; } = "data";
+    public string ExportDirectory { get; init; } = "exports";
+    public string? QdmWatchDirectory { get; init; }
+    public string QdmTimezoneId { get; init; } = "UTC";
+
+    // ── Backtest Defaults ─────────────────────────────────────────────
+    public ExecutionRealismProfile DefaultRealismProfile { get; init; } = ExecutionRealismProfile.StandardBacktest;
+    public decimal DefaultInitialCash { get; init; } = 100_000m;
+    public decimal DefaultRiskFreeRate { get; init; } = 0.02m;
+    public string DefaultSizingPolicy { get; init; } = "PercentEquity";
+
+    // ── Risk ──────────────────────────────────────────────────────────
+    public decimal MaxExposurePercent { get; init; } = 10m;
+
+    // ── Monte Carlo ────────────────────────────────────────────────────
+    public int MonteCarloSimulationCount { get; init; } = 1000;
+    public int? MonteCarloSeed { get; init; }
+    public decimal MonteCarloRuinThreshold { get; init; } = 0.5m;
+    public int MonteCarloBlockSize { get; init; } = 1;
+
+    // ── Parameter Sweep ────────────────────────────────────────────────
+    /// <summary>0 means use Environment.ProcessorCount at runtime.</summary>
+    public int SweepMaxParallelism { get; init; } = 0;
+
+    // ── Reporting ─────────────────────────────────────────────────────
+    public int ReportingDecimalPlaces { get; init; } = 2;
+
+    /// <summary>Default settings used when no file exists on disk.</summary>
+    public static AppSettings Default => new();
 }
