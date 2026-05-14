@@ -7,6 +7,8 @@ using TradingResearchEngine.Web.Components;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.WebHost.UseUrls("http://0.0.0.0:5000");
+
 // Enable static web assets in all environments (required for NuGet package assets like MudBlazor)
 builder.WebHost.UseStaticWebAssets();
 

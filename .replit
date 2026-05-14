@@ -1,0 +1,40 @@
+modules = ["dotnet-7.0", "web", "nodejs-20", "dotnet-8.0"]
+[agent]
+expertMode = true
+stack = "BEST_EFFORT_FALLBACK"
+
+[nix]
+channel = "stable-25_05"
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Start application"
+
+[[workflows.workflow]]
+name = "Start application"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "dotnet run --project src/TradingResearchEngine.Web/TradingResearchEngine.Web.csproj"
+waitForPort = 5000
+
+[workflows.workflow.metadata]
+outputType = "webview"
+
+[[ports]]
+localPort = 5000
+externalPort = 80
+
+[deployment]
+deploymentTarget = "autoscale"
+run = ["dotnet", "publish/TradingResearchEngine.Web.dll"]
+build = ["dotnet", "publish", "src/TradingResearchEngine.Web/TradingResearchEngine.Web.csproj", "-c", "Release", "-o", "publish"]
