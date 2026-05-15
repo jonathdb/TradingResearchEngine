@@ -316,25 +316,25 @@ This implementation plan covers 35+ requirements across 10 sequential PR gates f
 
 
 - [ ] 15. PR Gate 8 — Engine Capability Expansion
-  - [ ] 15.1 Implement AI refinement loop with backtest context
+  - [x] 15.1 Implement AI refinement loop with backtest context
     - Extend `GeminiStrategyAssistant.RefineStrategyAsync` with optional `BacktestResult` parameter
     - Extract key metrics (Sharpe, max drawdown, win rate, trade count, K-Ratio) and append concise summary to refinement prompt
     - Keep within token budget constraints
     - Make backtest context inclusion visible in refinement UI flow
     - _Requirements: 29.1, 29.2, 29.3, 29.4_
-  - [ ] 15.2 Implement large sweep result usability with virtualization
+  - [x] 15.2 Implement large sweep result usability with virtualization
     - Use `PagedResult<T>` for sweep results in Application layer
     - Implement virtualized rendering via Blazor `Virtualize` component in Web layer
     - Preserve chart and summary views without loading all results into DOM
     - Support filtering and sorting without full client-side data loading
     - _Requirements: 30.1, 30.2, 30.3, 30.4_
-  - [ ] 15.3 Consolidate comparison page
+  - [x] 15.3 Consolidate comparison page
     - Provide one canonical comparison route and page
     - Remove obsolete/dead comparison routes
     - Differentiate remaining components clearly in navigation and titles
     - Update documentation and navigation to reflect consolidated flow
     - _Requirements: 31.1, 31.2, 31.3, 31.4_
-  - [ ] 15.4 Implement multi-timeframe strategy support
+  - [x] 15.4 Implement multi-timeframe strategy support
     - Extend `ScenarioConfig` with `IReadOnlyList<SecondaryTimeframeConfig>? SecondaryTimeframes`
     - Create `IMultiTimeframeStrategy` interface extending `IStrategy` with `OnSecondaryBar`
     - Implement `MultiTimeframeDataHandler` merging bars from all timeframes chronologically
@@ -344,7 +344,7 @@ This implementation plan covers 35+ requirements across 10 sequential PR gates f
   - [ ]* 15.5 Write property test for multi-timeframe event chronological ordering
     - **Property 16: Multi-Timeframe Event Chronological Ordering**
     - **Validates: Requirements 32.2**
-  - [ ] 15.6 Implement export validation for Pine Script and MQL
+  - [x] 15.6 Implement export validation for Pine Script and MQL
     - Create `Application/Export/ExportValidator.cs`
     - Validate structural correctness: matching braces, required sections (Pine: `//@version`, `strategy()`; MQL: `OnInit`, `OnTick`)
     - Report specific validation errors with line, section, and message
@@ -353,7 +353,7 @@ This implementation plan covers 35+ requirements across 10 sequential PR gates f
   - [ ]* 15.7 Write property test for export validation correctness
     - **Property 17: Export Validation Correctness**
     - **Validates: Requirements 33.1, 33.2**
-  - [ ] 15.8 Implement expression compiler negative testing
+  - [x] 15.8 Implement expression compiler negative testing
     - Add comprehensive negative test coverage for `ExpressionCompiler`
     - Cover: missing operators, unbalanced parentheses, invalid identifiers, empty expressions, deeply nested expressions
     - All malformed inputs must produce descriptive `ExpressionCompileError` (no unhandled exceptions)
@@ -361,7 +361,7 @@ This implementation plan covers 35+ requirements across 10 sequential PR gates f
   - [ ]* 15.9 Write property test for expression compiler rejects all malformed inputs
     - **Property 15: Expression Compiler Rejects All Malformed Inputs**
     - **Validates: Requirements 34.1, 34.2, 34.3**
-  - [ ] 15.10 Implement reference multi-timeframe strategy
+  - [x] 15.10 Implement reference multi-timeframe strategy
     - Create at least one concrete strategy implementing `IMultiTimeframeStrategy`
     - Demonstrate multi-timeframe execution end-to-end (higher-timeframe context for lower-timeframe decisions)
     - _Requirements: 32.3_

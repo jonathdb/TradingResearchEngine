@@ -12,6 +12,100 @@ namespace TradingResearchEngine.Application.Strategies.Composite.Conditions;
 public static class ExpressionCompiler
 {
     /// <summary>
+    /// Compiles an expression string through the full pipeline (parse → validate → compile)
+    /// and returns either a compiled delegate or a descriptive <see cref="ExpressionCompileError"/>.
+    /// No unhandled exceptions escape this method.
+    /// </summary>
+    /// <param name="expression">The condition expression string to compile.</param>
+    /// <param name="definedIndicatorIds">The set of indicator IDs defined in the strategy config. If null, validation is skipped.</param>
+    /// <param name="compiled">The compiled delegate if successful; null otherwise.</param>
+    /// <param name="error">The descriptive error if compilation failed; null otherwise.</param>
+    /// <returns>True if compilation succeeded; false otherwise.</returns>
+    public static bool TryCompileExpression(
+        string? expression,
+        IReadOnlyList<string>? definedIndicatorIds,
+        out Func<IndicatorValueProvider, BarRecord, bool>? compiled,
+        out ExpressionCompileError? error)
+    {
+        compiled = null;
+        error = null;
+
+        if (string.IsNullOrWhiteSpace(expression))
+        {
+            error = new ExpressionCompileError(
+                ExpressionErrorKind.EmptyExpression,
+                "Expression cannot be null, empty, or whitespace.",
+                expression);
+            return false;
+        }
+
+        ConditionNode ast;
+        try
+        {
+            ast = ConditionParser.Parse(expression);
+        }
+        catch (ConditionParseException ex) when (ex.Message.Contains("maximum nesting depth"))
+        {
+            error = new ExpressionCompileError(
+                ExpressionErrorKind.ExcessiveNesting,
+                $"Expression exceeds maximum nesting depth: {ex.Message}",
+                expression,
+                ex);
+            return false;
+        }
+        catch (ConditionParseException ex)
+        {
+            error = new ExpressionCompileError(
+                ExpressionErrorKind.SyntaxError,
+                $"Syntax error in expression: {ex.Message}",
+                expression,
+                ex);
+            return false;
+        }
+
+        if (definedIndicatorIds is not null)
+        {
+            try
+            {
+                ConditionValidator.Validate(ast, definedIndicatorIds);
+            }
+            catch (ConditionValidationException ex)
+            {
+                error = new ExpressionCompileError(
+                    ExpressionErrorKind.InvalidIdentifier,
+                    $"Expression references undefined identifiers: {ex.Message}",
+                    expression,
+                    ex);
+                return false;
+            }
+        }
+
+        try
+        {
+            compiled = Compile(ast);
+            return true;
+        }
+        catch (InvalidOperationException ex)
+        {
+            error = new ExpressionCompileError(
+                ExpressionErrorKind.UnsupportedConstruct,
+                $"Expression contains an unsupported construct: {ex.Message}",
+                expression,
+                ex);
+            return false;
+        }
+        catch (Exception ex)
+        {
+            error = new ExpressionCompileError(
+                ExpressionErrorKind.UnsupportedConstruct,
+                $"Unexpected error compiling expression: {ex.Message}",
+                expression,
+                ex);
+            return false;
+        }
+    }
+
+    /// <summary>
     /// Compiles an AST node tree into an executable delegate.
     /// The delegate accepts the current <see cref="IndicatorValueProvider"/> and <see cref="BarRecord"/>
     /// and returns a boolean indicating whether the condition is satisfied.

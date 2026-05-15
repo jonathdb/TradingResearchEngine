@@ -431,7 +431,7 @@ else
     private void NavigateToCompare()
     {
         if (_selectedRunIds.Count >= 2 && _selectedRunIds.Count <= 5)
-            Nav.NavigateTo($"/compare-runs?runIds={string.Join(",", _selectedRunIds)}");
+            Nav.NavigateTo($"/compare?runIds={string.Join(",", _selectedRunIds)}");
     }
 
     private string? GetLastSharpeStrategyName()

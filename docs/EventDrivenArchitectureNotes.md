@@ -42,7 +42,8 @@ Both modes use the identical heartbeat-loop and dispatch architecture. The only 
 
 - `BidLevel`, `AskLevel`: readonly record structs for order book depth
 - `LastTrade`: readonly record struct for most recent trade
-- `Position`, `ClosedTrade`: sealed records for portfolio state
+- `Position`, `ClosedTrade`: sealed records for portfolio state. `ClosedTrade` includes an optional `TradeAnatomy? Anatomy` field populated when `TraceOptions.EnableEventTrace` is active.
+- `TradeAnatomy`: sealed record with `MaxAdverseExcursion` (decimal?), `MaxFavorableExcursion` (decimal?), and `Duration` (TimeSpan) — intra-trade analytics computed by `TradeExcursionTracker`
 - `EquityCurvePoint`: sealed record for portfolio snapshots — includes `TotalEquity`, `CashBalance`, `UnrealisedPnl`, `RealisedPnl`, and `OpenPositionCount`; appended by `Portfolio.MarkToMarket`, not by fill processing
 - `ProgressUpdate`: sealed record for workflow progress reporting (`CurrentStep`, `TotalSteps`, `Message`, computed `Fraction`)
 - `ExecutionOutcome`: enum on `FillEvent` — `Filled`, `PartiallyFilled`, `Unfilled`, `Rejected`, `Expired`; defaults to `Filled` for backward compatibility

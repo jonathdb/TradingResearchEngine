@@ -1,11 +1,14 @@
 @page "/compare"
+@rendermode InteractiveServer
 @inject TradingResearchEngine.Application.Research.ScenarioComparisonUseCase CompareUseCase
 @inject TradingResearchEngine.Application.Export.ComparisonReportGenerator ReportGenerator
+@inject TradingResearchEngine.Core.Persistence.IRepository<BacktestResult> ResultRepo
 @inject ISnackbar Snackbar
+@inject NavigationManager Nav
 
-<PageTitle>Compare Runs — TradingResearchEngine</PageTitle>
+<PageTitle>Strategy Comparison — TradingResearchEngine</PageTitle>
 
-<MudText Typo="Typo.h4" Class="mb-4">Compare Backtest Runs</MudText>
+<MudText Typo="Typo.h4" Class="mb-4">Strategy Comparison</MudText>
 
 <MudGrid>
     <MudItem xs="12">
@@ -104,11 +107,57 @@
 }
 
 @code {
+    [SupplyParameterFromQuery(Name = "runIds")]
+    public string? RunIdsParam { get; set; }
+
     private MultiResultPicker? _picker;
     private TradingResearchEngine.Core.Results.ComparisonReport? _report;
     private IReadOnlyList<BacktestResult>? _selectedResults;
     private string? _error;
     private bool _exporting;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Support deep-linking with run IDs from Dashboard or other pages
+        if (!string.IsNullOrWhiteSpace(RunIdsParam))
+        {
+            await LoadFromQueryString();
+        }
+    }
+
+    private async Task LoadFromQueryString()
+    {
+        var ids = RunIdsParam!.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        if (ids.Length < 2)
+        {
+            _error = "At least 2 run IDs are required for comparison.";
+            return;
+        }
+
+        if (ids.Length > 5)
+        {
+            _error = "Maximum 5 runs can be compared at once. Please select fewer runs.";
+            return;
+        }
+
+        var results = new List<BacktestResult>();
+        foreach (var id in ids)
+        {
+            var result = await ResultRepo.GetByIdAsync(id);
+            if (result is not null)
+                results.Add(result);
+        }
+
+        if (results.Count < 2)
+        {
+            _error = "Could not load enough valid runs for comparison.";
+            return;
+        }
+
+        _selectedResults = results;
+        _report = CompareUseCase.Compare(results);
+    }
 
     private void RunComparison()
     {

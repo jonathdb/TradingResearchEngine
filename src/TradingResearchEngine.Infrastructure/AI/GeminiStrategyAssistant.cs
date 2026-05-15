@@ -316,6 +316,7 @@ public sealed class GeminiStrategyAssistant : IAIStrategyAssistant
             - Max Drawdown: {result.MaxDrawdown:P2}
             - Win Rate: {result.WinRate?.ToString("P2") ?? "N/A"}
             - Trade Count: {result.TotalTrades}
+            - K-Ratio: {result.EquityCurveSmoothness?.ToString("F4") ?? "N/A"}
             - Deflated Sharpe Ratio: {result.DeflatedSharpeRatio?.ToString("F4") ?? "N/A"}
             """;
     }

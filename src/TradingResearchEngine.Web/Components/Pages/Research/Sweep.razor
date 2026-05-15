@@ -6,6 +6,8 @@
 @inject ILogger<Sweep> Logger
 
 @using TradingResearchEngine.Web.Features.Research.Sweep
+@using TradingResearchEngine.Application.Research
+@using TradingResearchEngine.Application.Configuration
 
 <PageTitle>Parameter Sweep — Research Engine</PageTitle>
 
@@ -57,10 +59,10 @@
                             ButtonText="Run Sweep"
                             OnExecute="ExecuteSweep">
                 <ResultContent Context="result">
-                    <MudText Typo="Typo.h6" Class="mb-2">
-                        @result.Results.Count results — Best Sharpe: @(result.RankedBySharpe.FirstOrDefault()?.SharpeRatio?.ToString("F2") ?? "N/A")
-                    </MudText>
+                    @* Summary statistics — always visible regardless of result count *@
+                    <SweepSummaryPanel Result="result" />
 
+                    @* Parameter sensitivity table *@
                     @if (result.ParameterSensitivity.Count > 0)
                     {
                         <MudText Typo="Typo.subtitle2" Class="mb-2">Parameter Sensitivity (lower = more robust)</MudText>
@@ -75,23 +77,8 @@
                         </MudSimpleTable>
                     }
 
-                    <MudText Typo="Typo.subtitle2" Class="mt-3 mb-2">Ranked by Sharpe</MudText>
-                    <MudTable Items="result.RankedBySharpe" Dense="true" Hover="true">
-                        <HeaderContent>
-                            <MudTh>Scenario</MudTh>
-                            <MudTh>Sharpe</MudTh>
-                            <MudTh>Max DD</MudTh>
-                            <MudTh>Trades</MudTh>
-                            <MudTh>End Equity</MudTh>
-                        </HeaderContent>
-                        <RowTemplate>
-                            <MudTd>@context.ScenarioConfig.ScenarioId</MudTd>
-                            <MudTd>@(context.SharpeRatio?.ToString("F2") ?? "N/A")</MudTd>
-                            <MudTd>@context.MaxDrawdown.ToString("P2")</MudTd>
-                            <MudTd>@context.TotalTrades</MudTd>
-                            <MudTd>$@context.EndEquity.ToString("F2")</MudTd>
-                        </RowTemplate>
-                    </MudTable>
+                    @* Virtualized results table with filtering and sorting *@
+                    <SweepResultsTable Results="result.RankedBySharpe" />
 
                     @* V6: Parameter Sweep Heatmap *@
                     <TradingResearchEngine.Web.Components.Charts.ParameterSweepHeatmap

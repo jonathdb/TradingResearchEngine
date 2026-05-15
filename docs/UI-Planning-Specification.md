@@ -82,6 +82,7 @@ Backtests
   └─ New Run
   └─ Run History
   └─ Result Detail
+  └─ Strategy Comparison (/compare)
 Research
   └─ Parameter Sweep
   └─ Monte Carlo
@@ -96,8 +97,7 @@ Prop-Firm
   └─ Variance Presets
   └─ Rule Set Editor
 Compare
-  └─ Select Runs
-  └─ Side-by-Side View
+  └─ Strategy Comparison (consolidated at /compare — single canonical route)
 Data
   └─ Data Files
   └─ Import CSV
@@ -297,14 +297,21 @@ Components:
 - Run button
 - Results: side-by-side table of all presets (payout, EV, breakeven), bar chart comparison
 
-### 4.17 Compare — Side-by-Side
+### 4.17 Strategy Comparison (`/compare`)
 
-Purpose: Compare 2+ saved backtest results.
+Purpose: Single canonical page for comparing 2+ saved backtest results side-by-side.
+
+Entry points:
+- Navigation menu: "Strategy Comparison" link under Backtests section
+- Dashboard: "Compare Selected" button with pre-selected run IDs via `?runIds=id1,id2,...`
+- Paper Trading: "Compare to Backtest" action from session history
 
 Components:
-- Result selector (multi-select from history, minimum 2)
+- Result selector (multi-select from history via MultiResultPicker, minimum 2)
 - Compare button
-- Results: ComparisonReport table with all metrics, best-by-Sharpe and best-by-drawdown badges, overlaid equity curves, overlaid drawdown charts, metric radar chart
+- Deep-link support via `?runIds=id1,id2,...` query parameter (auto-loads and compares)
+- Results: ComparisonReport table with all metrics, best-by-Sharpe and best-by-drawdown badges, overlaid equity curves, metric radar chart
+- Export Report button (generates persistent Markdown comparison artifact)
 
 ### 4.18 Data — Data Files
 
@@ -497,6 +504,8 @@ Components:
 
 ## 9. Comparison Workflows
 
+All comparison workflows are accessed through the single canonical route `/compare` (Strategy Comparison page). The page supports both interactive selection via the MultiResultPicker and deep-linking via `?runIds=id1,id2,...` query parameters.
+
 ### Strategy A vs Strategy B
 - Select 2 results from history (different strategies, same data)
 - Side-by-side metrics table
@@ -526,11 +535,12 @@ Components:
 - Ruin probability gauge
 
 ### Multiple saved runs
-- Multi-select from history (2-10 runs)
+- Multi-select from history (2-5 runs) via Dashboard "Compare Selected" or direct picker
 - ComparisonReport table with all metrics
-- Best-by badges (Sharpe, Drawdown, Expectancy, Smoothness)
+- Best-by badges (Sharpe, Drawdown)
 - Overlaid equity curves (color-coded by run)
-- Export comparison as Markdown table
+- Metrics radar chart
+- Export comparison as persistent Markdown report
 
 
 ## 10. Phased Implementation Roadmap

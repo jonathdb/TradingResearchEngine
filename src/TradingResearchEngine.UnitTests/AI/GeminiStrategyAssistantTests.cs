@@ -253,6 +253,7 @@ public sealed class GeminiStrategyAssistantTests : IDisposable
                     msg.Contains("Max Drawdown") &&
                     msg.Contains("Win Rate") &&
                     msg.Contains("Trade Count") &&
+                    msg.Contains("K-Ratio") &&
                     msg.Contains("Deflated Sharpe")),
                 It.IsAny<CancellationToken>()),
             Times.Once);
