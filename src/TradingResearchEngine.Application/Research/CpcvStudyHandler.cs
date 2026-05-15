@@ -82,7 +82,6 @@ public sealed class CpcvStudyHandler : IResearchWorkflow<CpcvOptions, CpcvResult
             Enumerable.Range(0, totalCombinations),
             new ParallelOptions
             {
-                MaxDegreeOfParallelism = _concurrencyBudget.Available,
                 CancellationToken = ct
             },
             async (comboIndex, token) =>

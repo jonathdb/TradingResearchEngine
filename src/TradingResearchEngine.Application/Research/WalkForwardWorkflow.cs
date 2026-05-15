@@ -22,17 +22,20 @@ public sealed class WalkForwardWorkflow : IResearchWorkflow<WalkForwardOptions, 
     private readonly RunScenarioUseCase _runScenario;
     private readonly IStrategyFactoryProvider _factoryProvider;
     private readonly GridOptimizer _gridOptimizer;
+    private readonly ConcurrencyBudget _concurrencyBudget;
 
     /// <inheritdoc cref="WalkForwardWorkflow"/>
     public WalkForwardWorkflow(
         ParameterSweepWorkflow sweepWorkflow,
         RunScenarioUseCase runScenario,
-        IStrategyFactoryProvider factoryProvider)
+        IStrategyFactoryProvider factoryProvider,
+        ConcurrencyBudget concurrencyBudget)
     {
         _sweepWorkflow = sweepWorkflow;
         _runScenario = runScenario;
         _factoryProvider = factoryProvider;
         _gridOptimizer = new GridOptimizer();
+        _concurrencyBudget = concurrencyBudget;
     }
 
     /// <inheritdoc/>
@@ -50,12 +53,10 @@ public sealed class WalkForwardWorkflow : IResearchWorkflow<WalkForwardOptions, 
         if (options.StepSize <= TimeSpan.Zero)
             throw new ArgumentException("StepSize must be positive.", nameof(options));
 
-        // Parse data range from config
+        // Parse data range from config using typed extension methods
         var dataOpts = baseConfig.DataProviderOptions;
-        var dataFrom = dataOpts.TryGetValue("From", out var f) && f is DateTimeOffset df
-            ? df : DateTimeOffset.MinValue;
-        var dataTo = dataOpts.TryGetValue("To", out var t) && t is DateTimeOffset dt
-            ? dt : DateTimeOffset.MaxValue;
+        var dataFrom = dataOpts.GetFrom();
+        var dataTo = dataOpts.GetTo();
         var dataLength = dataTo - dataFrom;
 
         var windowLength = options.InSampleLength + options.OutOfSampleLength;
@@ -72,9 +73,7 @@ public sealed class WalkForwardWorkflow : IResearchWorkflow<WalkForwardOptions, 
                 $"Data range too short to form at least one complete window. " +
                 $"Minimum required: InSampleLength ({options.InSampleLength}) + OutOfSampleLength ({options.OutOfSampleLength}).");
 
-        // V6: Execute windows in parallel with bounded concurrency
-        var maxConcurrency = Math.Max(1, Environment.ProcessorCount - 1);
-        var semaphore = new SemaphoreSlim(maxConcurrency);
+        // V6: Execute windows in parallel with bounded concurrency via global ConcurrencyBudget
         var results = new ConcurrentBag<WalkForwardWindow>();
         int completedWindows = 0;
         int totalWindows = windowSpecs.Count;
@@ -85,7 +84,7 @@ public sealed class WalkForwardWorkflow : IResearchWorkflow<WalkForwardOptions, 
 
         await Parallel.ForEachAsync(windowSpecs, new ParallelOptions { CancellationToken = ct }, async (spec, token) =>
         {
-            await semaphore.WaitAsync(token);
+            using var permit = await _concurrencyBudget.AcquireAsync(token);
             try
             {
                 var window = await RunWindowAsync(baseConfig, options, spec, factory, token);
@@ -93,7 +92,6 @@ public sealed class WalkForwardWorkflow : IResearchWorkflow<WalkForwardOptions, 
             }
             finally
             {
-                semaphore.Release();
                 int current = Interlocked.Increment(ref completedWindows);
                 progress?.Report(new ProgressUpdate(current, totalWindows,
                     $"Completed window {current} of {totalWindows}"));

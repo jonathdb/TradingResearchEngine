@@ -2,7 +2,7 @@
 
 ## Overview
 
-This implementation plan covers 35 requirements across 8 sequential PR gates for the TradingResearchEngine. Each gate is a coherent, reviewable unit that must build cleanly, pass all tests, and align documentation before the next gate begins. The implementation follows the existing clean architecture (Core ← Application ← Infrastructure ← Web) using .NET 8 / C# 12.
+This implementation plan covers 35+ requirements across 10 sequential PR gates for the TradingResearchEngine. Each gate is a coherent, reviewable unit that must build cleanly, pass all tests, and align documentation before the next gate begins. The implementation follows the existing clean architecture (Core ← Application ← Infrastructure ← Web) using .NET 8 / C# 12. Gates 9 and 10 address findings from the v2 code review (bug fixes, code quality improvements, and new research capabilities).
 
 ## Tasks
 
@@ -375,6 +375,107 @@ This implementation plan covers 35 requirements across 8 sequential PR gates for
 - [ ] 16. Checkpoint — Gate 8 complete
   - Ensure all tests pass, ask the user if questions arise.
 
+
+- [ ] 19. PR Gate 9 — Code Quality & Async Correctness
+  - [ ] 19.1 Rename OptimizationObjective.CAGR to TotalReturn or compute true annualised CAGR
+    - `GridOptimizer.ComputeCagr` currently computes total return, not annualised CAGR
+    - Either rename to `TotalReturn` (and update exclusion messages) or compute true CAGR using `BarsPerYear` and window length
+    - Ensure cross-window comparison is coherent regardless of IS window length
+    - _Review: Follow-up 2_
+  - [ ] 19.2 Replace synchronous File.WriteAllText with File.WriteAllTextAsync in ReportExporter
+    - `ExportMarkdownAsync`, `ExportTradeCsvAsync`, `ExportEquityCsvAsync`, `ExportJsonAsync` all use synchronous I/O
+    - Replace with `File.WriteAllTextAsync` to avoid blocking thread-pool threads under load
+    - _Review: Opp 8_
+  - [ ] 19.3 Add MaxPromptLength guard to GeminiStrategyAssistant
+    - Add `MaxPromptLength` property to `GeminiOptions` (default 30000 chars)
+    - Validate combined system prompt + user message length before API call
+    - Return descriptive error when exceeded rather than opaque API failure
+    - _Review: Opp 9_
+  - [ ] 19.4 Resolve commented-out metrics in BacktestResult (VaR95, CVaR95, OmegaRatio, UlcerIndex)
+    - Determine if these are intentionally deferred or unintentionally omitted
+    - If deferred: document as known gap in CHANGELOG with tracking reference
+    - If ready: restore computation in MetricsCalculator and uncomment fields
+    - _Review: Opp 10_
+  - [ ] 19.5 Add ExportComparisonMarkdownAsync to IReportExporter
+    - `MarkdownReporter.RenderToMarkdown(ComparisonReport)` produces a string but never persists it
+    - Add `Task<string> ExportComparisonMarkdownAsync(ComparisonReport, CancellationToken)` to `IReportExporter`
+    - Implement in `ReportExporter` and call from `ScenarioComparisonUseCase`
+    - _Review: Bug 3_
+  - [ ] 19.6 Migrate StrategyRegistry default parameter inference from reflection to attribute-based schema
+    - Replace `switch` on `typeof(int)` / `typeof(decimal)` with `[StrategyParameter(default: 14)]` attribute
+    - Or implement `IStrategyParameterSchema` static interface method for explicit defaults
+    - Make defaults schema-driven rather than inferred at runtime
+    - _Review: Opp 6_
+  - [ ]* 19.7 Write unit tests for Gate 9 components
+    - Test CAGR/TotalReturn objective coherence across different window lengths
+    - Test async file I/O does not block
+    - Test prompt length guard returns descriptive error
+    - Test comparison report persistence
+
+- [ ] 20. Checkpoint — Gate 9 complete
+  - Ensure all tests pass, ask the user if questions arise.
+
+
+- [ ] 21. PR Gate 10 — Research Depth & Developer Experience
+  - [ ] 21.1 Add MAE/MFE fields to ClosedTrade and wire engine tracking
+    - Add `decimal MaxAdverseExcursion` and `decimal MaxFavorableExcursion` to `ClosedTrade`
+    - Track running high-water mark and low-water mark of unrealised P&L between entry and exit
+    - Enable edge ratio, R-multiple distribution, entry/exit quality scoring downstream
+    - _Review: Bug 4, Opp 1_
+  - [ ] 21.2 Add concatenated OOS equity curve to WalkForwardResult
+    - Add `IReadOnlyList<EquityCurvePoint> ConcatenatedOosEquityCurve` computed property
+    - Stitch OOS curves by appending each window's OOS equity curve in window index order
+    - _Review: Opp 2_
+  - [ ] 21.3 Add OOS profitability rate to WalkForwardSummary
+    - Compute `decimal OosProfitabilityRate` as profitable OOS windows / total windows
+    - High IS Sharpe + low OOS profitability rate = strong overfitting signal
+    - _Review: Opp 3_
+  - [ ] 21.4 Add multi-criteria ranking to ScenarioComparisonUseCase
+    - Create `ComparisonFilter` record with `MinWinRate`, `MinTrades`, `MaxDrawdown`
+    - Add optional sort key (Calmar, Sharpe, etc.) for filtered survivors
+    - Preserve existing single-metric best-of logic as default
+    - _Review: Opp 4_
+  - [ ] 21.5 Implement strategy version side-by-side comparison
+    - Enable comparing two `StrategyVersion` IDs with metric deltas
+    - Pin results to specific strategy versions (distinct from arbitrary BacktestResult comparison)
+    - Display deltas in all metrics across both versions
+    - _Review: Opp 5_
+  - [ ] 21.6 Migrate DataProviderOptions to discriminated union type
+    - Replace `Dictionary<string, object>` in `ScenarioConfig.DataProviderOptions` with sealed discriminated union
+    - `CsvDataProviderConfig | HttpDataProviderConfig | DukascopyDataProviderConfig`
+    - Eliminate all remaining string key usage; make malformed configs a compile-time error
+    - Maintain JSON backward compatibility at deserialization boundary
+    - _Review: Opp 7_
+  - [ ] 21.7 Add end-to-end integration test for walk-forward → OOS → persist cycle
+    - Run `WalkForwardWorkflow` against sample CSV data
+    - Verify OOS windows are populated and result is persisted and retrievable
+    - _Review: Opp 11_
+  - [ ] 21.8 Add observable job queue depth metrics
+    - Create `IJobQueueMetrics` interface with `PendingCount`, `RunningCount`, `FailedCount`
+    - Source from `JobExecutor` progress cache and repository queries
+    - Expose via health check endpoint or structured log
+    - _Review: Opp 12_
+  - [ ] 21.9 Add architecture dependency enforcement test
+    - Create `ArchitectureDependencyTests.cs` using `NetArchTest.Rules` or equivalent
+    - Enforce Core ← Application ← Infrastructure ← Web dependency rule in CI
+    - Complement the IDE-only `.kiro/hooks/architecture-check.md` hook
+    - _Review: Opp 13_
+  - [ ] 21.10 Update CHANGELOG.md to reflect PR gate implementation
+    - Document all eight gates under a new version entry
+    - Include `BacktestResult.Notes` and `Tags` additions
+    - Document V9 additions visible in the record
+    - _Review: Opp 14_
+  - [ ]* 21.11 Write unit tests for Gate 10 components
+    - Test MAE/MFE tracking correctness
+    - Test concatenated OOS curve chronological ordering
+    - Test OOS profitability rate computation
+    - Test multi-criteria comparison filtering
+    - Test architecture dependency rules
+
+- [ ] 22. Checkpoint — Gate 10 complete
+  - Ensure all tests pass, ask the user if questions arise.
+
+
 - [ ] 17. Final validation — PR Gate process compliance
   - [ ] 17.1 Verify all gates build cleanly with zero errors and zero warnings-as-errors
     - Run full solution build; confirm clean output
@@ -430,7 +531,11 @@ This implementation plan covers 35 requirements across 8 sequential PR gates for
     { "id": 19, "tasks": ["15.1", "15.2", "15.3", "15.4", "15.6", "15.8"] },
     { "id": 20, "tasks": ["15.5", "15.7", "15.9", "15.10"] },
     { "id": 21, "tasks": ["15.11"] },
-    { "id": 22, "tasks": ["17.1", "17.2", "17.3"] }
+    { "id": 22, "tasks": ["19.1", "19.2", "19.3", "19.4", "19.5", "19.6"] },
+    { "id": 23, "tasks": ["19.7"] },
+    { "id": 24, "tasks": ["21.1", "21.2", "21.3", "21.4", "21.5", "21.6", "21.7", "21.8", "21.9", "21.10"] },
+    { "id": 25, "tasks": ["21.11"] },
+    { "id": 26, "tasks": ["17.1", "17.2", "17.3"] }
   ]
 }
 ```

@@ -79,7 +79,6 @@ public sealed class ParameterPerturbationWorkflow
             Enumerable.Range(0, options.RunCount),
             new ParallelOptions
             {
-                MaxDegreeOfParallelism = _concurrencyBudget.Available,
                 CancellationToken = ct
             },
             async (i, token) =>

@@ -40,18 +40,33 @@ public sealed class GeminiStrategyAssistant : IAIStrategyAssistant
         _registry = registry;
         _logger = logger;
         _geminiClient = geminiClient;
-
-        if (string.IsNullOrWhiteSpace(_options.ApiKey))
-        {
-            throw new InvalidOperationException(
-                "Gemini API key is not configured. Set GeminiOptions.ApiKey to enable AI strategy assistant features.");
-        }
     }
+
+    /// <summary>
+    /// Returns true when the API key is configured and AI features are available.
+    /// When false, all generation methods return graceful failure results.
+    /// </summary>
+    private bool IsConfigured => !string.IsNullOrWhiteSpace(_options.ApiKey);
 
     /// <inheritdoc/>
     public async Task<AIStrategyDraft> GenerateStrategyAsync(string prompt, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
+
+        if (!IsConfigured)
+        {
+            _logger.LogWarning("Gemini API key is not configured. AI strategy generation is disabled.");
+            return new AIStrategyDraft(
+                StrategyName: "Unavailable",
+                Hypothesis: "",
+                StrategyType: "",
+                Parameters: new Dictionary<string, object>(),
+                SuggestedRisk: new RiskConfig(new Dictionary<string, object>(), 100_000m, 0.05m),
+                Rationale: "",
+                Caveats: new List<string> { "AI strategy assistant is not configured. Set GeminiOptions.ApiKey to enable." },
+                CompositeConfig: null,
+                SourceType: SourceType.AIGenerated);
+        }
 
         var systemPrompt = await LoadSystemPromptAsync(ct);
         var userMessage = $"Generate a trading strategy based on the following description:\n\n{prompt}";
@@ -135,6 +150,15 @@ public sealed class GeminiStrategyAssistant : IAIStrategyAssistant
     {
         ct.ThrowIfCancellationRequested();
 
+        if (!IsConfigured)
+        {
+            _logger.LogWarning("Gemini API key is not configured. AI strategy refinement is disabled.");
+            return current with
+            {
+                Caveats = current.Caveats.Append("AI strategy assistant is not configured. Set GeminiOptions.ApiKey to enable.").ToList()
+            };
+        }
+
         var systemPrompt = await LoadSystemPromptAsync(ct);
         var metricsContext = BuildMetricsContext(lastResult);
         var userMessage = $"""
@@ -164,6 +188,14 @@ public sealed class GeminiStrategyAssistant : IAIStrategyAssistant
         string prompt, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
+
+        if (!IsConfigured)
+        {
+            _logger.LogWarning("Gemini API key is not configured. AI streaming generation is disabled.");
+            yield return "{\"error\": \"AI strategy assistant is not configured. Set GeminiOptions.ApiKey to enable.\"}";
+            yield break;
+        }
+
         var systemPrompt = await LoadSystemPromptAsync(ct);
         var userMessage = $"Generate a trading strategy based on the following description:\n\n{prompt}";
 
@@ -179,6 +211,14 @@ public sealed class GeminiStrategyAssistant : IAIStrategyAssistant
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
+
+        if (!IsConfigured)
+        {
+            _logger.LogWarning("Gemini API key is not configured. AI streaming refinement is disabled.");
+            yield return "{\"error\": \"AI strategy assistant is not configured. Set GeminiOptions.ApiKey to enable.\"}";
+            yield break;
+        }
+
         var systemPrompt = await LoadSystemPromptAsync(ct);
         var userMessage = $"""
             Refine the following strategy based on user feedback.

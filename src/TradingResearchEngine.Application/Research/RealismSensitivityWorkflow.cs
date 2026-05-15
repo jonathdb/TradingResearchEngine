@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using TradingResearchEngine.Application.Engine;
 using TradingResearchEngine.Application.Research.Results;
 using TradingResearchEngine.Core.Configuration;
@@ -8,12 +9,19 @@ namespace TradingResearchEngine.Application.Research;
 /// <summary>
 /// Runs the same strategy under FastResearch, StandardBacktest, and BrokerConservative
 /// realism profiles and reports performance degradation across profiles.
+/// Uses <see cref="ConcurrencyBudget"/> for bounded parallel execution since all three
+/// profiles are independent runs.
 /// </summary>
 public sealed class RealismSensitivityWorkflow
 {
     private readonly RunScenarioUseCase _runScenario;
+    private readonly ConcurrencyBudget _concurrencyBudget;
 
-    public RealismSensitivityWorkflow(RunScenarioUseCase runScenario) => _runScenario = runScenario;
+    public RealismSensitivityWorkflow(RunScenarioUseCase runScenario, ConcurrencyBudget concurrencyBudget)
+    {
+        _runScenario = runScenario;
+        _concurrencyBudget = concurrencyBudget;
+    }
 
     /// <summary>Runs the strategy under all three realism profiles.</summary>
     public async Task<RealismSensitivityResult> RunAsync(
@@ -26,11 +34,11 @@ public sealed class RealismSensitivityWorkflow
             ExecutionRealismProfile.BrokerConservative
         };
 
-        var results = new List<RealismProfileResult>();
+        var results = new ConcurrentBag<RealismProfileResult>();
 
-        foreach (var profile in profiles)
+        await Parallel.ForEachAsync(profiles, new ParallelOptions { CancellationToken = ct }, async (profile, token) =>
         {
-            ct.ThrowIfCancellationRequested();
+            using var permit = await _concurrencyBudget.AcquireAsync(token);
 
             var config = baseConfig with
             {
@@ -40,21 +48,23 @@ public sealed class RealismSensitivityWorkflow
                     : FillMode.NextBarOpen
             };
 
-            var runResult = await _runScenario.RunAsync(config, ct, autoSave: false);
+            var runResult = await _runScenario.RunAsync(config, token, autoSave: false);
             if (runResult.IsSuccess && runResult.Result is not null)
             {
                 var r = runResult.Result;
                 decimal cagr = r.StartEquity > 0m ? (r.EndEquity - r.StartEquity) / r.StartEquity : 0m;
                 results.Add(new RealismProfileResult(profile, r, cagr, r.SharpeRatio, r.MaxDrawdown, r.ProfitFactor));
             }
-        }
+        });
 
-        decimal fastSharpe = results.FirstOrDefault(r => r.Profile == ExecutionRealismProfile.FastResearch)?.Sharpe ?? 0m;
-        decimal stdSharpe = results.FirstOrDefault(r => r.Profile == ExecutionRealismProfile.StandardBacktest)?.Sharpe ?? 0m;
-        decimal consSharpe = results.FirstOrDefault(r => r.Profile == ExecutionRealismProfile.BrokerConservative)?.Sharpe ?? 0m;
+        var sortedResults = results.OrderBy(r => r.Profile).ToList();
+
+        decimal fastSharpe = sortedResults.FirstOrDefault(r => r.Profile == ExecutionRealismProfile.FastResearch)?.Sharpe ?? 0m;
+        decimal stdSharpe = sortedResults.FirstOrDefault(r => r.Profile == ExecutionRealismProfile.StandardBacktest)?.Sharpe ?? 0m;
+        decimal consSharpe = sortedResults.FirstOrDefault(r => r.Profile == ExecutionRealismProfile.BrokerConservative)?.Sharpe ?? 0m;
 
         return new RealismSensitivityResult(
-            results,
+            sortedResults,
             fastSharpe - stdSharpe,
             stdSharpe - consSharpe);
     }

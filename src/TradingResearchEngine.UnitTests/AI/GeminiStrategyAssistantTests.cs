@@ -189,19 +189,31 @@ public sealed class GeminiStrategyAssistantTests : IDisposable
     }
 
     [Fact]
-    public void Constructor_EmptyApiKey_ThrowsInvalidOperationException()
+    public async Task GenerateStrategyAsync_EmptyApiKey_ReturnsGracefulFailure()
     {
-        // Act & Assert
-        var ex = Assert.Throws<InvalidOperationException>(() => CreateAssistant(apiKey: ""));
-        Assert.Contains("API key", ex.Message);
+        // Arrange
+        var assistant = CreateAssistant(apiKey: "");
+
+        // Act
+        var result = await assistant.GenerateStrategyAsync("test prompt", CancellationToken.None);
+
+        // Assert
+        Assert.Equal("Unavailable", result.StrategyName);
+        Assert.Contains(result.Caveats, c => c.Contains("not configured"));
     }
 
     [Fact]
-    public void Constructor_NullApiKey_ThrowsInvalidOperationException()
+    public async Task GenerateStrategyAsync_NullApiKey_ReturnsGracefulFailure()
     {
-        // Act & Assert
-        var ex = Assert.Throws<InvalidOperationException>(() => CreateAssistant(apiKey: null));
-        Assert.Contains("API key", ex.Message);
+        // Arrange
+        var assistant = CreateAssistant(apiKey: null);
+
+        // Act
+        var result = await assistant.GenerateStrategyAsync("test prompt", CancellationToken.None);
+
+        // Assert
+        Assert.Equal("Unavailable", result.StrategyName);
+        Assert.Contains(result.Caveats, c => c.Contains("not configured"));
     }
 
     [Fact]

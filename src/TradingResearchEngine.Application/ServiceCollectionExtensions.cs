@@ -93,6 +93,9 @@ public static class ServiceCollectionExtensions
         // Benchmark comparison
         services.AddScoped<BenchmarkComparisonWorkflow>();
 
+        // Realism sensitivity
+        services.AddScoped<RealismSensitivityWorkflow>();
+
         // V6: CPCV study handler
         services.AddScoped<CpcvStudyHandler>();
 
