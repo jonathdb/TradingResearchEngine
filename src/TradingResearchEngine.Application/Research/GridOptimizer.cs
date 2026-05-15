@@ -15,7 +15,7 @@ public sealed class GridOptimizer
     /// metrics are excluded — the optimizer never falls through to a different objective.
     /// </summary>
     /// <param name="candidates">The backtest results to evaluate.</param>
-    /// <param name="objective">The metric used to rank candidates (Sharpe, CAGR, or MAR).</param>
+    /// <param name="objective">The metric used to rank candidates (Sharpe, TotalReturn, or MAR).</param>
     /// <returns>
     /// A <see cref="GridOptimizationResult"/> containing the best parameters, objective value,
     /// and any excluded candidates with explanations.
@@ -74,17 +74,17 @@ public sealed class GridOptimizer
         return objective switch
         {
             OptimizationObjective.Sharpe => candidate.SharpeRatio,
-            OptimizationObjective.CAGR => ComputeCagr(candidate),
+            OptimizationObjective.TotalReturn => ComputeTotalReturn(candidate),
             OptimizationObjective.MAR => candidate.CalmarRatio,
             _ => null
         };
     }
 
     /// <summary>
-    /// Computes CAGR as total return percentage. Returns <c>null</c> when
+    /// Computes total return as (EndEquity − StartEquity) / StartEquity. Returns <c>null</c> when
     /// <see cref="BacktestResult.StartEquity"/> is zero or negative.
     /// </summary>
-    private static decimal? ComputeCagr(BacktestResult candidate)
+    private static decimal? ComputeTotalReturn(BacktestResult candidate)
     {
         if (candidate.StartEquity <= 0m)
             return null;
@@ -102,8 +102,8 @@ public sealed class GridOptimizer
             OptimizationObjective.Sharpe =>
                 $"SharpeRatio is undefined (null) for candidate with {candidate.TotalTrades} trades. " +
                 "Candidate excluded from ranking without fallthrough to alternative objective.",
-            OptimizationObjective.CAGR =>
-                $"CAGR is undefined — StartEquity is {candidate.StartEquity}. " +
+            OptimizationObjective.TotalReturn =>
+                $"TotalReturn is undefined — StartEquity is {candidate.StartEquity}. " +
                 "Candidate excluded from ranking without fallthrough to alternative objective.",
             OptimizationObjective.MAR =>
                 $"MAR ratio (CalmarRatio) is undefined (null) for candidate with MaxDrawdown={candidate.MaxDrawdown}. " +

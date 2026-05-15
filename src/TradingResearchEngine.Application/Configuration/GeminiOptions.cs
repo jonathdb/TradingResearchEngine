@@ -36,4 +36,12 @@ public sealed record GeminiOptions
     /// Default: 60 seconds.
     /// </summary>
     public TimeSpan CallTimeout { get; init; } = TimeSpan.FromSeconds(60);
+
+    /// <summary>
+    /// Maximum combined character length of the system prompt and user message
+    /// allowed before an API call is made. When exceeded, a descriptive error is
+    /// returned rather than an opaque API failure.
+    /// Default: 30000 characters.
+    /// </summary>
+    public int MaxPromptLength { get; init; } = 30_000;
 }

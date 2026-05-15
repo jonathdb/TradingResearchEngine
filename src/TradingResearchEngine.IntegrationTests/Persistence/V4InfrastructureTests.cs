@@ -191,6 +191,6 @@ public class V4InfrastructureTests : IDisposable
             new List<EquityCurvePoint>(),
             new List<ClosedTrade>(),
             100_000m, 110_000m, 0.05m,
-            1.42m, null, null, null, 23,
+            1.42m, null, null, null, null, null, null, null, 23,
             0.61m, 1.87m, 500m, -300m, 142m, null, null, 3, 5, 1200);
 }

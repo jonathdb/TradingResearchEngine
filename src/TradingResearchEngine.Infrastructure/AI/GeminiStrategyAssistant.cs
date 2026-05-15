@@ -71,6 +71,8 @@ public sealed class GeminiStrategyAssistant : IAIStrategyAssistant
         var systemPrompt = await LoadSystemPromptAsync(ct);
         var userMessage = $"Generate a trading strategy based on the following description:\n\n{prompt}";
 
+        ValidatePromptLength(systemPrompt, userMessage);
+
         var json = await _geminiClient.GenerateJsonAsync(systemPrompt, userMessage, ct);
         var draft = DeserializeDraft(json);
 
@@ -177,6 +179,8 @@ public sealed class GeminiStrategyAssistant : IAIStrategyAssistant
             {refinementPrompt}
             """;
 
+        ValidatePromptLength(systemPrompt, userMessage);
+
         var json = await _geminiClient.GenerateJsonAsync(systemPrompt, userMessage, ct);
         var draft = DeserializeDraft(json);
 
@@ -266,6 +270,29 @@ public sealed class GeminiStrategyAssistant : IAIStrategyAssistant
 
         throw new InvalidOperationException(
             $"System prompt file not found at '{path}'. Ensure GeminiOptions.SystemPromptFilePath points to a valid file relative to the repository root.");
+    }
+
+    /// <summary>
+    /// Validates that the combined length of the system prompt and user message does not exceed
+    /// the configured <see cref="GeminiOptions.MaxPromptLength"/>. Throws a descriptive
+    /// <see cref="InvalidOperationException"/> when the limit is exceeded.
+    /// </summary>
+    private void ValidatePromptLength(string systemPrompt, string userMessage)
+    {
+        var combinedLength = systemPrompt.Length + userMessage.Length;
+        if (combinedLength > _options.MaxPromptLength)
+        {
+            _logger.LogWarning(
+                "Combined prompt length ({CombinedLength} chars) exceeds MaxPromptLength ({MaxPromptLength} chars). " +
+                "System prompt: {SystemPromptLength} chars, user message: {UserMessageLength} chars.",
+                combinedLength, _options.MaxPromptLength, systemPrompt.Length, userMessage.Length);
+
+            throw new InvalidOperationException(
+                $"Combined prompt length ({combinedLength} characters) exceeds the configured maximum of " +
+                $"{_options.MaxPromptLength} characters. System prompt: {systemPrompt.Length} chars, " +
+                $"user message: {userMessage.Length} chars. Reduce the input length or increase " +
+                $"GeminiOptions.MaxPromptLength.");
+        }
     }
 
     private bool IsKnownStrategyType(string strategyType)

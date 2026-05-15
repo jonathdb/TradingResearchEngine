@@ -306,7 +306,9 @@ public static class MetricsCalculator
     public static decimal? ComputeOmegaRatio(
         IReadOnlyList<EquityCurvePoint> curve, decimal threshold = 0m)
     {
+        if (curve.Count < 2) return null;
         var returns = GetPeriodReturns(curve);
+        if (returns.Count == 0) return null;
         decimal gains = returns.Where(r => r > threshold).Sum(r => r - threshold);
         decimal losses = returns.Where(r => r <= threshold).Sum(r => threshold - r);
         return losses == 0m ? null : gains / losses;

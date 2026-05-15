@@ -176,5 +176,5 @@ public class ComparisonReportGeneratorTests : IDisposable
             BacktestStatus.Completed,
             equityCurve ?? new List<EquityCurvePoint> { new(T0, 100_000m) },
             new List<ClosedTrade>(),
-            100_000m, 105_000m, maxDd, sharpe, sharpe, null, null, 10, 0.6m, 1.5m, 200m, -100m, 10m, null, null, 3, 5, 50);
+            100_000m, 105_000m, maxDd, sharpe, sharpe, null, null, null, null, null, null, 10, 0.6m, 1.5m, 200m, -100m, 10m, null, null, 3, 5, 50);
 }

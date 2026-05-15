@@ -293,7 +293,7 @@ public sealed class GeminiStrategyAssistantTests : IDisposable
             new List<Core.Portfolio.EquityCurvePoint>(),
             new List<Core.Portfolio.ClosedTrade>(),
             100_000m, 110_000m, 0.05m,
-            1.5m, 2.0m, 1.2m, 2.0m, 50,
+            1.5m, 2.0m, 1.2m, null, null, null, null, 2.0m, 50,
             0.6m, 1.8m, 500m, -300m, 100m,
             TimeSpan.FromDays(5), 0.95m, 3, 7, 1000,
             DeflatedSharpeRatio: 1.2m);

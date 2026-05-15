@@ -140,6 +140,6 @@ public class RobustnessAdvisoryServiceTests
             BacktestStatus.Completed,
             new List<EquityCurvePoint> { new(T0, 100_000m) },
             new List<ClosedTrade>(),
-            100_000m, 105_000m, maxDrawdown, sharpe, null, null, null, totalTrades,
+            100_000m, 105_000m, maxDrawdown, sharpe, null, null, null, null, null, null, null, totalTrades,
             0.6m, 1.5m, 200m, -100m, 10m, null, kRatio, 3, 5, 50);
 }

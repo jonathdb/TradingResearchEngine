@@ -9,9 +9,9 @@ public enum OptimizationObjective
     /// <summary>Rank by annualised Sharpe ratio (highest wins).</summary>
     Sharpe,
 
-    /// <summary>Rank by Compound Annual Growth Rate (highest wins).</summary>
-    CAGR,
+    /// <summary>Rank by total return percentage: (EndEquity − StartEquity) / StartEquity (highest wins).</summary>
+    TotalReturn,
 
-    /// <summary>Rank by MAR ratio — CAGR divided by max drawdown (highest wins).</summary>
+    /// <summary>Rank by MAR ratio — annualised return divided by max drawdown (highest wins).</summary>
     MAR
 }

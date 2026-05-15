@@ -94,7 +94,7 @@ public sealed class StrategyRegistry
                     }
                     else
                     {
-                        args[i] = GetDefaultForType(p.ParameterType);
+                        args[i] = GetSchemaDefault(p) ?? GetDefaultForType(p.ParameterType);
                     }
                 }
 
@@ -149,13 +149,42 @@ public sealed class StrategyRegistry
             .Select(p => new StrategyParameterInfo(
                 p.Name ?? "",
                 p.ParameterType.Name,
-                p.HasDefaultValue ? p.DefaultValue : null))
+                p.HasDefaultValue ? p.DefaultValue : GetSchemaDefault(p)))
             .ToList();
 
         _paramInfoCache[strategyName] = result;
         return result;
     }
 
+    /// <summary>
+    /// Retrieves the schema-driven default from <see cref="ParameterMetaAttribute.Default"/>
+    /// when explicitly set. Returns null when no attribute-based default is declared.
+    /// </summary>
+    private static object? GetSchemaDefault(ParameterInfo parameter)
+    {
+        var meta = parameter.GetCustomAttribute<ParameterMetaAttribute>();
+        if (meta is null || !meta.HasDefault) return null;
+
+        // Convert the attribute default to the parameter's declared type when possible
+        if (meta.Default is null) return null;
+
+        try
+        {
+            return Convert.ChangeType(meta.Default, parameter.ParameterType);
+        }
+        catch
+        {
+            // If conversion fails, return the raw attribute value
+            return meta.Default;
+        }
+    }
+
+    /// <summary>
+    /// Last-resort fallback: returns a sensible zero/empty value for the given type.
+    /// Prefer <see cref="GetSchemaDefault"/> (attribute-driven) or constructor defaults
+    /// over this method. Retained for backward compatibility with parameters that lack
+    /// both a C# default value and a <see cref="ParameterMetaAttribute.Default"/> declaration.
+    /// </summary>
     private static object? GetDefaultForType(Type type)
     {
         if (type == typeof(int)) return 0;

@@ -22,7 +22,7 @@ public sealed class ReportExporter : IReportExporter
     }
 
     /// <inheritdoc/>
-    public Task<string> ExportMarkdownAsync(BacktestResult result, CancellationToken ct = default)
+    public async Task<string> ExportMarkdownAsync(BacktestResult result, CancellationToken ct = default)
     {
         var sb = new StringBuilder();
         var cfg = result.ScenarioConfig;
@@ -81,12 +81,12 @@ public sealed class ReportExporter : IReportExporter
 
         var fileName = $"{cfg.StrategyType}_{result.RunId:N}.md";
         var path = Path.Combine(_exportDir, fileName);
-        File.WriteAllText(path, sb.ToString());
-        return Task.FromResult(path);
+        await File.WriteAllTextAsync(path, sb.ToString(), ct);
+        return path;
     }
 
     /// <inheritdoc/>
-    public Task<string> ExportTradeCsvAsync(BacktestResult result, CancellationToken ct = default)
+    public async Task<string> ExportTradeCsvAsync(BacktestResult result, CancellationToken ct = default)
     {
         var sb = new StringBuilder();
         sb.AppendLine("EntryDate,ExitDate,Direction,Symbol,Quantity,EntryPrice,ExitPrice,GrossPnL,NetPnL,Commission");
@@ -107,12 +107,12 @@ public sealed class ReportExporter : IReportExporter
 
         var fileName = $"{result.ScenarioConfig.StrategyType}_{result.RunId:N}_trades.csv";
         var path = Path.Combine(_exportDir, fileName);
-        File.WriteAllText(path, sb.ToString());
-        return Task.FromResult(path);
+        await File.WriteAllTextAsync(path, sb.ToString(), ct);
+        return path;
     }
 
     /// <inheritdoc/>
-    public Task<string> ExportEquityCsvAsync(BacktestResult result, CancellationToken ct = default)
+    public async Task<string> ExportEquityCsvAsync(BacktestResult result, CancellationToken ct = default)
     {
         var sb = new StringBuilder();
         sb.AppendLine("Timestamp,TotalEquity,CashBalance,UnrealisedPnl,RealisedPnl,OpenPositionCount");
@@ -129,18 +129,56 @@ public sealed class ReportExporter : IReportExporter
 
         var fileName = $"{result.ScenarioConfig.StrategyType}_{result.RunId:N}_equity.csv";
         var path = Path.Combine(_exportDir, fileName);
-        File.WriteAllText(path, sb.ToString());
-        return Task.FromResult(path);
+        await File.WriteAllTextAsync(path, sb.ToString(), ct);
+        return path;
     }
 
     /// <inheritdoc/>
-    public Task<string> ExportJsonAsync(BacktestResult result, CancellationToken ct = default)
+    public async Task<string> ExportJsonAsync(BacktestResult result, CancellationToken ct = default)
     {
         var json = JsonSerializer.Serialize(result, JsonOpts);
         var fileName = $"{result.RunId:N}.json";
         var path = Path.Combine(_exportDir, fileName);
-        File.WriteAllText(path, json);
-        return Task.FromResult(path);
+        await File.WriteAllTextAsync(path, json, ct);
+        return path;
+    }
+
+    /// <inheritdoc/>
+    public async Task<string> ExportComparisonMarkdownAsync(ComparisonReport report, CancellationToken ct = default)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("# Scenario Comparison");
+        sb.AppendLine();
+        sb.AppendLine($"**Generated:** {DateTimeOffset.UtcNow:yyyy-MM-dd HH:mm:ss} UTC");
+        sb.AppendLine();
+        sb.AppendLine("| Scenario | Sharpe | Sortino | Calmar | Max DD | Win Rate | PF | Expectancy | K-Ratio | Consec L | Trades | End Equity |");
+        sb.AppendLine("|----------|--------|---------|--------|--------|----------|----|------------|---------|----------|--------|------------|");
+
+        foreach (var r in report.Rows)
+        {
+            sb.AppendLine(string.Join("",
+                $"| {r.ScenarioId} ",
+                $"| {Fmt(r.SharpeRatio)} ",
+                $"| {Fmt(r.SortinoRatio)} ",
+                $"| {Fmt(r.CalmarRatio)} ",
+                $"| {r.MaxDrawdown.ToString("P2", CultureInfo.InvariantCulture)} ",
+                $"| {Fmt(r.WinRate, "P1")} ",
+                $"| {Fmt(r.ProfitFactor)} ",
+                $"| {Fmt(r.Expectancy, "F2")} ",
+                $"| {Fmt(r.EquityCurveSmoothness, "F4")} ",
+                $"| {r.MaxConsecutiveLosses} ",
+                $"| {r.TotalTrades} ",
+                $"| ${r.EndEquity.ToString("F2", CultureInfo.InvariantCulture)} |"));
+        }
+
+        sb.AppendLine();
+        sb.AppendLine($"**Best by Sharpe:** {report.BestBySharpe}");
+        sb.AppendLine($"**Best by Drawdown:** {report.BestByDrawdown}");
+
+        var fileName = $"comparison_{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss}.md";
+        var path = Path.Combine(_exportDir, fileName);
+        await File.WriteAllTextAsync(path, sb.ToString(), ct);
+        return path;
     }
 
     private static string Fmt(decimal? value, string format = "F4") =>

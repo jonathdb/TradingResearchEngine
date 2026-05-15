@@ -859,6 +859,34 @@ The concrete Web host is responsible for actually running studies on background 
 
 `IReportExporter` (`Application/Export/`) — exports a `BacktestResult` to various formats. Methods: `ExportMarkdownAsync`, `ExportTradeCsvAsync`, `ExportEquityCsvAsync`, `ExportJsonAsync`. Each returns the file path of the exported file.
 
+### ExportValidator (Application/Export/)
+
+`ExportValidator` validates generated Pine Script and MQL exports for structural correctness before presenting exported code to the user. It uses structural and syntax heuristics to detect common issues.
+
+**Public API:**
+
+| Method | Parameters | Returns |
+|---|---|---|
+| `Validate` | `string code`, `ExportFormat format` | `ExportValidationResult` |
+
+**ExportFormat enum:**
+
+| Value | Description |
+|---|---|
+| `MQL4` | MetaTrader 4 Expert Advisor (.mq4) |
+| `MQL5` | MetaTrader 5 Expert Advisor (.mq5) |
+| `PineScript` | TradingView Pine Script v6 (.pine) |
+
+**Validation checks by format:**
+
+- **All formats:** Brace matching (tracks depth, detects unclosed and unmatched braces, respects string literals and line comments)
+- **PineScript:** Requires `//@version=N` directive (N in 1–6) and a `strategy()` declaration
+- **MQL4/MQL5:** Requires `OnInit()` and `OnTick()` function definitions
+
+**ExportValidationResult** — sealed record with `IsValid` (bool) and `Errors` (`IReadOnlyList<ExportValidationError>`). Factory methods: `Success()` and `Failure(errors)`.
+
+**ExportValidationError** — sealed record with `Line` (int?, null if not line-specific), `Section` (string, e.g. "braces", "version directive", "OnInit"), and `Message` (human-readable description).
+
 ## V4 Migration Service
 
 `MigrationService` (`Infrastructure/Persistence/`) runs once on startup to migrate orphaned V2/V2.1 `BacktestResult` records into the V4 strategy model. Non-destructive: original files are untouched.

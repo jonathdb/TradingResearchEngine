@@ -96,7 +96,7 @@ public class SqliteIndexSyncProperties
         return new BacktestResult(
             Guid.NewGuid(), config, BacktestStatus.Completed,
             Array.Empty<EquityCurvePoint>(), Array.Empty<ClosedTrade>(),
-            100_000m, 110_000m, 0.05m, 1.5m, null, null, null,
+            100_000m, 110_000m, 0.05m, 1.5m, null, null, null, null, null, null, null,
             10, 0.6m, 1.5m, 500m, -300m, 100m, null, null, 3, 5, 1000,
             StrategyVersionId: versionId);
     }

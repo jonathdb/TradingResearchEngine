@@ -376,32 +376,32 @@ This implementation plan covers 35+ requirements across 10 sequential PR gates f
   - Ensure all tests pass, ask the user if questions arise.
 
 
-- [ ] 19. PR Gate 9 — Code Quality & Async Correctness
-  - [ ] 19.1 Rename OptimizationObjective.CAGR to TotalReturn or compute true annualised CAGR
+- [x] 19. PR Gate 9 — Code Quality & Async Correctness
+  - [x] 19.1 Rename OptimizationObjective.CAGR to TotalReturn or compute true annualised CAGR
     - `GridOptimizer.ComputeCagr` currently computes total return, not annualised CAGR
     - Either rename to `TotalReturn` (and update exclusion messages) or compute true CAGR using `BarsPerYear` and window length
     - Ensure cross-window comparison is coherent regardless of IS window length
     - _Review: Follow-up 2_
-  - [ ] 19.2 Replace synchronous File.WriteAllText with File.WriteAllTextAsync in ReportExporter
+  - [x] 19.2 Replace synchronous File.WriteAllText with File.WriteAllTextAsync in ReportExporter
     - `ExportMarkdownAsync`, `ExportTradeCsvAsync`, `ExportEquityCsvAsync`, `ExportJsonAsync` all use synchronous I/O
     - Replace with `File.WriteAllTextAsync` to avoid blocking thread-pool threads under load
     - _Review: Opp 8_
-  - [ ] 19.3 Add MaxPromptLength guard to GeminiStrategyAssistant
+  - [x] 19.3 Add MaxPromptLength guard to GeminiStrategyAssistant
     - Add `MaxPromptLength` property to `GeminiOptions` (default 30000 chars)
     - Validate combined system prompt + user message length before API call
     - Return descriptive error when exceeded rather than opaque API failure
     - _Review: Opp 9_
-  - [ ] 19.4 Resolve commented-out metrics in BacktestResult (VaR95, CVaR95, OmegaRatio, UlcerIndex)
+  - [x] 19.4 Resolve commented-out metrics in BacktestResult (VaR95, CVaR95, OmegaRatio, UlcerIndex)
     - Determine if these are intentionally deferred or unintentionally omitted
     - If deferred: document as known gap in CHANGELOG with tracking reference
     - If ready: restore computation in MetricsCalculator and uncomment fields
     - _Review: Opp 10_
-  - [ ] 19.5 Add ExportComparisonMarkdownAsync to IReportExporter
+  - [x] 19.5 Add ExportComparisonMarkdownAsync to IReportExporter
     - `MarkdownReporter.RenderToMarkdown(ComparisonReport)` produces a string but never persists it
     - Add `Task<string> ExportComparisonMarkdownAsync(ComparisonReport, CancellationToken)` to `IReportExporter`
     - Implement in `ReportExporter` and call from `ScenarioComparisonUseCase`
     - _Review: Bug 3_
-  - [ ] 19.6 Migrate StrategyRegistry default parameter inference from reflection to attribute-based schema
+  - [x] 19.6 Migrate StrategyRegistry default parameter inference from reflection to attribute-based schema
     - Replace `switch` on `typeof(int)` / `typeof(decimal)` with `[StrategyParameter(default: 14)]` attribute
     - Or implement `IStrategyParameterSchema` static interface method for explicit defaults
     - Make defaults schema-driven rather than inferred at runtime
