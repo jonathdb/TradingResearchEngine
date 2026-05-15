@@ -2,8 +2,10 @@ using FsCheck;
 using FsCheck.Xunit;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Moq;
 using System.Runtime.CompilerServices;
+using TradingResearchEngine.Application.Configuration;
 using TradingResearchEngine.Application.Execution;
 using TradingResearchEngine.Application.PaperTrading;
 using TradingResearchEngine.Core.Configuration;
@@ -137,6 +139,7 @@ public class PaperTradingSessionProperties
             actualSlippage,
             actualCommission,
             mockRepo.Object,
+            new TestOptionsMonitor<PaperTradingOptions>(new PaperTradingOptions()),
             loggerFactory.CreateLogger<SimulatedPaperTradingSession>());
     }
 

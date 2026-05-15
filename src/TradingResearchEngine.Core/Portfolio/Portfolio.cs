@@ -7,6 +7,7 @@ namespace TradingResearchEngine.Core.Portfolio;
 /// <summary>
 /// Tracks open positions, cash balance, and equity curve by consuming <see cref="FillEvent"/> instances.
 /// V6: Adds ShortPositions dictionary for short position tracking with correct mark-to-market.
+/// V7: Cached position snapshots and O(1) OpenPositionCount for hot-path optimization.
 /// </summary>
 public sealed class Portfolio
 {
@@ -15,6 +16,12 @@ public sealed class Portfolio
     private readonly Dictionary<string, ShortPositionState> _shortPositions = new();
     private readonly List<EquityCurvePoint> _equityCurve = new();
     private readonly List<ClosedTrade> _closedTrades = new();
+
+    // Cached snapshots — rebuilt lazily only on state change
+    private IReadOnlyDictionary<string, Position>? _cachedPositions;
+    private IReadOnlyDictionary<string, Position>? _cachedShortPositions;
+    private int _openPositionCount;
+    private bool _snapshotDirty = true;
 
     /// <summary>Initialises the portfolio with a starting cash balance.</summary>
     public Portfolio(decimal initialCash, ILogger<Portfolio> logger)
@@ -35,12 +42,24 @@ public sealed class Portfolio
     public decimal TotalEquity { get; private set; }
 
     /// <summary>Open long positions keyed by symbol.</summary>
-    public IReadOnlyDictionary<string, Position> Positions =>
-        _positions.ToDictionary(kv => kv.Key, kv => kv.Value.ToPosition());
+    public IReadOnlyDictionary<string, Position> Positions
+    {
+        get
+        {
+            if (_snapshotDirty) RebuildSnapshots();
+            return _cachedPositions!;
+        }
+    }
 
     /// <summary>V6: Open short positions keyed by symbol.</summary>
-    public IReadOnlyDictionary<string, Position> ShortPositions =>
-        _shortPositions.ToDictionary(kv => kv.Key, kv => kv.Value.ToPosition());
+    public IReadOnlyDictionary<string, Position> ShortPositions
+    {
+        get
+        {
+            if (_snapshotDirty) RebuildSnapshots();
+            return _cachedShortPositions!;
+        }
+    }
 
     /// <summary>Time-ordered equity snapshots, one per fill.</summary>
     public IReadOnlyList<EquityCurvePoint> EquityCurve => _equityCurve;
@@ -48,10 +67,15 @@ public sealed class Portfolio
     /// <summary>All completed round-trip trades.</summary>
     public IReadOnlyList<ClosedTrade> ClosedTrades => _closedTrades;
 
-    /// <summary>Count of all open positions (long + short).</summary>
-    public int OpenPositionCount =>
-        _positions.Count(p => p.Value.Quantity > 0m) +
-        _shortPositions.Count(p => p.Value.Quantity > 0m);
+    /// <summary>Count of all open positions (long + short). O(1) access via cached field.</summary>
+    public int OpenPositionCount
+    {
+        get
+        {
+            if (_snapshotDirty) RebuildSnapshots();
+            return _openPositionCount;
+        }
+    }
 
     /// <summary>Returns an immutable snapshot of current portfolio state for the RiskLayer.</summary>
     public PortfolioSnapshot TakeSnapshot() =>
@@ -140,6 +164,20 @@ public sealed class Portfolio
 
         MarkToMarketFromFill(fill);
         RecalculateTotalEquity();
+        InvalidateSnapshots();
+    }
+
+    /// <summary>Marks cached snapshots as stale. Called after any position state change.</summary>
+    private void InvalidateSnapshots() => _snapshotDirty = true;
+
+    /// <summary>Rebuilds cached position snapshots from current internal state.</summary>
+    private void RebuildSnapshots()
+    {
+        _cachedPositions = _positions.ToDictionary(kv => kv.Key, kv => kv.Value.ToPosition());
+        _cachedShortPositions = _shortPositions.ToDictionary(kv => kv.Key, kv => kv.Value.ToPosition());
+        _openPositionCount = _positions.Count(p => p.Value.Quantity > 0m) +
+                             _shortPositions.Count(p => p.Value.Quantity > 0m);
+        _snapshotDirty = false;
     }
 
     private void ApplyBuyFill(FillEvent fill)
@@ -246,6 +284,7 @@ public sealed class Portfolio
         if (_shortPositions.TryGetValue(symbol, out var shortState))
             shortState.UpdateUnrealisedPnl(price);
 
+        InvalidateSnapshots();
         RecalculateTotalEquity();
         AppendEquityCurvePoint(timestamp);
     }

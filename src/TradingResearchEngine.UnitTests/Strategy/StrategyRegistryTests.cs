@@ -104,4 +104,41 @@ public class StrategyRegistryTests
         Assert.Contains("macro-regime-rotation", registry.KnownNames);
         Assert.Contains("baseline-buy-and-hold", registry.KnownNames);
     }
+
+    [Fact]
+    public void VerifyAll_AllStrategiesValid_ReturnsAllSucceeded()
+    {
+        var registry = new StrategyRegistry();
+        registry.RegisterAssembly(typeof(TestStrategy).Assembly);
+
+        var result = registry.VerifyAll();
+
+        Assert.True(result.AllSucceeded);
+        Assert.Equal(0, result.FailureCount);
+        Assert.True(result.TotalRegistered > 0);
+    }
+
+    [Fact]
+    public void VerifyAll_ApplicationStrategies_ReportsRegisteredCount()
+    {
+        var registry = new StrategyRegistry();
+        registry.RegisterAssembly(typeof(CompositeStrategy).Assembly);
+
+        var result = registry.VerifyAll();
+
+        // All built-in strategies should have default-constructible parameters
+        Assert.True(result.TotalRegistered >= 8); // At least the 8 known strategies
+    }
+
+    [Fact]
+    public void VerifyAll_EmptyRegistry_ReturnsZeroTotalAndNoFailures()
+    {
+        var registry = new StrategyRegistry();
+
+        var result = registry.VerifyAll();
+
+        Assert.True(result.AllSucceeded);
+        Assert.Equal(0, result.TotalRegistered);
+        Assert.Equal(0, result.FailureCount);
+    }
 }

@@ -55,7 +55,7 @@ public sealed class JobExecutor : IDisposable
         var allJobs = await _jobRepo.ListAsync(ct);
         foreach (var job in allJobs)
         {
-            if (job.Status is JobStatus.Queued or JobStatus.Running)
+            if (job.Status is JobStatus.Queued or JobStatus.Running or JobStatus.Retrying)
             {
                 var failed = job with
                 {
@@ -171,6 +171,60 @@ public sealed class JobExecutor : IDisposable
     }
 
     /// <summary>
+    /// Transitions a job to <see cref="JobStatus.Failed"/> with failure type classification.
+    /// Flushes any cached progress before persisting the terminal state.
+    /// </summary>
+    /// <param name="jobId">The job identifier.</param>
+    /// <param name="errorMessage">User-friendly error message (no stack traces).</param>
+    /// <param name="failureType">Classification of the failure.</param>
+    /// <param name="retryCount">Number of retry attempts made before final failure.</param>
+    /// <param name="ct">Cancellation token.</param>
+    public async Task MarkFailedWithTypeAsync(
+        string jobId,
+        string errorMessage,
+        JobFailureType failureType,
+        int retryCount,
+        CancellationToken ct = default)
+    {
+        await FlushProgressAsync(jobId, ct);
+
+        var job = await _jobRepo.GetByIdAsync(jobId, ct);
+        if (job is null) return;
+
+        var failed = job with
+        {
+            Status = JobStatus.Failed,
+            CompletedAt = DateTimeOffset.UtcNow,
+            ErrorMessage = errorMessage,
+            FailureType = failureType,
+            RetryCount = retryCount
+        };
+        await _jobRepo.SaveAsync(failed, ct);
+        CleanupActive(jobId);
+    }
+
+    /// <summary>
+    /// Transitions a job to <see cref="JobStatus.Retrying"/> indicating a transient failure
+    /// with a pending retry attempt.
+    /// </summary>
+    /// <param name="jobId">The job identifier.</param>
+    /// <param name="retryCount">The current retry attempt number.</param>
+    /// <param name="ct">Cancellation token.</param>
+    public async Task MarkRetryingAsync(string jobId, int retryCount, CancellationToken ct = default)
+    {
+        var job = await _jobRepo.GetByIdAsync(jobId, ct);
+        if (job is null) return;
+
+        var retrying = job with
+        {
+            Status = JobStatus.Retrying,
+            RetryCount = retryCount,
+            FailureType = JobFailureType.Transient
+        };
+        await _jobRepo.SaveAsync(retrying, ct);
+    }
+
+    /// <summary>
     /// Updates the progress snapshot for a running job. Progress is cached in memory
     /// and only persisted on flush (every ~2 seconds or on job completion) to reduce I/O.
     /// </summary>
@@ -240,7 +294,7 @@ public sealed class JobExecutor : IDisposable
         var job = await _jobRepo.GetByIdAsync(jobId, ct);
         if (job is null) return false;
 
-        if (job.Status is not (JobStatus.Queued or JobStatus.Running))
+        if (job.Status is not (JobStatus.Queued or JobStatus.Running or JobStatus.Retrying))
             return false;
 
         var cancelled = job with
@@ -274,7 +328,7 @@ public sealed class JobExecutor : IDisposable
     {
         var allJobs = await _jobRepo.ListAsync(ct);
         var activeJobs = allJobs
-            .Where(j => j.Status is JobStatus.Queued or JobStatus.Running)
+            .Where(j => j.Status is JobStatus.Queued or JobStatus.Running or JobStatus.Retrying)
             .OrderBy(j => j.SubmittedAt)
             .ToList();
 

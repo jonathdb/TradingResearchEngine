@@ -132,13 +132,13 @@ new StrategyTemplate(
 
 ### Step 4: Verify
 
-Run the discovery endpoint to confirm your strategy is registered:
+On application startup, `StrategyRegistryValidationService` automatically attempts to instantiate every registered strategy. If a strategy fails instantiation (e.g. missing dependencies, constructor errors), a warning is logged but the application continues to start. Check the startup logs for verification results:
 
 ```
-GET /strategies/rsi-mean-reversion/schema
+info: StrategyRegistryValidationService — Strategy registry verification complete: all 6 strategies verified successfully.
 ```
 
-This returns the full `StrategyParameterSchema` array built from your constructor and `[ParameterMeta]` attributes.
+You can also confirm registration via the strategy schema in the UI or by inspecting `StrategyRegistry.KnownNames` at runtime.
 
 ---
 
@@ -280,3 +280,50 @@ config.EffectiveResearchConfig  // Research ?? new ResearchConfig(ResearchWorkfl
 ```
 
 All engine code reads from `Effective*` properties, never directly from top-level fields. This ensures both formats produce identical behavior.
+
+### ScenarioConfigNormalizer
+
+`ScenarioConfigNormalizer` (`Application/Configuration/ScenarioConfigNormalizer.cs`) provides an explicit in-memory transformation from any config shape (legacy flat or modern sub-object) to the canonical V5+ form where all five sub-objects are populated.
+
+```csharp
+using TradingResearchEngine.Application.Configuration;
+
+// After deserialization, normalize to canonical form:
+var canonical = ScenarioConfigNormalizer.Normalize(rawConfig);
+
+// Check if a config is already canonical:
+bool isCanonical = ScenarioConfigNormalizer.IsCanonical(rawConfig);
+```
+
+Key behaviors:
+- If all sub-objects (`Data`, `Strategy`, `Risk`, `Execution`, `Research`) are already populated, the config is returned as-is.
+- If any sub-object is null, it is constructed from the corresponding top-level flat fields.
+- The normalizer does NOT modify files on disk. It is an in-memory transformation applied after deserialization.
+- Canonical shape is persisted only on explicit save operations.
+- Downstream validation and runtime code should consume the normalized config, ensuring a single validation path regardless of the original format.
+
+### DataConfigExtensions — Typed Provider Option Access
+
+`DataConfigExtensions` (`Application/Configuration/DataConfigExtensions.cs`) provides strongly-typed extension methods for accessing `DataConfig.DataProviderOptions`, replacing scattered string-key dictionary lookups in DataHandler, workflows, and providers.
+
+```csharp
+using TradingResearchEngine.Application.Configuration;
+
+// Get typed options from a DataConfig instance:
+CsvDataProviderOptions csvOpts = dataConfig.GetCsvOptions();
+HttpDataProviderOptions httpOpts = dataConfig.GetHttpOptions();
+DukascopyDataProviderOptions dukasOpts = dataConfig.GetDukascopyOptions();
+
+// Access common fields directly from the options dictionary:
+string symbol = options.GetSymbol();         // defaults to ""
+string interval = options.GetInterval();     // defaults to "1D"
+DateTimeOffset from = options.GetFrom();     // defaults to DateTimeOffset.MinValue
+DateTimeOffset to = options.GetTo();         // defaults to DateTimeOffset.MaxValue
+string filePath = options.GetFilePath();     // defaults to ""
+```
+
+Key behaviors:
+- Each `Get*Options()` method delegates to `DataProviderOptionsAdapter` which maps dictionary keys to typed option records (`CsvDataProviderOptions`, `HttpDataProviderOptions`, `DukascopyDataProviderOptions`).
+- Missing keys return sensible defaults — no exceptions on absent values.
+- The underlying `DataProviderOptions` dictionary is preserved for backward compatibility with existing JSON configuration files.
+- New code should prefer these typed extensions over raw dictionary access (`options["Symbol"]`, `options["FilePath"]`, etc.).

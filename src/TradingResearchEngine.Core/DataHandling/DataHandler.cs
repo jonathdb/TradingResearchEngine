@@ -10,6 +10,7 @@ namespace TradingResearchEngine.Core.DataHandling;
 /// <summary>
 /// Wraps an <see cref="IDataProvider"/> and emits typed market data events into the EventQueue.
 /// Skips malformed records and tracks a <see cref="MalformedRecordCount"/>.
+/// Provides provider-aware progress estimation that refines as bars are consumed.
 /// </summary>
 public sealed class DataHandler
 {
@@ -19,13 +20,29 @@ public sealed class DataHandler
     private readonly BarDataPool? _barDataPool;
     private readonly IAsyncEnumerator<BarRecord>? _barEnumerator;
     private readonly IAsyncEnumerator<TickRecord>? _tickEnumerator;
+    private readonly DateTimeOffset _from;
+    private readonly DateTimeOffset _to;
     private bool _hasMore = true;
+
+    private int _estimatedTotalBars;
+    private bool _estimateInitialized;
+    private int _barsConsumed;
 
     /// <summary>Number of records skipped due to missing or unparseable fields.</summary>
     public int MalformedRecordCount { get; private set; }
 
     /// <summary>Returns <c>true</c> while the data provider has more records to emit.</summary>
     public bool HasMore => _hasMore;
+
+    /// <summary>Number of bars consumed so far during execution.</summary>
+    public int BarsConsumed => _barsConsumed;
+
+    /// <summary>
+    /// Current estimated total bar count. Updated initially from the provider estimate or
+    /// date-range fallback, then refined as actual bars are consumed during execution.
+    /// Returns zero if no estimate is available yet.
+    /// </summary>
+    public int EstimatedTotalBars => _estimatedTotalBars;
 
     /// <summary>
     /// Initialises the handler. Throws <see cref="ConfigurationException"/> when
@@ -45,13 +62,55 @@ public sealed class DataHandler
         var opts = config.DataProviderOptions;
         string symbol = opts.TryGetValue("Symbol", out var s) ? s?.ToString() ?? "" : "";
         string interval = opts.TryGetValue("Interval", out var i) ? i?.ToString() ?? "1D" : "1D";
-        DateTimeOffset from = ParseDateTimeOffset(opts, "From", DateTimeOffset.MinValue);
-        DateTimeOffset to = ParseDateTimeOffset(opts, "To", DateTimeOffset.MaxValue);
+        _from = ParseDateTimeOffset(opts, "From", DateTimeOffset.MinValue);
+        _to = ParseDateTimeOffset(opts, "To", DateTimeOffset.MaxValue);
 
         if (config.ReplayMode == ReplayMode.Tick)
-            _tickEnumerator = provider.GetTicks(symbol, from, to).GetAsyncEnumerator();
+            _tickEnumerator = provider.GetTicks(symbol, _from, _to).GetAsyncEnumerator();
         else
-            _barEnumerator = provider.GetBars(symbol, interval, from, to).GetAsyncEnumerator();
+            _barEnumerator = provider.GetBars(symbol, interval, _from, _to).GetAsyncEnumerator();
+    }
+
+    /// <summary>
+    /// Initialises the progress estimate by querying the provider first, then falling back
+    /// to a date-range-based calculation using <see cref="ScenarioConfig.BarsPerYear"/>.
+    /// Must be called before the engine loop starts. Lightweight — does not preload data.
+    /// </summary>
+    /// <param name="ct">Cancellation token for cooperative cancellation.</param>
+    public async ValueTask InitializeEstimateAsync(CancellationToken ct = default)
+    {
+        if (_estimateInitialized) return;
+
+        // Try provider-aware estimate first (Requirement 13.2)
+        var providerEstimate = await _provider.EstimateBarCountAsync(ct);
+        if (providerEstimate.HasValue && providerEstimate.Value > 0)
+        {
+            _estimatedTotalBars = providerEstimate.Value;
+            _estimateInitialized = true;
+            return;
+        }
+
+        // Fallback: estimate from date range using BarsPerYear (Requirement 13.1)
+        _estimatedTotalBars = EstimateFromDateRange(_from, _to, _config.BarsPerYear);
+        _estimateInitialized = true;
+    }
+
+    /// <summary>
+    /// Notifies the handler that a bar has been consumed, allowing it to refine
+    /// the progress estimate as actual data flows through (Requirement 13.4).
+    /// </summary>
+    public void NotifyBarConsumed()
+    {
+        _barsConsumed++;
+
+        // Refine estimate upward if we've already exceeded the initial estimate
+        // This handles cases where the provider underestimated or the date-range fallback was too low
+        if (_barsConsumed > _estimatedTotalBars && _estimatedTotalBars > 0)
+        {
+            // Project forward: assume we're ~80% through when we exceed the estimate
+            // This provides a smooth ramp rather than a sudden jump
+            _estimatedTotalBars = (int)(_barsConsumed * 1.25);
+        }
     }
 
     /// <summary>
@@ -109,6 +168,26 @@ public sealed class DataHandler
 
     private static bool IsValidTick(TickRecord r) =>
         !string.IsNullOrEmpty(r.Symbol) && r.BidLevels.Count > 0 && r.AskLevels.Count > 0;
+
+    /// <summary>
+    /// Estimates total bar count from a date range using BarsPerYear.
+    /// Falls back to a 5-year estimate when dates are unbounded.
+    /// </summary>
+    private static int EstimateFromDateRange(DateTimeOffset from, DateTimeOffset to, int barsPerYear)
+    {
+        const int DefaultYears = 5;
+
+        // If both bounds are specified and reasonable, compute from the range
+        if (from != DateTimeOffset.MinValue && to != DateTimeOffset.MaxValue)
+        {
+            double years = (to - from).TotalDays / 365.25;
+            if (years > 0)
+                return Math.Max(1, (int)(barsPerYear * years));
+        }
+
+        // Fallback: assume a typical multi-year run
+        return barsPerYear * DefaultYears;
+    }
 
     private static DateTimeOffset ParseDateTimeOffset(
         Dictionary<string, object> opts, string key, DateTimeOffset fallback)

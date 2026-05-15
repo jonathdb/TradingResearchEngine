@@ -1,5 +1,7 @@
 using System.Reactive.Subjects;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using TradingResearchEngine.Application.Configuration;
 using TradingResearchEngine.Core.Configuration;
 using TradingResearchEngine.Core.DataHandling;
 using TradingResearchEngine.Core.Events;
@@ -30,7 +32,9 @@ public sealed class SimulatedPaperTradingSession : IPaperTradingSession, IDispos
     private readonly ISlippageModel _slippageModel;
     private readonly ICommissionModel _commissionModel;
     private readonly IRepository<PaperSessionRecord> _repository;
+    private readonly IOptionsMonitor<PaperTradingOptions> _optionsMonitor;
     private readonly ILogger<SimulatedPaperTradingSession> _logger;
+    private IDisposable? _optionsChangeListener;
 
     private readonly Subject<PaperBarEvent> _barSubject = new();
     private readonly Subject<PaperTradeEvent> _tradeSubject = new();
@@ -45,6 +49,7 @@ public sealed class SimulatedPaperTradingSession : IPaperTradingSession, IDispos
     private MarketDataEvent? _lastMarketEvent;
     private ScenarioConfig? _config;
     private readonly SemaphoreSlim _stateLock = new(1, 1);
+    private long _currentPollingIntervalTicks;
 
     /// <summary>
     /// Initializes a new instance of <see cref="SimulatedPaperTradingSession"/>.
@@ -56,6 +61,7 @@ public sealed class SimulatedPaperTradingSession : IPaperTradingSession, IDispos
     /// <param name="slippageModel">Slippage model for fill price adjustment.</param>
     /// <param name="commissionModel">Commission model for trade cost computation.</param>
     /// <param name="repository">Repository for persisting session records.</param>
+    /// <param name="optionsMonitor">Options monitor for hot-reloadable paper-trading configuration.</param>
     /// <param name="logger">Logger instance.</param>
     public SimulatedPaperTradingSession(
         IStreamingDataProvider streamingDataProvider,
@@ -65,6 +71,7 @@ public sealed class SimulatedPaperTradingSession : IPaperTradingSession, IDispos
         ISlippageModel slippageModel,
         ICommissionModel commissionModel,
         IRepository<PaperSessionRecord> repository,
+        IOptionsMonitor<PaperTradingOptions> optionsMonitor,
         ILogger<SimulatedPaperTradingSession> logger)
     {
         _streamingDataProvider = streamingDataProvider;
@@ -74,11 +81,23 @@ public sealed class SimulatedPaperTradingSession : IPaperTradingSession, IDispos
         _slippageModel = slippageModel;
         _commissionModel = commissionModel;
         _repository = repository;
+        _optionsMonitor = optionsMonitor;
         _logger = logger;
+
+        // Initialize with validated current interval
+        _currentPollingIntervalTicks = GetValidatedInterval(optionsMonitor.CurrentValue).Ticks;
+
+        // Subscribe to configuration changes for hot-reload
+        _optionsChangeListener = _optionsMonitor.OnChange(OnOptionsChanged);
     }
 
     /// <inheritdoc/>
     public PaperTradingStatus Status { get; private set; } = PaperTradingStatus.Idle;
+
+    /// <summary>
+    /// Gets the current effective polling interval, reflecting any hot-reloaded configuration changes.
+    /// </summary>
+    public TimeSpan CurrentPollingInterval => new(Interlocked.Read(ref _currentPollingIntervalTicks));
 
     /// <inheritdoc/>
     public CorePortfolio Portfolio => _portfolio
@@ -363,9 +382,53 @@ public sealed class SimulatedPaperTradingSession : IPaperTradingSession, IDispos
         await _repository.SaveAsync(record);
     }
 
+    /// <summary>
+    /// Handles configuration changes from <see cref="IOptionsMonitor{TOptions}"/>.
+    /// Validates the new interval and applies it without requiring a restart.
+    /// </summary>
+    private void OnOptionsChanged(PaperTradingOptions newOptions, string? name)
+    {
+        var validated = GetValidatedInterval(newOptions);
+        Interlocked.Exchange(ref _currentPollingIntervalTicks, validated.Ticks);
+        _logger.LogInformation(
+            "Paper-trading polling interval updated to {IntervalMs}ms via hot-reload.",
+            validated.TotalMilliseconds);
+    }
+
+    /// <summary>
+    /// Validates the polling interval from the given options and clamps it within bounds.
+    /// Logs a warning if the configured value is out of range.
+    /// </summary>
+    private TimeSpan GetValidatedInterval(PaperTradingOptions options)
+    {
+        var errors = options.Validate();
+        if (errors.Count > 0)
+        {
+            foreach (var error in errors)
+                _logger.LogWarning("PaperTradingOptions validation: {Error}", error);
+
+            // Clamp to valid bounds rather than rejecting entirely
+            var clamped = options.PollingInterval;
+            if (clamped <= TimeSpan.Zero)
+                clamped = options.MinInterval > TimeSpan.Zero ? options.MinInterval : TimeSpan.FromSeconds(5);
+            if (clamped < options.MinInterval && options.MinInterval > TimeSpan.Zero)
+                clamped = options.MinInterval;
+            if (clamped > options.MaxInterval && options.MaxInterval > TimeSpan.Zero)
+                clamped = options.MaxInterval;
+
+            _logger.LogWarning(
+                "Paper-trading polling interval clamped to {IntervalMs}ms due to validation errors.",
+                clamped.TotalMilliseconds);
+            return clamped;
+        }
+
+        return options.PollingInterval;
+    }
+
     /// <summary>Disposes resources used by the session.</summary>
     public void Dispose()
     {
+        _optionsChangeListener?.Dispose();
         _pauseCts?.Dispose();
         _linkedCts?.Dispose();
         _barSubject.Dispose();

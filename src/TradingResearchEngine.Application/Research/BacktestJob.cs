@@ -18,6 +18,8 @@ namespace TradingResearchEngine.Application.Research;
 /// <param name="ErrorMessage">User-friendly error message when the job has failed, or <c>null</c>.</param>
 /// <param name="ReproducibilitySnapshot">Snapshot of all inputs needed to reproduce this run, or <c>null</c>.</param>
 /// <param name="Config">The scenario configuration to execute, or <c>null</c> for legacy jobs.</param>
+/// <param name="RetryCount">Number of retry attempts that have been made for this job. Default 0.</param>
+/// <param name="FailureType">Classification of the failure that caused the job to fail or retry, or <c>null</c> if no failure has occurred.</param>
 public sealed record BacktestJob(
     string JobId,
     JobType JobType,
@@ -29,7 +31,9 @@ public sealed record BacktestJob(
     string? ResultId = null,
     string? ErrorMessage = null,
     ReproducibilitySnapshot? ReproducibilitySnapshot = null,
-    ScenarioConfig? Config = null) : IHasId
+    ScenarioConfig? Config = null,
+    int RetryCount = 0,
+    JobFailureType? FailureType = null) : IHasId
 {
     /// <inheritdoc/>
     public string Id => JobId;

@@ -29,4 +29,11 @@ public sealed record GeminiOptions
     /// Default: <c>Prompts/strategy-assistant-system.md</c>.
     /// </summary>
     public string SystemPromptFilePath { get; init; } = "Prompts/strategy-assistant-system.md";
+
+    /// <summary>
+    /// Maximum time allowed for a single outbound AI API call before it is cancelled.
+    /// The timeout applies per-call (each retry attempt gets its own timeout window).
+    /// Default: 60 seconds.
+    /// </summary>
+    public TimeSpan CallTimeout { get; init; } = TimeSpan.FromSeconds(60);
 }

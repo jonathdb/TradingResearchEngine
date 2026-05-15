@@ -1,11 +1,26 @@
 @* Step 4: Realism & Risk Profile — preset cards + advanced overrides *@
 @using TradingResearchEngine.Application.Strategies
+@using TradingResearchEngine.Core.Configuration
 
 <MudText Typo="Typo.h6" Class="mb-3">Realism & Risk Profile</MudText>
 
 <MudText Typo="Typo.body2" Class="text-muted mb-3">
     Choose a preset to configure execution realism and risk settings. You can fine-tune individual settings below.
 </MudText>
+
+@* Beginner-mode explanatory text describing default realism settings *@
+@if (Model.IsBeginnerMode)
+{
+    <MudAlert Severity="Severity.Info" Class="mb-3" aria-label="Default realism explanation">
+        <MudText Typo="Typo.subtitle2" Class="mb-1">Default Realism: Standard Backtest</MudText>
+        <MudText Typo="Typo.body2">
+            Your strategy uses the <strong>Standard Backtest</strong> realism profile by default.
+            This applies realistic execution assumptions including next-bar-open fills and fixed spread slippage,
+            so your backtest results reflect conditions closer to live trading. This prevents misleadingly
+            optimistic results that zero-cost profiles can produce.
+        </MudText>
+    </MudAlert>
+}
 
 @if (_validationErrors.Count > 0)
 {
@@ -28,12 +43,31 @@
     </MudAlert>
 }
 
-<div class="mt-4">
-    <AdvancedOverridesPanel Model="@Model"
-                            PresetName="@(_activePreset?.Name)"
-                            ActivePreset="@_activePreset"
-                            OnModelChanged="OnChanged" />
-</div>
+@* In beginner mode, advanced overrides are collapsed and de-emphasized but still accessible *@
+@if (Model.IsBeginnerMode)
+{
+    <MudExpansionPanels Class="mt-4">
+        <MudExpansionPanel Text="Advanced Realism Overrides (optional)" Expanded="false"
+                           aria-label="Advanced overrides for experienced users">
+            <MudText Typo="Typo.caption" Class="text-muted mb-2">
+                These settings are for experienced users. The defaults above are suitable for most backtests.
+            </MudText>
+            <AdvancedOverridesPanel Model="@Model"
+                                    PresetName="@(_activePreset?.Name)"
+                                    ActivePreset="@_activePreset"
+                                    OnModelChanged="OnChanged" />
+        </MudExpansionPanel>
+    </MudExpansionPanels>
+}
+else
+{
+    <div class="mt-4">
+        <AdvancedOverridesPanel Model="@Model"
+                                PresetName="@(_activePreset?.Name)"
+                                ActivePreset="@_activePreset"
+                                OnModelChanged="OnChanged" />
+    </div>
+}
 
 @code {
     [Parameter] public BuilderViewModel Model { get; set; } = default!;
@@ -61,6 +95,7 @@
         Model.PresetId = preset.PresetId;
         Model.SlippageModelType = preset.ExecutionConfig.SlippageModelType;
         Model.CommissionModelType = preset.ExecutionConfig.CommissionModelType;
+        Model.RealismProfile = preset.ExecutionConfig.RealismProfile;
         if (preset.RiskConfig is not null)
         {
             Model.InitialCash = preset.RiskConfig.InitialCash;

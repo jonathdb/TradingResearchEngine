@@ -73,9 +73,9 @@ When `DefaultRiskLayer.ConvertSignal` receives a `SignalEvent` with `Direction.F
 
 ## Data Provider Resolution
 
-`RunScenarioUseCase` resolves the `IDataProvider` based on `ScenarioConfig.DataProviderType` at run time rather than pulling a single provider from DI. This allows each scenario to specify its own data source (e.g. `csv`, `http`, `dukascopy`) and pass provider-specific settings via `DataProviderOptions`.
+`RunScenarioUseCase` resolves the `IDataProvider` based on `ScenarioConfig.DataProviderType` at run time rather than pulling a single provider from DI. This allows each scenario to specify its own data source (e.g. `csv`, `http`, `dukascopy`) and pass provider-specific settings via `DataProviderOptions`. For typed access to these settings, use the `DataConfigExtensions` extension methods (e.g. `dataConfig.GetCsvOptions()`, `dataConfig.GetDukascopyOptions()`) rather than raw dictionary key lookups.
 
-> **V5:** Data provider settings can also be specified via the `DataConfig` sub-object on `ScenarioConfig`. When `ScenarioConfig.Data` is set, `EffectiveDataConfig` returns it directly; otherwise it falls back to the top-level `DataProviderType`, `DataProviderOptions`, `Timeframe`, and `BarsPerYear` fields. See "ScenarioConfig Sub-Object Decomposition" below.
+> **V5:** Data provider settings can also be specified via the `DataConfig` sub-object on `ScenarioConfig`. When `ScenarioConfig.Data` is set, `EffectiveDataConfig` returns it directly; otherwise it falls back to the top-level `DataProviderType`, `DataProviderOptions`, `Timeframe`, and `BarsPerYear` fields. See "ScenarioConfig Sub-Object Decomposition" below. For programmatic normalization of legacy configs to canonical V5+ form, use `ScenarioConfigNormalizer.Normalize(config)` (Application layer) which populates all sub-objects from flat fields in memory without modifying files on disk.
 
 ### CSV Relative Path Resolution
 
@@ -248,6 +248,47 @@ Each day's minute data is cached locally as a CSV file. On subsequent imports th
 
 `JobExecutor` is registered as a singleton in the Web host's `Program.cs`. After the app is built, `RecoverOrphanedJobsAsync` is called to reset any `Queued` or `Running` jobs left over from a previous process lifetime. Like market data import recovery, this runs inside a try/catch so failures don't prevent the app from starting.
 
+### JobWorkerService (Background Dispatch)
+
+`JobWorkerService` (`Application/Research/JobWorkerService.cs`) is a `BackgroundService` that polls for queued jobs and dispatches them to the appropriate workflow or use case. It resolves scoped services per-job via `IServiceScopeFactory`.
+
+**Configuration** (`JobWorkerOptions`):
+- `PollInterval` — how often to check for queued jobs (default 5s)
+- `MaxConcurrentJobs` — bounded concurrency via `SemaphoreSlim`
+- `RetryPolicy` — embedded `RetryPolicy` instance for transient failure handling
+
+**Dispatch table** (`DispatchAsync`):
+
+| JobType | Resolved Service | Result Persistence |
+|---|---|---|
+| `SingleRun` | `RunScenarioUseCase` | Result linked via `RunId` |
+| `MonteCarlo` | `MonteCarloWorkflow` | `StudyRecord` (type: MonteCarlo) |
+| `WalkForward` | `WalkForwardWorkflow` | `StudyRecord` (type: WalkForward) |
+| `ParameterSweep` | `ParameterSweepWorkflow` | `StudyRecord` (type: ParameterSweep) |
+| `BenchmarkComparison` | `BenchmarkComparisonWorkflow` | `StudyRecord` (type: BenchmarkComparison) |
+| `Variance` | `VarianceTestingWorkflow` | `StudyRecord` (type: Variance) |
+| `RandomisedOos` | `RandomizedOosWorkflow` | `StudyRecord` (type: RandomisedOos) |
+
+`SingleRun` uses `RunScenarioUseCase` directly and links the result via the run ID. All other job types dispatch to their respective workflow, then persist the result as a `StudyRecord` via `PersistStudyResultAsync` — which creates a new study record, serializes the workflow result to JSON, and returns the study ID for job completion linkage.
+
+Unsupported job types are immediately marked as failed with a descriptive message.
+
+### Job Retry Policy
+
+`RetryPolicy` (`Application/Research/RetryPolicy.cs`) provides configurable retry behavior for background job execution. It classifies exceptions as transient (retryable) or terminal (immediate failure) and computes exponential backoff delays between attempts.
+
+| Property | Default | Description |
+|---|---|---|
+| `MaxRetries` | 3 | Maximum retry attempts before transitioning to final failure |
+| `InitialBackoff` | 2 seconds | Delay before the first retry |
+| `BackoffMultiplier` | 2.0 | Exponential multiplier applied per attempt |
+
+Transient exceptions eligible for retry: `HttpRequestException`, `TimeoutException`, `IOException`. All other exceptions are treated as terminal failures and cause immediate job failure without retry.
+
+Backoff formula: `InitialBackoff × BackoffMultiplier^attempt` (zero-based attempt index). Example with defaults: 2s → 4s → 8s.
+
+Jobs in `Retrying` state are treated as active by `JobExecutor` — they appear alongside `Queued` and `Running` jobs in active job listings and are eligible for re-dispatch after their backoff period elapses.
+
 ### Integration Tests (`IntegrationTests/MarketData/MarketDataImportFlowTests.cs`)
 
 End-to-end tests that exercise the full import lifecycle using real `JsonMarketDataImportRepository` and `JsonDataFileRepository` instances against temp directories. Each test creates a fresh `MarketDataImportService` with mock providers and verifies the complete flow from `StartImportAsync` through to persisted records and output files.
@@ -342,6 +383,41 @@ Long-running research workflows report progress via `IProgress<ProgressUpdate>`.
 
 `IResearchWorkflow<TOptions, TResult>` exposes an overload that accepts `IProgress<ProgressUpdate>?`. The default implementation delegates to the progress-less overload, so existing callers are unaffected. Workflow implementations that support progress (parameter sweep, Monte Carlo, walk-forward, etc.) report updates as they complete each step.
 
+## Concurrency Budget
+
+`ConcurrencyBudget` (`Application/Research/ConcurrencyBudget.cs`) is a global concurrency limiter that prevents nested parallel workflows from oversubscribing CPU resources. It wraps a `SemaphoreSlim` and exposes an async acquire/release pattern.
+
+### API
+
+| Member | Description |
+|---|---|
+| `ConcurrencyBudget(IOptions<ConcurrencyOptions>)` | Production constructor; reads max concurrency from configuration |
+| `ConcurrencyBudget(int maxConcurrency)` | Testing constructor; explicit permit count |
+| `Available` | Number of permits currently available (`SemaphoreSlim.CurrentCount`) |
+| `AcquireAsync(CancellationToken)` | Asynchronously acquires a permit; returns `IDisposable` that releases on disposal |
+
+### Configuration — `ConcurrencyOptions`
+
+Bound from `appsettings.json:Concurrency` via `IOptions<ConcurrencyOptions>`.
+
+| Property | Default | Description |
+|---|---|---|
+| MaxGlobalConcurrency | `Environment.ProcessorCount` | Maximum number of concurrent permits available globally |
+
+### Registration
+
+`ConcurrencyBudget` is registered as a singleton in DI. All parallel research workflows (Monte Carlo, CPCV, parameter perturbation) share the same budget instance to prevent oversubscription when multiple workflows run concurrently.
+
+### Usage Pattern
+
+```csharp
+using var permit = await _concurrencyBudget.AcquireAsync(ct);
+// ... perform CPU-bound work ...
+// permit is released when disposed
+```
+
+Workflows use `ConcurrencyBudget.Available` as the `MaxDegreeOfParallelism` for `Parallel.ForEachAsync`, then acquire a permit inside each iteration body. This ensures the total concurrent work across all active workflows never exceeds the configured budget.
+
 ## ScenarioConfig Persistence
 
 `ScenarioConfig` implements `IHasId` (mapping `Id` to `ScenarioId`), which makes it a valid entity for `IRepository<ScenarioConfig>`. This enables save/load/delete of scenario configurations through the same `JsonFileRepository<T>` infrastructure used for `BacktestResult`. The Web UI relies on this for its strategy editor and saved-config workflows.
@@ -354,7 +430,7 @@ Long-running research workflows report progress via `IProgress<ProgressUpdate>`.
 
 V5 adds three new repository registrations in `Infrastructure/ServiceCollectionExtensions.cs`, following the same `JsonFileRepository<T>` pattern used for `BacktestResult`, `ScenarioConfig`, and `FirmRuleSet`:
 
-- `IRepository<BacktestJob>` → `JsonFileRepository<BacktestJob>` — persists async job records (lifecycle: Queued → Running → Completed/Failed/Cancelled). `BacktestJob` implements `IHasId` via `JobId`.
+- `IRepository<BacktestJob>` → `JsonFileRepository<BacktestJob>` — persists async job records (lifecycle: Queued → Running → Completed/Failed/Cancelled, with transient failures cycling through Retrying). `BacktestJob` implements `IHasId` via `JobId`.
 - `IRepository<ConfigDraft>` → `JsonFileRepository<ConfigDraft>` — persists in-progress builder sessions. `ConfigDraft` implements `IHasId` via `DraftId`. Drafts are deleted on promotion to `StrategyVersion`.
 - `IRepository<ConfigPreset>` → `JsonFileRepository<ConfigPreset>` — persists custom config presets alongside the four built-in presets. `ConfigPreset` implements `IHasId` via `PresetId`.
 
@@ -410,6 +486,18 @@ CREATE INDEX IF NOT EXISTS idx_br_date ON BacktestResultIndex(RunDate);
 
 The Web host's `Program.cs` resolves `IBacktestResultRepository` from DI and, if the instance is `SqliteIndexRepository`, calls `InitializeAsync` to build or verify the SQLite index. This runs inside a try/catch — if initialization fails (e.g. disk permissions, corrupted DB), the app logs a warning and continues without the index. The pattern mirrors market data import recovery and job executor recovery: startup failures are non-fatal.
 
+### ConsistencyReconciler (Startup Reconciliation)
+
+`ConsistencyReconciler` (`Infrastructure/Persistence/`) is an `IHostedService` that runs once at application startup before the host accepts requests. It verifies consistency between the SQLite index and the JSON file store for `BacktestResult` entities.
+
+- **JSON store is the source of truth.** If a JSON file exists without a corresponding index row, the reconciler deserializes the file and upserts the missing row. If an index row exists without a corresponding JSON file, the orphaned row is deleted.
+- Logs structured diagnostics for every corrective action: entries added, orphans removed, and any deserialization failures (skipped with a warning).
+- Gracefully handles missing directories or missing index databases (skips reconciliation when either is absent).
+- Errors during reconciliation are caught and logged — they do not prevent the application from starting.
+- Registered as a singleton `IHostedService` in DI, so it runs automatically via the generic host lifecycle.
+
+This complements `SqliteIndexRepository.InitializeAsync` (which builds the index from scratch when the DB is missing or corrupted) by handling the incremental drift case: e.g. a JSON file was manually added/removed, or a crash occurred between the JSON write and the index upsert in `SaveAsync`.
+
 ### Consumer Changes
 
 `ResearchChecklistService.GetVersionAsync` uses `IBacktestResultRepository.ListByVersionAsync` instead of the previous O(n×m) full-scan loop. `StrategyDetail.razor` also uses the indexed query for loading version-specific results.
@@ -420,13 +508,34 @@ Uses `Microsoft.Data.Sqlite` NuGet package (Infrastructure project only).
 
 `MonteCarloWorkflow` bootstrap-resamples the closed-trade return sequence to produce a distribution of outcomes. It implements `IResearchWorkflow<MonteCarloOptions, MonteCarloResult>`.
 
+### Construction
+
+`MonteCarloWorkflow` accepts an optional `ConcurrencyBudget` via constructor injection:
+
+- `MonteCarloWorkflow(RunScenarioUseCase, ConcurrencyBudget)` — production constructor; enables parallel simulation dispatch.
+- `MonteCarloWorkflow(RunScenarioUseCase)` — testing constructor; runs all simulations sequentially.
+
+When a `ConcurrencyBudget` is available, the workflow-entry overloads (`RunAsync` with `ScenarioConfig`) use parallel execution. The direct `BacktestResult` overloads (`RunFromResultAsync`) always execute sequentially regardless of budget availability.
+
 ### Process
 
 1. Runs the base scenario via `RunScenarioUseCase` (or accepts a pre-computed `BacktestResult`).
-2. Extracts the `NetPnl` from each closed trade as the return sequence.
-3. For each simulation: shuffles the return sequence (with replacement), walks the equity forward from `StartEquity`, and tracks peak, drawdown, ruin, and consecutive win/loss streaks.
+2. Extracts `ReturnOnRisk` from each closed trade as the return sequence.
+3. For each simulation: resamples the return sequence using block bootstrap (with replacement), walks the equity forward multiplicatively from `StartEquity`, and tracks peak, drawdown, ruin, and consecutive win/loss streaks.
 4. Records the full equity path per simulation (`MonteCarloPath`) and collects per-step equity values across all simulations.
 5. After all simulations complete, computes P10/P50/P90 percentile bands at each trade step.
+
+### Parallel Execution
+
+When a `ConcurrencyBudget` is injected, the workflow parallelises simulations with deterministic seeding:
+
+1. **Seed pre-generation** — Per-iteration seeds are generated sequentially from the master RNG (either from `MonteCarloOptions.Seed` or a random seed). This ensures the seed sequence is identical regardless of execution order.
+2. **Parallel dispatch** — Simulations are dispatched via `Parallel.ForEachAsync` with `MaxDegreeOfParallelism` set to `ConcurrencyBudget.Available`. Each iteration acquires a permit from the budget before executing.
+3. **Per-iteration RNG** — Each simulation creates its own `Random` instance seeded from the pre-generated seed array. No shared mutable state between iterations.
+4. **Indexed result collection** — Results are written into pre-allocated arrays at the simulation's index. No locking required since each simulation writes to its own slot.
+5. **Aggregation** — After all simulations complete, percentile bands and summary statistics are computed from the indexed arrays. Order-independence is guaranteed by the indexed storage.
+
+This design ensures that parallel execution produces identical results to sequential execution given the same seed.
 
 ### Output — `MonteCarloResult`
 
@@ -450,17 +559,19 @@ Uses `Microsoft.Data.Sqlite` NuGet package (Infrastructure project only).
 
 ### Configuration — `MonteCarloOptions`
 
-| Property | Description |
-|---|---|
-| SimulationCount | Number of bootstrap simulations (must be ≥ 1) |
-| Seed | Optional RNG seed for reproducibility |
-| RuinThresholdPercent | Drawdown fraction at which a simulation is marked as ruined |
+| Property | Default | Description |
+|---|---|---|
+| SimulationCount | `MonteCarloDefaults.DefaultSimulationCount` | Number of bootstrap simulations (must be ≥ 1) |
+| Seed | null | Optional RNG seed for reproducibility |
+| RuinThresholdPercent | 0.5 | Equity drawdown fraction at which a simulation is marked as ruined |
+| BlockSize | 1 | Block size for block bootstrap resampling. 1 = IID bootstrap. Values > 1 sample contiguous blocks to preserve serial autocorrelation. Recommended for trend-following strategies: set to approximate average holding period in trades. Clamped to trade count when it exceeds the number of available trades |
 
 ### Edge Cases
 
 - Zero trades: returns a degenerate result with the source end equity as P10/P50/P90, empty paths, and empty bands.
 - `SimulationCount < 1`: throws `ArgumentException`.
 - Base scenario failure: throws `InvalidOperationException` with the validation errors.
+- `BlockSize` exceeding trade count: clamped to trade count (no error).
 
 ## Fill Mode and Annualisation
 
@@ -767,7 +878,7 @@ When both a sub-object and the corresponding top-level properties are present, t
 
 ### Direction.Short — V6 Full Short Execution
 
-V5 added `Direction.Short` to the enum (`{ Long, Short, Flat }`) for exhaustive switch coverage. V6 removes the `LongOnlyGuard` and enables full short-selling execution:
+V6 enables full bidirectional execution for all three `Direction` values (`Long`, `Short`, `Flat`):
 
 - `SimulatedExecutionHandler` fills short orders with `fillPrice = basePrice - slippageAmount` (favorable to seller). For tick data, short fills at Bid.
 - `Portfolio` tracks short positions in a separate `_shortPositions` dictionary. Short unrealised PnL: `(entryPrice - currentPrice) × |qty|`. Short close PnL: `(entryPrice - exitPrice) × |qty|`.
@@ -823,7 +934,7 @@ V5 introduces a typed parameter schema system so that the builder UI and validat
 
 ### Job-Based Async Execution
 
-- `BacktestJob` (`Application/Research/`) — async execution unit with lifecycle: Queued → Running → Completed/Failed/Cancelled.
+- `BacktestJob` (`Application/Research/`) — async execution unit with lifecycle: Queued → Running → Completed/Failed/Cancelled (transient failures transition through Retrying before re-entering Running or final Failed).
 - `JobExecutor` (`Application/Research/`) — manages active jobs via `ConcurrentDictionary<string, CancellationTokenSource>`. Methods: `SubmitAsync`, `GetJob`, `Cancel`, `ListJobs`, `RecoverOrphanedJobsAsync`.
 - `ProgressSnapshot` (`Application/Research/`) — richer progress reporting with `Current`, `Total`, `Percentage`, `Stage`, `CurrentItemLabel`, `ElapsedTime`, and `Warnings`.
 
@@ -831,7 +942,7 @@ V5 introduces a typed parameter schema system so that the builder UI and validat
 
 - Gap detection and gap-adjusted fill prices in `SimulatedExecutionHandler` — detects overnight/weekend gaps (> 2× ATR) and fills at gap bar Open price.
 - Volume constraint enforcement — caps fill at `MaxFillPercentOfVolume × Volume` when set; logs warning when fill > 10% of bar volume.
-- `PortfolioConstraints` extended with `MaxExposurePerSymbol`, `MaxExposurePerSector`, `MaxCorrelatedExposure` (sector and correlation fields defined but not enforced until V5.1).
+- `PortfolioConstraints` extended with `MaxExposurePerSymbol`, `MaxExposurePerSector`, `MaxCorrelatedExposure`. Pairwise correlation enforcement is handled by `CorrelationConstraintEnforcer`; sector exposure enforcement is planned but not yet active.
 - `Portfolio.GetExposureBySymbol()` and `MaxExposurePerSymbol` enforcement in `DefaultRiskLayer`.
 - `ResearchChecklistService` extended with `NextRecommendedAction` and `TrialBudgetStatus` (Green/Amber/Red) for over-optimization detection.
 - `BenchmarkComparisonWorkflow` extended with auto buy-and-hold baseline and excess metrics (excess return, information ratio, tracking error, max relative drawdown).

@@ -41,6 +41,13 @@ public sealed class BuilderViewModel
     public decimal StopLoss { get; set; } = 2.0m;
     public int FillDelayBars { get; set; } = 0;
 
+    /// <summary>
+    /// The effective realism profile for this builder session.
+    /// In beginner mode, this is set from the template's <see cref="StrategyTemplate.DefaultRealismProfile"/>.
+    /// Advanced users may override via preset selection or advanced overrides.
+    /// </summary>
+    public ExecutionRealismProfile RealismProfile { get; set; } = ExecutionRealismProfile.StandardBacktest;
+
     // Navigation
     public int CurrentStep { get; set; } = 1;
     public int MaxVisitedStep { get; set; } = 1;
@@ -102,7 +109,7 @@ public sealed class BuilderViewModel
             ExecutionConfig: new ExecutionConfig(
                 SlippageModelType, CommissionModelType,
                 FillMode.NextBarOpen,
-                ExecutionRealismProfile.StandardBacktest,
+                RealismProfile,
                 FillDelayBars: FillDelayBars),
             RiskConfig: new RiskConfig(
                 new Dictionary<string, object>(), InitialCash, AnnualRiskFreeRate),
@@ -143,7 +150,7 @@ public sealed class BuilderViewModel
             Execution: new ExecutionConfig(
                 SlippageModelType, CommissionModelType,
                 FillMode.NextBarOpen,
-                ExecutionRealismProfile.StandardBacktest,
+                RealismProfile,
                 FillDelayBars: FillDelayBars));
     }
 
@@ -200,6 +207,7 @@ public sealed class BuilderViewModel
             vm.SlippageModelType = draft.ExecutionConfig.SlippageModelType;
             vm.CommissionModelType = draft.ExecutionConfig.CommissionModelType;
             vm.FillDelayBars = draft.ExecutionConfig.FillDelayBars;
+            vm.RealismProfile = draft.ExecutionConfig.RealismProfile;
         }
 
         if (draft.RiskConfig is not null)

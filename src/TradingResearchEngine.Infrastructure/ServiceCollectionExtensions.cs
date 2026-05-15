@@ -247,11 +247,13 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IStrategyExporter, PineScriptExporter>();
 
         // V8: Streaming data provider (wraps the default IDataProvider)
+        services.Configure<PaperTradingOptions>(configuration.GetSection(PaperTradingOptions.SectionName));
         services.AddSingleton<IStreamingDataProvider>(sp =>
         {
             var inner = sp.GetRequiredService<IDataProvider>();
+            var optionsMonitor = sp.GetRequiredService<IOptionsMonitor<PaperTradingOptions>>();
             var logger = sp.GetRequiredService<ILogger<PollingStreamingDataProvider>>();
-            return new PollingStreamingDataProvider(inner, TimeSpan.FromSeconds(1), 1.0, logger);
+            return new PollingStreamingDataProvider(inner, optionsMonitor, 1.0, logger);
         });
 
         // V8: AI Strategy Assistant — override Application's disabled fallback when API key is configured
@@ -288,6 +290,9 @@ public static class ServiceCollectionExtensions
         // V8: Paper session record repository
         services.AddSingleton<IRepository<PaperSessionRecord>,
             JsonFileRepository<PaperSessionRecord>>();
+
+        // V9: Startup consistency reconciliation between SQLite index and JSON store
+        services.AddHostedService<ConsistencyReconciler>();
 
         return services;
     }

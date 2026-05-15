@@ -1,3 +1,5 @@
+using TradingResearchEngine.Application.Research;
+
 namespace TradingResearchEngine.Application.Configuration;
 
 /// <summary>
@@ -15,4 +17,9 @@ public sealed class JobWorkerOptions
     /// MaxDegreeOfParallelism.
     /// </summary>
     public int MaxConcurrentJobs { get; set; } = 1;
+
+    /// <summary>
+    /// Retry policy governing transient failure handling for background jobs.
+    /// </summary>
+    public Research.RetryPolicy RetryPolicy { get; set; } = new();
 }

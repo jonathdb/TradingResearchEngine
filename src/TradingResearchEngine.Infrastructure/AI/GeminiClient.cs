@@ -52,17 +52,47 @@ public sealed class GeminiClient : IGeminiClient
         var maxAttempts = _options.MaxRetries + 1;
         for (var attempt = 1; attempt <= maxAttempts; attempt++)
         {
+            // Create a per-attempt timeout token linked with the caller's cancellation token.
+            // Each retry attempt gets its own fresh timeout window.
+            using var timeoutCts = new CancellationTokenSource(_options.CallTimeout);
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
+
             try
             {
-                var response = await model.GenerateContent(request);
+                // The Mscc.GenerativeAI library does not accept CancellationToken directly.
+                // Wrap the call to observe the linked token for timeout/cancellation.
+                var responseTask = model.GenerateContent(request);
+                var completedTask = await Task.WhenAny(
+                    responseTask,
+                    Task.Delay(Timeout.Infinite, linkedCts.Token));
 
-                ct.ThrowIfCancellationRequested();
+                // If the delay task completed (was cancelled), the token fired
+                if (completedTask != responseTask)
+                {
+                    linkedCts.Token.ThrowIfCancellationRequested();
+                }
+
+                var response = await responseTask;
 
                 var text = response.Text
                     ?? throw new InvalidOperationException("Gemini API returned an empty response.");
 
                 _logger.LogDebug("Gemini API response received ({Length} chars).", text.Length);
                 return text;
+            }
+            catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !ct.IsCancellationRequested)
+            {
+                _logger.LogWarning(
+                    "Gemini API call timed out after {TimeoutSeconds}s (attempt {Attempt}/{MaxAttempts}).",
+                    _options.CallTimeout.TotalSeconds, attempt, maxAttempts);
+
+                throw new TimeoutException(
+                    $"AI call exceeded configured timeout of {_options.CallTimeout.TotalSeconds}s.");
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                // Caller requested cancellation — propagate without wrapping
+                throw;
             }
             catch (HttpRequestException ex) when (attempt < maxAttempts && IsTransientOrRateLimited(ex))
             {
@@ -92,6 +122,11 @@ public sealed class GeminiClient : IGeminiClient
     {
         ct.ThrowIfCancellationRequested();
 
+        // Create a per-call timeout token linked with the caller's cancellation token
+        using var timeoutCts = new CancellationTokenSource(_options.CallTimeout);
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
+        var linkedToken = linkedCts.Token;
+
         var googleAi = new GoogleAI(apiKey: _options.ApiKey);
         var systemInstruction = new Content(systemPrompt);
         var model = googleAi.GenerativeModel(
@@ -100,15 +135,28 @@ public sealed class GeminiClient : IGeminiClient
 
         var request = new GenerateContentRequest(userMessage);
 
-        ct.ThrowIfCancellationRequested();
+        linkedToken.ThrowIfCancellationRequested();
 
-        // Use streaming API
-        var response = model.GenerateContentStream(request);
-        await foreach (var chunk in response.WithCancellation(ct))
+        try
         {
-            var text = chunk?.Text;
-            if (!string.IsNullOrEmpty(text))
-                yield return text;
+            // Use streaming API
+            var response = model.GenerateContentStream(request);
+            await foreach (var chunk in response.WithCancellation(linkedToken))
+            {
+                var text = chunk?.Text;
+                if (!string.IsNullOrEmpty(text))
+                    yield return text;
+            }
+        }
+        finally
+        {
+            // Check if timeout fired vs caller cancellation for logging purposes
+            if (timeoutCts.IsCancellationRequested && !ct.IsCancellationRequested)
+            {
+                _logger.LogWarning(
+                    "Gemini streaming API call timed out after {TimeoutSeconds}s.",
+                    _options.CallTimeout.TotalSeconds);
+            }
         }
     }
 }

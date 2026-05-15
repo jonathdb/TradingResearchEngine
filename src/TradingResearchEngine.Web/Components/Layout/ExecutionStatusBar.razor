@@ -132,7 +132,8 @@
             var jobs = await JobExecutor.ListJobsAsync();
             _activeJobs = jobs
                 .Where(j => j.Status == TradingResearchEngine.Application.Research.JobStatus.Running
-                         || j.Status == TradingResearchEngine.Application.Research.JobStatus.Queued)
+                         || j.Status == TradingResearchEngine.Application.Research.JobStatus.Queued
+                         || j.Status == TradingResearchEngine.Application.Research.JobStatus.Retrying)
                 .ToList();
             await InvokeAsync(StateHasChanged);
         }

@@ -12,7 +12,7 @@ All notable changes to TradingResearchEngine are documented in this file, organi
 - Pluggable strategy, risk, slippage, and commission components
 - Research workflows: parameter sweep, variance testing, Monte Carlo, walk-forward
 - Prop-firm challenge and instant-funding economics modelling
-- CLI host (argument-driven + interactive) and ASP.NET Core minimal API host
+- CLI host and ASP.NET Core minimal API host (removed in Web-Only UX Overhaul — now Web-only)
 - CSV and HTTP REST data providers
 - JSON file persistence
 - Console and Markdown reporting
@@ -140,7 +140,7 @@ All notable changes to TradingResearchEngine are documented in this file, organi
 **Core Engine additions**:
 - `RealismAdvisories` on `BacktestResult`
 - `MaxFillPercentOfVolume` on `ExecutionOptions`
-- `Direction.Short` with `LongOnlyGuard` (removed in V6); short execution deferred to V6
+- `Direction.Short` with `LongOnlyGuard` (now obsolete — removed in V6); short execution deferred to V6
 - `ScenarioConfig` sub-object decomposition (`DataConfig`, `StrategyConfig`, `RiskConfig`, `ExecutionConfig`, `ResearchConfig`) with backward-compatible `Effective*` computed properties
 - `PresetId`/`DataFileIdentity` on `ExperimentMetadata`
 
@@ -158,7 +158,7 @@ All notable changes to TradingResearchEngine are documented in this file, organi
 
 **Product Goals**:
 - `ScenarioConfig` sub-object decomposition with backward-compatible adapter and `Effective*` computed properties
-- `Direction.Short` enum value with `LongOnlyGuard` runtime safety net (short execution deferred to V6)
+- `Direction.Short` enum value (short execution deferred to V6; `LongOnlyGuard` now obsolete)
 - Execution realism enhancements (`MaxFillPercentOfVolume`, `RealismAdvisories`)
 - Typed strategy parameter schemas (`StrategyParameterSchema`, `IStrategySchemaProvider`, `[ParameterMeta]` attribute, `SensitivityHint` enum) for builder UI, API discovery, and parameter validation
 
@@ -177,7 +177,7 @@ All notable changes to TradingResearchEngine are documented in this file, organi
 - `SqliteIndexRepository<T>` — index-only SQLite layer over existing JSON files providing O(log n) lookups by strategy version and strategy ID, implementing `IBacktestResultRepository`
 
 **Tracks**:
-- Full long/short execution replacing the V5 `LongOnlyGuard` — bidirectional strategies, short position tracking, signed quantity sizing
+- Full long/short bidirectional execution — bidirectional strategies, short position tracking, signed quantity sizing
 - SQLite index persistence over JSON files for O(log n) lookups; parallel walk-forward and parameter sweep execution via `Parallel.ForEachAsync` with `SemaphoreSlim` concurrency control
 - Plotly.Blazor interactive charting: equity curve, monthly returns heatmap, trade PnL histogram, holding period histogram, Monte Carlo fan chart, walk-forward composite chart, parameter sweep heatmap
 - Quant depth: CPCV (Combinatorial Purged Cross-Validation) implementation, prop-firm evaluation persistence wiring, IPropFirmPackLoader DI service, benchmark excess Sharpe wiring, timeframe-aware MinBTL recommendations, 9-item research checklist with updated confidence thresholds
@@ -227,3 +227,47 @@ All notable changes to TradingResearchEngine are documented in this file, organi
 - `JsonMarketDataImportRepository` (JSON file persistence for import records)
 
 **Product Goal**: Standalone workflow for downloading, normalizing, and registering historical candles from external providers (Dukascopy first) as validated Data Files.
+
+
+---
+
+## PR Gate Implementation — Gates 1–5
+
+**Scope: Walk-forward correctness, indicator fixes, performance & concurrency, configuration canonicalization, persistence & resilience.**
+
+### Gate 1 — Walk-Forward Correctness
+- `OptimizationObjective` enum (Sharpe, CAGR, MAR) and `ParameterGrid`/`ParameterRange` records
+- `GridOptimizer` with objective-based ranking and structured `ExcludedCandidate` explanations
+- Walk-forward in-sample grid optimization in `WalkForwardWorkflow`
+- Walk-forward pre-run validation in `PreflightValidator` (minimum data range, window count, statistical significance warning)
+
+### Gate 2 — Indicator Fixes & Validation
+- Final validation confirmation gate in `FinalValidationUseCase` (explicit confirmation, cancellation, already-consumed guard)
+- Research checklist as active workflow guide with navigation paths and low-confidence explanations
+- Indicator catalog completeness audit with startup validation
+- `LongOnlyGuard` marked `[Obsolete]` with documentation cleanup
+- Beginner-mode realism defaults (`StandardBacktest` profile)
+
+### Gate 3 — Performance & Concurrency
+- `ConcurrencyBudget` with `SemaphoreSlim` and `IOptions<ConcurrencyOptions>` (global concurrency control)
+- Portfolio hot-path optimization with cached snapshots and O(1) `OpenPositionCount`
+- Parallel Monte Carlo workflow with deterministic seeding
+- Parallel CPCV workflow with fold isolation
+- Parallel Parameter Perturbation workflow with deterministic jitter
+- Provider-aware progress estimation via `IDataProvider.EstimateBarCountAsync`
+
+### Gate 4 — Configuration & Construction
+- `ScenarioConfigNormalizer` for legacy-to-canonical config transformation (no disk modification on load)
+- Unified strategy construction through `StrategyRegistry` with startup `VerifyAll()`
+- Typed provider configuration (`CsvDataProviderOptions`, `HttpDataProviderOptions`, `DukascopyDataProviderOptions`) via `IOptions<T>`
+
+### Gate 5 — Persistence & Resilience
+- AI call timeout and cancellation in `GeminiClient` with linked `CancellationTokenSource`
+- Job retry policy with configurable backoff, `Retrying` status, and terminal failure handling
+- `ConsistencyReconciler` for SQLite/JSON reconciliation (JSON as source of truth)
+- Configurable paper-trading polling via `IOptionsMonitor<PaperTradingOptions>` with hot-reload
+
+### Gate 6 — Repository Cleanup (in progress)
+- Prompt directory audit: archival artifacts relocated, production prompts retained
+- Obsolete CLI/API transition leftovers removed
+- Documentation and spec alignment with implemented reality

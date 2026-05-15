@@ -46,10 +46,17 @@ $env:Gemini__ApiKey = "your-api-key-here"
 {
   "Gemini": {
     "ApiKey": "your-api-key-here",
-    "ModelName": "gemini-2.5-flash"
+    "ModelName": "gemini-2.5-flash",
+    "CallTimeout": "00:01:00"
   }
 }
 ```
+
+| Setting | Default | Description |
+|---|---|---|
+| `ApiKey` | — | Google Gemini API key (required for AI features) |
+| `ModelName` | `gemini-2.0-flash` | Gemini model identifier |
+| `CallTimeout` | `00:01:00` (60s) | Maximum time per outbound AI API call before cancellation |
 
 If the key is not set, AI assistant features are disabled gracefully without crashing the application.
 

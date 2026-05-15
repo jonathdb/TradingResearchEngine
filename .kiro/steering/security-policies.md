@@ -3,8 +3,7 @@
 ## No Stack Traces in Responses
 
 No exception message, stack trace, or inner exception detail may appear in any HTTP response body.
-`ErrorHandlingMiddleware` enforces this for the API host.
-The CLI may print a user-friendly error message to stderr but must not print raw exception stack traces.
+The Web host logs errors server-side and presents user-friendly messages in the UI.
 
 ## CorrelationId Pattern
 
@@ -28,7 +27,7 @@ External service credentials (future data providers) are sourced from environmen
 
 No service locator pattern (`IServiceProvider.GetService` called outside of composition roots).
 All dependencies are constructor-injected.
-`IServiceProvider` is only accessed in `Program.cs` of Cli and Api.
+`IServiceProvider` is only accessed in `Program.cs` of the Web project.
 
 ## Assembly Loading
 

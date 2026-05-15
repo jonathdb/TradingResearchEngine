@@ -61,6 +61,12 @@ public sealed class RepositoryOptions
 {
     /// <summary>Base directory where JSON entity files are stored.</summary>
     public string BaseDirectory { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Path to the SQLite index database file. When empty, defaults to
+    /// <c>{LocalApplicationData}/TradingResearchEngine/index.db</c>.
+    /// </summary>
+    public string IndexDbPath { get; set; } = string.Empty;
 }
 
 /// <summary>Metric used to rank parameter sweep results.</summary>
@@ -111,4 +117,11 @@ public sealed class WalkForwardOptions
         Mode ?? (AnchoredWindow
             ? TradingResearchEngine.Application.Research.WalkForwardMode.Anchored
             : TradingResearchEngine.Application.Research.WalkForwardMode.Rolling);
+
+    /// <summary>Optional parameter grid for in-sample optimization. When null, walk-forward uses the base config parameters without optimization.</summary>
+    public TradingResearchEngine.Application.Research.ParameterGrid? Grid { get; set; }
+
+    /// <summary>Objective metric used to rank parameter combinations during in-sample optimization. Defaults to Sharpe.</summary>
+    public TradingResearchEngine.Application.Research.OptimizationObjective Objective { get; set; } =
+        TradingResearchEngine.Application.Research.OptimizationObjective.Sharpe;
 }

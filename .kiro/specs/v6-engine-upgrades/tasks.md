@@ -2,7 +2,7 @@
 
 ## Overview
 
-V6 delivers four sequential tracks: (1) short selling engine, (2) persistence & performance, (3) visualisation, and (4) quant depth & lifecycle. Each track ends with a checkpoint. All code is C# 12 / .NET 8 following the `Core ← Application ← Infrastructure ← { Cli, Api, Web }` dependency rule. Tasks are ordered so that Core changes land before Application and Infrastructure consumers.
+V6 delivers four sequential tracks: (1) short selling engine, (2) persistence & performance, (3) visualisation, and (4) quant depth & lifecycle. Each track ends with a checkpoint. All code is C# 12 / .NET 8 following the `Core ← Application ← Infrastructure ← Web` dependency rule. Tasks are ordered so that Core changes land before Application and Infrastructure consumers.
 
 ## Tasks
 

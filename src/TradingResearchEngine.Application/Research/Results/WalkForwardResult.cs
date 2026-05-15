@@ -1,3 +1,4 @@
+using TradingResearchEngine.Application.Research;
 using TradingResearchEngine.Core.Results;
 
 namespace TradingResearchEngine.Application.Research.Results;
@@ -13,4 +14,6 @@ public sealed record WalkForwardWindow(
     BacktestResult InSampleResult,
     BacktestResult OutOfSampleResult,
     Dictionary<string, object> SelectedParameters,
-    decimal? EfficiencyRatio);
+    decimal? EfficiencyRatio,
+    decimal? OptimizationMetricValue = null,
+    OptimizationObjective UsedObjective = OptimizationObjective.Sharpe);

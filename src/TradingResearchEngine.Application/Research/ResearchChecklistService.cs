@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using TradingResearchEngine.Application.PropFirm;
 using TradingResearchEngine.Application.Strategies;
 using TradingResearchEngine.Core.Results;
@@ -48,18 +49,84 @@ public sealed class ResearchChecklistService
     private readonly IStudyRepository _studyRepo;
     private readonly IStrategyRepository _strategyRepo;
     private readonly IPropFirmEvaluationRepository _evalRepo;
+    private readonly ILogger<ResearchChecklistService> _logger;
+
+    /// <summary>
+    /// Navigation paths for each checklist item, mapping step keys to workflow routes.
+    /// </summary>
+    public static readonly IReadOnlyDictionary<string, string> NavigationPaths = new Dictionary<string, string>
+    {
+        ["InitialBacktest"] = "/strategies",
+        ["MonteCarloRobustness"] = "/research/montecarlo",
+        ["WalkForwardValidation"] = "/research/walkforward",
+        ["RegimeSensitivity"] = "/research/perturbation",
+        ["RealismImpact"] = "/research/perturbation",
+        ["ParameterSurface"] = "/research/sweep",
+        ["FinalHeldOutTest"] = "/strategies",
+        ["PropFirmEvaluation"] = "/propfirm",
+        ["CpcvDone"] = "/research/explorer"
+    };
+
+    /// <summary>
+    /// Confidence explanations for each checklist item when incomplete.
+    /// Describes why the item matters and what risk its absence introduces.
+    /// </summary>
+    public static readonly IReadOnlyDictionary<string, string> ConfidenceExplanations = new Dictionary<string, string>
+    {
+        ["InitialBacktest"] = "No baseline performance has been established. Without an initial backtest, there is no evidence the strategy produces positive returns on historical data.",
+        ["MonteCarloRobustness"] = "Robustness to trade ordering has not been verified. The observed equity curve may be an artifact of the specific trade sequence rather than genuine edge.",
+        ["WalkForwardValidation"] = "Out-of-sample validation has not been performed. The strategy may be overfit to in-sample data and fail on unseen market conditions.",
+        ["RegimeSensitivity"] = "Performance across different market regimes is unknown. The strategy may only work in specific conditions (trending, ranging, or volatile markets).",
+        ["RealismImpact"] = "The impact of execution costs has not been measured. Theoretical performance may degrade significantly under realistic slippage and commission assumptions.",
+        ["ParameterSurface"] = "Parameter stability has not been assessed. The strategy may rely on a fragile optimum that breaks with small parameter changes.",
+        ["FinalHeldOutTest"] = "The sealed held-out test has not been run. Final out-of-sample confirmation is required before deployment confidence can be established.",
+        ["PropFirmEvaluation"] = "Prop firm rule compliance has not been evaluated. The strategy may violate drawdown limits, profit targets, or other challenge constraints.",
+        ["CpcvDone"] = "Combinatorial purged cross-validation has not been performed. The probability of backtest overfitting has not been quantified."
+    };
+
+    /// <summary>
+    /// Identifies which checklist items are critical (gating) for final validation.
+    /// Critical items must be complete before final validation can proceed without warnings.
+    /// </summary>
+    public static readonly IReadOnlyDictionary<string, bool> CriticalItems = new Dictionary<string, bool>
+    {
+        ["InitialBacktest"] = true,
+        ["MonteCarloRobustness"] = true,
+        ["WalkForwardValidation"] = true,
+        ["RegimeSensitivity"] = false,
+        ["RealismImpact"] = false,
+        ["ParameterSurface"] = true,
+        ["FinalHeldOutTest"] = false, // This IS the final validation step itself
+        ["PropFirmEvaluation"] = false,
+        ["CpcvDone"] = false
+    };
 
     /// <inheritdoc cref="ResearchChecklistService"/>
     public ResearchChecklistService(
         IBacktestResultRepository resultRepo,
         IStudyRepository studyRepo,
         IStrategyRepository strategyRepo,
-        IPropFirmEvaluationRepository evalRepo)
+        IPropFirmEvaluationRepository evalRepo,
+        ILogger<ResearchChecklistService> logger)
     {
         _resultRepo = resultRepo;
         _studyRepo = studyRepo;
         _strategyRepo = strategyRepo;
         _evalRepo = evalRepo;
+        _logger = logger;
+    }
+
+    /// <summary>
+    /// Backward-compatible constructor for existing callers without logger.
+    /// </summary>
+    public ResearchChecklistService(
+        IBacktestResultRepository resultRepo,
+        IStudyRepository studyRepo,
+        IStrategyRepository strategyRepo,
+        IPropFirmEvaluationRepository evalRepo)
+        : this(resultRepo, studyRepo, strategyRepo, evalRepo,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<ResearchChecklistService>.Instance)
+    {
     }
 
     /// <summary>
@@ -231,6 +298,145 @@ public sealed class ResearchChecklistService
 
         // All checks passed
         return null;
+    }
+
+    /// <summary>
+    /// Returns detailed information for all checklist items, including navigation paths,
+    /// confidence explanations, and criticality flags.
+    /// </summary>
+    /// <param name="checklist">The computed research checklist.</param>
+    /// <returns>A list of detailed checklist items with navigation and explanation metadata.</returns>
+    public static IReadOnlyList<ChecklistItemDetail> GetItemDetails(ResearchChecklist checklist)
+    {
+        var items = new (string Key, string Label, bool IsComplete)[]
+        {
+            ("InitialBacktest", "Initial backtest completed", checklist.InitialBacktest),
+            ("MonteCarloRobustness", "Monte Carlo robustness", checklist.MonteCarloRobustness),
+            ("WalkForwardValidation", "Walk-forward validation", checklist.WalkForwardValidation),
+            ("RegimeSensitivity", "Regime sensitivity checked", checklist.RegimeSensitivity),
+            ("RealismImpact", "Execution realism impact measured", checklist.RealismImpact),
+            ("ParameterSurface", "Parameter surface mapped", checklist.ParameterSurface),
+            ("FinalHeldOutTest", "Final held-out test", checklist.FinalHeldOutTest),
+            ("PropFirmEvaluation", "Prop firm evaluation", checklist.PropFirmEvaluation),
+            ("CpcvDone", "CPCV overfitting assessment", checklist.CpcvDone)
+        };
+
+        return items.Select(item => new ChecklistItemDetail(
+            Key: item.Key,
+            Label: item.Label,
+            IsComplete: item.IsComplete,
+            IsCritical: CriticalItems.GetValueOrDefault(item.Key, false),
+            NavigationPath: NavigationPaths.GetValueOrDefault(item.Key, "/strategies"),
+            ConfidenceExplanation: ConfidenceExplanations.GetValueOrDefault(item.Key, "")
+        )).ToList();
+    }
+
+    /// <summary>
+    /// Returns only the incomplete checklist items with their navigation paths and explanations.
+    /// Items are returned in checklist order with prominent metadata for UI rendering.
+    /// </summary>
+    /// <param name="checklist">The computed research checklist.</param>
+    /// <returns>Incomplete items with navigation guidance.</returns>
+    public static IReadOnlyList<ChecklistItemDetail> GetIncompleteItems(ResearchChecklist checklist)
+    {
+        return GetItemDetails(checklist)
+            .Where(item => !item.IsComplete)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Checks whether all critical checklist items are complete.
+    /// Critical items are gating requirements for final validation.
+    /// </summary>
+    /// <param name="checklist">The computed research checklist.</param>
+    /// <returns><c>true</c> when all critical items are complete; <c>false</c> otherwise.</returns>
+    public static bool AreCriticalItemsComplete(ResearchChecklist checklist)
+    {
+        return GetItemDetails(checklist)
+            .Where(item => item.IsCritical)
+            .All(item => item.IsComplete);
+    }
+
+    /// <summary>
+    /// Evaluates checklist readiness for final validation, returning a structured result
+    /// with warnings for incomplete critical items and navigation guidance.
+    /// </summary>
+    /// <param name="strategyVersionId">The strategy version to evaluate.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>A readiness result indicating whether final validation can proceed.</returns>
+    public async Task<ChecklistReadinessResult> EvaluateReadinessAsync(
+        string strategyVersionId,
+        CancellationToken ct = default)
+    {
+        var checklist = await ComputeAsync(strategyVersionId, ct);
+        var incompleteItems = GetIncompleteItems(checklist);
+        var incompleteCritical = incompleteItems.Where(i => i.IsCritical).ToList();
+        var isReady = incompleteCritical.Count == 0;
+
+        var warnings = new List<string>();
+
+        if (!isReady)
+        {
+            warnings.Add("Critical research steps are incomplete. Final validation results may not be trustworthy.");
+
+            foreach (var item in incompleteCritical)
+            {
+                warnings.Add($"• {item.Label}: {item.ConfidenceExplanation}");
+            }
+        }
+
+        if (checklist.ConfidenceLevel == "LOW")
+        {
+            warnings.Add($"Research confidence is LOW ({checklist.PassedCount} of {checklist.TotalChecks} steps complete). " +
+                "Consider completing more research steps before final validation.");
+        }
+
+        _logger.LogInformation(
+            "Checklist readiness evaluated for '{StrategyVersionId}': Ready={IsReady}, IncompleteCritical={Count}",
+            strategyVersionId, isReady, incompleteCritical.Count);
+
+        return new ChecklistReadinessResult(isReady, warnings, incompleteItems);
+    }
+
+    /// <summary>
+    /// Returns a human-readable explanation of why the current confidence level is what it is.
+    /// Provides context beyond just the numeric score.
+    /// </summary>
+    /// <param name="checklist">The computed research checklist.</param>
+    /// <returns>A descriptive explanation of the confidence assessment.</returns>
+    public static string GetConfidenceExplanation(ResearchChecklist checklist)
+    {
+        return checklist.ConfidenceLevel switch
+        {
+            "HIGH" => $"Research confidence is HIGH ({checklist.PassedCount} of {checklist.TotalChecks} steps complete). " +
+                "The strategy has been validated across multiple dimensions including robustness, out-of-sample performance, and parameter stability.",
+            "MEDIUM" => $"Research confidence is MEDIUM ({checklist.PassedCount} of {checklist.TotalChecks} steps complete). " +
+                "Some validation steps remain incomplete. " + GetTopMissingExplanation(checklist),
+            _ => $"Research confidence is LOW ({checklist.PassedCount} of {checklist.TotalChecks} steps complete). " +
+                "Significant validation gaps exist. " + GetTopMissingExplanation(checklist)
+        };
+    }
+
+    /// <summary>
+    /// Returns a brief explanation of the most important missing steps.
+    /// </summary>
+    private static string GetTopMissingExplanation(ResearchChecklist checklist)
+    {
+        var incomplete = GetIncompleteItems(checklist)
+            .Where(i => i.IsCritical)
+            .Take(2)
+            .ToList();
+
+        if (incomplete.Count == 0)
+        {
+            incomplete = GetIncompleteItems(checklist).Take(2).ToList();
+        }
+
+        if (incomplete.Count == 0)
+            return "All steps are complete.";
+
+        var explanations = incomplete.Select(i => i.Label);
+        return $"Key missing steps: {string.Join(", ", explanations)}.";
     }
 
 }

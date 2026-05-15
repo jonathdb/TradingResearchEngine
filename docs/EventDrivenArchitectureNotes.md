@@ -11,7 +11,7 @@ EngineEvent (abstract record)
 ├── OrderEvent (direction + quantity + type + RiskApproved flag + StopPrice + MaxBarsPending + StopTriggered)
 └── FillEvent (fill price + commission + slippage + ExecutionOutcome + RemainingQuantity + RejectionReason)
 
-> **V6 Note:** `Direction` is `{ Long, Short, Flat }`. All three directions are fully supported. `Short` was added in V5 for exhaustive switch coverage with a runtime `LongOnlyGuard`; V6 removed the guard and implemented full short-selling execution in `SimulatedExecutionHandler` and `Portfolio`.
+> **V6 Note:** `Direction` is `{ Long, Short, Flat }`. All three directions are fully supported with bidirectional execution in `SimulatedExecutionHandler` and `Portfolio`.
 ```
 
 All events carry a `DateTimeOffset Timestamp`. Events are immutable records.

@@ -12,19 +12,15 @@
     <MudText Typo="Typo.caption" Class="text-muted mb-3">@ProgressText</MudText>
 
     <MudStack Spacing="1">
-        @CheckItem("InitialBacktest", Checklist.InitialBacktest, "Initial backtest completed")
-        @CheckItem("MonteCarloRobustness", Checklist.MonteCarloRobustness, "Monte Carlo robustness")
-        @CheckItem("WalkForwardValidation", Checklist.WalkForwardValidation, "Walk-forward validation")
-        @CheckItem("RegimeSensitivity", Checklist.RegimeSensitivity, "Regime sensitivity checked")
-        @CheckItem("RealismImpact", Checklist.RealismImpact, "Execution realism impact measured")
-        @CheckItem("ParameterSurface", Checklist.ParameterSurface, "Parameter surface mapped")
-        @CheckItem("FinalHeldOutTest", Checklist.FinalHeldOutTest, "Final held-out test")
-        @CheckItem("PropFirmEvaluation", Checklist.PropFirmEvaluation, "Prop firm evaluation")
-        @CheckItem("CpcvDone", Checklist.CpcvDone, "CPCV overfitting assessment")
+        @foreach (var item in ItemDetails)
+        {
+            @CheckItemWithNavigation(item)
+        }
     </MudStack>
 
     <MudDivider Class="my-3" />
 
+    @* Confidence explanation (not just numeric score) *@
     <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
         <MudText Typo="Typo.body2" Class="text-muted">Confidence Level:</MudText>
         <MudChip T="string" Size="MudBlazor.Size.Small"
@@ -33,6 +29,20 @@
             @Checklist.ConfidenceLevel (@Checklist.PassedCount of @Checklist.TotalChecks)
         </MudChip>
     </MudStack>
+
+    <MudText Typo="Typo.caption" Class="text-muted mt-2">
+        @ResearchChecklistService.GetConfidenceExplanation(Checklist)
+    </MudText>
+
+    @if (IncompleteItems.Count > 0 && HasCriticalIncomplete)
+    {
+        <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-3"
+                  aria-label="Critical research steps incomplete">
+            <MudText Typo="Typo.caption">
+                <strong>Gating criteria not met:</strong> Critical research steps must be completed before final validation.
+            </MudText>
+        </MudAlert>
+    }
 </MudPaper>
 
 <style>
@@ -42,6 +52,16 @@
     }
     .research-step-pulse {
         animation: pulse-icon 1.5s ease-in-out infinite;
+    }
+    .research-step-critical {
+        border-left: 3px solid var(--mud-palette-warning);
+        padding-left: 8px;
+        margin-left: -11px;
+    }
+    .research-step-incomplete {
+        background-color: rgba(var(--mud-palette-warning-rgb), 0.05);
+        border-radius: 4px;
+        padding: 4px 8px;
     }
 </style>
 
@@ -59,6 +79,15 @@
         "MEDIUM" => Color.Warning,
         _ => Color.Error
     };
+
+    private IReadOnlyList<ChecklistItemDetail> ItemDetails =>
+        ResearchChecklistService.GetItemDetails(Checklist);
+
+    private IReadOnlyList<ChecklistItemDetail> IncompleteItems =>
+        ResearchChecklistService.GetIncompleteItems(Checklist);
+
+    private bool HasCriticalIncomplete =>
+        !ResearchChecklistService.AreCriticalItemsComplete(Checklist);
 
     private IReadOnlyList<ResearchStepStatus> GetStepStatuses()
     {
@@ -101,40 +130,26 @@
         return allPreviousCompleted ? ResearchStepStatus.InProgress : ResearchStepStatus.NotStarted;
     }
 
-    private ResearchStepStatus GetStepStatus(bool value, string stepKey)
+    private RenderFragment CheckItemWithNavigation(ChecklistItemDetail item) => __builder =>
     {
+        var status = item.IsComplete ? ResearchStepStatus.Completed : ResearchStepStatus.NotStarted;
+        // Determine if this is the "in progress" item (first incomplete after all completed)
         var booleans = new[]
         {
-            Checklist.InitialBacktest,
-            Checklist.MonteCarloRobustness,
-            Checklist.WalkForwardValidation,
-            Checklist.RegimeSensitivity,
-            Checklist.RealismImpact,
-            Checklist.ParameterSurface,
-            Checklist.FinalHeldOutTest,
-            Checklist.PropFirmEvaluation,
-            Checklist.CpcvDone
+            Checklist.InitialBacktest, Checklist.MonteCarloRobustness, Checklist.WalkForwardValidation,
+            Checklist.RegimeSensitivity, Checklist.RealismImpact, Checklist.ParameterSurface,
+            Checklist.FinalHeldOutTest, Checklist.PropFirmEvaluation, Checklist.CpcvDone
         };
-
         var keys = new[]
         {
             "InitialBacktest", "MonteCarloRobustness", "WalkForwardValidation",
             "RegimeSensitivity", "RealismImpact", "ParameterSurface",
             "FinalHeldOutTest", "PropFirmEvaluation", "CpcvDone"
         };
+        int index = Array.IndexOf(keys, item.Key);
+        if (index >= 0)
+            status = MapToStatus(item.IsComplete, index, booleans);
 
-        int index = Array.IndexOf(keys, stepKey);
-        return MapToStatus(value, index, booleans);
-    }
-
-    private string GetStepDescription(string stepKey)
-    {
-        return ChartComputationHelpers.StepDescriptions.TryGetValue(stepKey, out var desc) ? desc : string.Empty;
-    }
-
-    private RenderFragment CheckItem(string StepKey, bool Done, string Label) => __builder =>
-    {
-        var status = GetStepStatus(Done, StepKey);
         var icon = status switch
         {
             ResearchStepStatus.Completed => Icons.Material.Filled.CheckCircle,
@@ -149,12 +164,40 @@
         };
         var iconClass = status == ResearchStepStatus.InProgress ? "research-step-pulse" : "";
         var textOpacity = status == ResearchStepStatus.NotStarted ? "opacity: 0.5;" : "";
+        var containerClass = !item.IsComplete && item.IsCritical ? "research-step-critical research-step-incomplete" : 
+                             !item.IsComplete ? "research-step-incomplete" : "";
 
-        <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
-            <MudIcon Icon="@icon" Color="@iconColor" Size="MudBlazor.Size.Small" Class="@iconClass" />
-            <MudTooltip Text="@GetStepDescription(StepKey)" Placement="Placement.Right">
-                <MudText Typo="Typo.body2" Style="@textOpacity">@Label</MudText>
-            </MudTooltip>
-        </MudStack>;
+        <div class="@containerClass">
+            <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
+                <MudIcon Icon="@icon" Color="@iconColor" Size="MudBlazor.Size.Small" Class="@iconClass" />
+                @if (!item.IsComplete)
+                {
+                    <MudTooltip Text="@item.ConfidenceExplanation" Placement="Placement.Right">
+                        <MudLink Href="@item.NavigationPath" Typo="Typo.body2" Style="@textOpacity"
+                                 aria-label="@($"Navigate to {item.Label}")">
+                            @item.Label
+                        </MudLink>
+                    </MudTooltip>
+                    @if (item.IsCritical)
+                    {
+                        <MudChip T="string" Size="MudBlazor.Size.Small" Color="Color.Warning" Variant="Variant.Outlined"
+                                 aria-label="Critical gating item">
+                            Critical
+                        </MudChip>
+                    }
+                }
+                else
+                {
+                    <MudTooltip Text="@GetStepDescription(item.Key)" Placement="Placement.Right">
+                        <MudText Typo="Typo.body2" Style="@textOpacity">@item.Label</MudText>
+                    </MudTooltip>
+                }
+            </MudStack>
+        </div>;
     };
+
+    private string GetStepDescription(string stepKey)
+    {
+        return ChartComputationHelpers.StepDescriptions.TryGetValue(stepKey, out var desc) ? desc : string.Empty;
+    }
 }

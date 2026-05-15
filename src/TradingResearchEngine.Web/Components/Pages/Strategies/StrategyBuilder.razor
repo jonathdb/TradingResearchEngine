@@ -284,6 +284,13 @@
         _vm.Hypothesis ??= tpl.Descriptor?.Hypothesis;
         _vm.IsDirty = true;
 
+        // In beginner mode, apply the template's default realism profile to ensure
+        // realistic execution assumptions. Never default to FastResearch in beginner mode.
+        if (_vm.IsBeginnerMode)
+        {
+            _vm.RealismProfile = tpl.DefaultRealismProfile;
+        }
+
         _presetParameters = new Dictionary<string, object>(tpl.DefaultParameters);
         LoadSchemaForCurrentStrategy();
         return Task.CompletedTask;

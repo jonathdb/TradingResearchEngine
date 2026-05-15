@@ -2,7 +2,7 @@
 
 ## Overview
 
-This plan implements four parallel capability tracks across the existing hexagonal architecture. Tasks are ordered Core → Application → Infrastructure → Hosts (Cli/Api/Web) → Tests → Benchmarks, grouped by track where possible. Each task builds incrementally on previous work, with checkpoints at natural integration boundaries.
+This plan implements four parallel capability tracks across the existing hexagonal architecture. Tasks are ordered Core → Application → Infrastructure → Web → Tests → Benchmarks, grouped by track where possible. Each task builds incrementally on previous work, with checkpoints at natural integration boundaries.
 
 ## Tasks
 

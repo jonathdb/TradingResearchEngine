@@ -37,7 +37,7 @@ public sealed class StrategyRegistry
 
 ## Registration at Startup
 
-In `Program.cs` of Cli and Api:
+In `Program.cs` of the Web project:
 
 ```csharp
 services.AddTradingResearchEngine(config)
@@ -78,4 +78,4 @@ Strategies must remain focused on signal generation. They must not embed:
 - Report generation or analytics concerns
 
 Strategies emit `Direction.Long` to enter and `Direction.Flat` to exit.
-V5 adds `Direction.Short` for exhaustive switch coverage; runtime short-selling is guarded by `LongOnlyGuard` (V6 task).
+V6+ supports bidirectional execution: strategies may also emit `Direction.Short` for short entries.

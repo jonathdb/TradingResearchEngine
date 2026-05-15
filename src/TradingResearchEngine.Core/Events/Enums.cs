@@ -1,11 +1,10 @@
 namespace TradingResearchEngine.Core.Events;
 
 /// <summary>
-/// Trade direction. V5 adds <c>Short</c> to improve visibility of long-only assumptions;
-/// runtime short-selling is guarded by <see cref="LongOnlyGuard"/> and throws
-/// <see cref="NotSupportedException"/>. Short execution is a V6 task.
-/// Adding the enum value forces handling in exhaustive switch expressions, but does not
-/// guarantee coverage in if/else chains or default cases — explicit guard calls are required.
+/// Trade direction. All three values are fully supported in V6+.
+/// <c>Long</c> opens or adds to a long position, <c>Short</c> opens or adds to a short position,
+/// and <c>Flat</c> closes the current position in the given symbol.
+/// Consumers should use exhaustive switch expressions to handle all cases.
 /// </summary>
 public enum Direction { Long, Short, Flat }
 

@@ -94,7 +94,7 @@
 
     private IEnumerable<SkenderCatalogEntry> GetFilteredIndicators()
     {
-        var entries = SkenderIndicatorCatalog.All.AsEnumerable();
+        var entries = SkenderIndicatorCatalog.FunctionalEntries.AsEnumerable();
 
         if (SelectedCategory is not null)
         {

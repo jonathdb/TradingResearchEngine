@@ -1,9 +1,11 @@
-# API Standards
+# API Standards (Historical)
 
-## Style
+> **Note:** The standalone API project (`TradingResearchEngine.Api`) has been removed. The application is now Web-only (Blazor Server). This file is retained as historical reference for the endpoint design patterns. All engine functionality is now accessed through the Blazor Server UI via injected Application-layer services.
+
+## Style (Historical)
 
 ASP.NET Core minimal APIs only. No MVC controllers.
-All endpoints are registered in `ScenarioEndpoints.cs` via extension methods on `IEndpointRouteBuilder`.
+All endpoints were registered in `ScenarioEndpoints.cs` via extension methods on `IEndpointRouteBuilder`.
 
 ## Endpoints
 

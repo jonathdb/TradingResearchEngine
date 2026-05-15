@@ -30,8 +30,5 @@ src/TradingResearchEngine.Web/data/
 # Auto-saved backtest results (local user data)
 # These are in %LOCALAPPDATA%/TradingResearchEngine/ so not in the repo
 
-# Generated reports
-samples/reports/*.md
-
 # Orphaned git file (prevent recurrence)
 /git

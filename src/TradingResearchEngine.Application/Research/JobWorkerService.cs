@@ -88,6 +88,8 @@ public sealed class JobWorkerService : BackgroundService
         finally
         {
             _concurrencySemaphore.Release();
+            // Flush progress for this job on completion
+            await _executor.FlushProgressAsync(job.JobId, CancellationToken.None);
         }
     }
 
@@ -99,28 +101,112 @@ public sealed class JobWorkerService : BackgroundService
             stoppingToken, _executor.GetCancellationToken(job.JobId));
         var ct = linkedCts.Token;
 
-        try
+        var retryPolicy = _options.RetryPolicy;
+        var attempt = 0;
+
+        while (true)
         {
-            using var scope = _scopeFactory.CreateScope();
-            await DispatchAsync(job, scope.ServiceProvider, ct);
+            try
+            {
+                using var scope = _scopeFactory.CreateScope();
+                await DispatchAsync(job, scope.ServiceProvider, ct);
+                return; // Success — exit retry loop
+            }
+            catch (OperationCanceledException)
+            {
+                // Job was cancelled via DELETE /jobs/{id} or host shutdown — not retryable
+                var current = await _executor.GetJobAsync(job.JobId, CancellationToken.None);
+                if (current?.Status == JobStatus.Running || current?.Status == JobStatus.Retrying)
+                    await _executor.MarkFailedAsync(job.JobId, "Job cancelled.", CancellationToken.None);
+                return;
+            }
+            catch (Exception ex)
+            {
+                if (retryPolicy.IsTransient(ex) && attempt < retryPolicy.MaxRetries)
+                {
+                    attempt++;
+                    var delay = retryPolicy.GetBackoffDelay(attempt - 1);
+
+                    _logger.LogWarning(
+                        ex,
+                        "Job {JobId} transient failure (attempt {Attempt}/{MaxRetries}). Retrying in {DelayMs}ms",
+                        job.JobId, attempt, retryPolicy.MaxRetries, delay.TotalMilliseconds);
+
+                    await _executor.MarkRetryingAsync(job.JobId, attempt, CancellationToken.None);
+
+                    try
+                    {
+                        await Task.Delay(delay, ct);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        // Cancelled during backoff wait
+                        await _executor.MarkFailedAsync(job.JobId, "Job cancelled during retry backoff.", CancellationToken.None);
+                        return;
+                    }
+
+                    // Transition back to Running before next attempt
+                    await _executor.MarkRunningAsync(job.JobId, CancellationToken.None);
+                }
+                else
+                {
+                    // Terminal failure or retry budget exhausted
+                    var failureType = retryPolicy.IsTransient(ex)
+                        ? JobFailureType.Transient
+                        : JobFailureType.Terminal;
+
+                    var sanitizedMessage = SanitizeErrorMessage(ex, failureType, attempt, retryPolicy.MaxRetries);
+
+                    _logger.LogError(
+                        ex,
+                        "Job {JobId} final failure (type={FailureType}, attempts={Attempts}/{MaxRetries}): {Message}",
+                        job.JobId, failureType, attempt, retryPolicy.MaxRetries, ex.Message);
+
+                    await _executor.MarkFailedWithTypeAsync(
+                        job.JobId, sanitizedMessage, failureType, attempt, CancellationToken.None);
+                    return;
+                }
+            }
         }
-        catch (OperationCanceledException)
+    }
+
+    /// <summary>
+    /// Produces a sanitized, user-visible error message that does not expose stack traces
+    /// or internal implementation details.
+    /// </summary>
+    private static string SanitizeErrorMessage(Exception ex, JobFailureType failureType, int attempts, int maxRetries)
+    {
+        if (failureType == JobFailureType.Transient)
         {
-            // Job was cancelled via DELETE /jobs/{id} or host shutdown
-            var current = await _executor.GetJobAsync(job.JobId, CancellationToken.None);
-            if (current?.Status == JobStatus.Running)
-                await _executor.MarkFailedAsync(job.JobId, "Job cancelled.", CancellationToken.None);
+            return $"Job failed after {attempts} retry attempt(s) due to a transient error. " +
+                   "Please try again later or check your network connectivity.";
         }
-        catch (Exception ex)
+
+        // Terminal failures: provide a concise description without stack traces
+        return ex switch
         {
-            _logger.LogError(ex, "Job {JobId} failed", job.JobId);
-            await _executor.MarkFailedAsync(job.JobId, ex.Message, CancellationToken.None);
-        }
-        finally
-        {
-            // Flush progress for this job on completion
-            await _executor.FlushProgressAsync(job.JobId, CancellationToken.None);
-        }
+            InvalidOperationException => $"Job failed: {TruncateMessage(ex.Message)}",
+            ArgumentException => $"Job failed due to invalid configuration: {TruncateMessage(ex.Message)}",
+            FileNotFoundException => $"Job failed: required data file not found.",
+            _ => "Job failed due to an unexpected error. Check the application logs for details."
+        };
+    }
+
+    /// <summary>
+    /// Truncates an error message to a reasonable length for user display,
+    /// ensuring no stack trace content leaks through.
+    /// </summary>
+    private static string TruncateMessage(string message)
+    {
+        // Strip anything that looks like a stack trace
+        var lineIndex = message.IndexOf("   at ", StringComparison.Ordinal);
+        if (lineIndex > 0)
+            message = message[..lineIndex].TrimEnd();
+
+        const int maxLength = 200;
+        return message.Length > maxLength
+            ? string.Concat(message.AsSpan(0, maxLength), "...")
+            : message;
     }
 
     private async Task DispatchAsync(BacktestJob job, IServiceProvider services, CancellationToken ct)

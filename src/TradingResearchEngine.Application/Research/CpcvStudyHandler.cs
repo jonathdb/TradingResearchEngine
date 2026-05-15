@@ -1,3 +1,4 @@
+using TradingResearchEngine.Application.Configuration;
 using TradingResearchEngine.Application.Engine;
 using TradingResearchEngine.Application.Research.Results;
 using TradingResearchEngine.Core.Configuration;
@@ -9,15 +10,18 @@ namespace TradingResearchEngine.Application.Research;
 /// Combinatorial Purged Cross-Validation (De Prado, 2018).
 /// Generates C(N,k) train/test combinations across N folds and computes
 /// the Probability of Backtest Overfitting (PBO).
+/// Fold evaluations execute in parallel using <see cref="ConcurrencyBudget"/> for bounded concurrency.
 /// </summary>
 public sealed class CpcvStudyHandler : IResearchWorkflow<CpcvOptions, CpcvResult>
 {
     private readonly RunScenarioUseCase _runScenario;
+    private readonly ConcurrencyBudget _concurrencyBudget;
 
     /// <inheritdoc cref="CpcvStudyHandler"/>
-    public CpcvStudyHandler(RunScenarioUseCase runScenario)
+    public CpcvStudyHandler(RunScenarioUseCase runScenario, ConcurrencyBudget concurrencyBudget)
     {
         _runScenario = runScenario;
+        _concurrencyBudget = concurrencyBudget;
     }
 
     /// <inheritdoc/>
@@ -34,12 +38,14 @@ public sealed class CpcvStudyHandler : IResearchWorkflow<CpcvOptions, CpcvResult
     {
         ValidateOptions(options);
 
-        // Parse data range from config
+        // Parse data range from config using typed property access
         var dataOpts = baseConfig.DataProviderOptions;
-        var dataFrom = dataOpts.TryGetValue("From", out var f) && f is DateTimeOffset df
-            ? df : throw new InvalidOperationException("CPCV requires a 'From' date in DataProviderOptions.");
-        var dataTo = dataOpts.TryGetValue("To", out var t) && t is DateTimeOffset dt
-            ? dt : throw new InvalidOperationException("CPCV requires a 'To' date in DataProviderOptions.");
+        var dataFrom = dataOpts.GetFrom();
+        var dataTo = dataOpts.GetTo();
+        if (dataFrom == DateTimeOffset.MinValue)
+            throw new InvalidOperationException("CPCV requires a 'From' date in DataProviderOptions.");
+        if (dataTo == DateTimeOffset.MaxValue)
+            throw new InvalidOperationException("CPCV requires a 'To' date in DataProviderOptions.");
 
         // Step 1: Split data into N equal-length folds
         var totalDuration = dataTo - dataFrom;
@@ -64,49 +70,68 @@ public sealed class CpcvStudyHandler : IResearchWorkflow<CpcvOptions, CpcvResult
 
         // Step 2: Generate all C(N, k) combinations
         var combinations = GenerateCombinations(options.NumPaths, options.TestFolds);
-
-        // Step 3: Run each combination
-        var oosDistribution = new List<decimal>();
-        var isDistribution = new List<decimal>();
-        int overfitCount = 0;
-        int completedCombinations = 0;
         int totalCombinations = combinations.Count;
 
-        foreach (var testIndices in combinations)
+        // Step 3: Run each combination in parallel with bounded concurrency.
+        // Each fold evaluation creates its own engine instance via RunScenarioUseCase
+        // (which creates a per-run service scope), ensuring no shared mutable state.
+        var results = new (decimal IsSharpe, decimal OosSharpe)[totalCombinations];
+        int completedCombinations = 0;
+
+        await Parallel.ForEachAsync(
+            Enumerable.Range(0, totalCombinations),
+            new ParallelOptions
+            {
+                MaxDegreeOfParallelism = _concurrencyBudget.Available,
+                CancellationToken = ct
+            },
+            async (comboIndex, token) =>
+            {
+                using var permit = await _concurrencyBudget.AcquireAsync(token);
+
+                var testIndices = combinations[comboIndex];
+                var trainIndices = Enumerable.Range(0, options.NumPaths)
+                    .Where(i => !testIndices.Contains(i))
+                    .ToList();
+
+                // Train: run engine on concatenated training folds → this combination's IS Sharpe
+                var trainConfig = BuildConfigForFolds(baseConfig, folds, trainIndices);
+                var trainResult = await _runScenario.RunAsync(trainConfig, token, autoSave: false);
+                decimal comboIsSharpe = trainResult.Result?.SharpeRatio ?? 0m;
+
+                // Test: run engine on concatenated test folds → this combination's OOS Sharpe
+                var testConfig = BuildConfigForFolds(baseConfig, folds, testIndices.ToList());
+                var testResult = await _runScenario.RunAsync(testConfig, token, autoSave: false);
+                decimal comboOosSharpe = testResult.Result?.SharpeRatio ?? 0m;
+
+                // Store in indexed position — no shared mutable state between folds
+                results[comboIndex] = (comboIsSharpe, comboOosSharpe);
+
+                // Thread-safe progress reporting via Interlocked
+                int completed = Interlocked.Increment(ref completedCombinations);
+                progress?.Report(new ProgressUpdate(completed, totalCombinations,
+                    $"Completed combination {completed} of {totalCombinations}"));
+            });
+
+        // Step 4: Aggregate results after all folds complete (order-independent)
+        var oosDistribution = new List<decimal>(totalCombinations);
+        var isDistribution = new List<decimal>(totalCombinations);
+        int overfitCount = 0;
+
+        for (int i = 0; i < totalCombinations; i++)
         {
-            ct.ThrowIfCancellationRequested();
+            var (isSharpe, oosSharpe) = results[i];
+            isDistribution.Add(isSharpe);
+            oosDistribution.Add(oosSharpe);
 
-            var trainIndices = Enumerable.Range(0, options.NumPaths)
-                .Where(i => !testIndices.Contains(i))
-                .ToList();
-
-            // Train: run engine on concatenated training folds → this combination's IS Sharpe
-            var trainConfig = BuildConfigForFolds(baseConfig, folds, trainIndices);
-            var trainResult = await _runScenario.RunAsync(trainConfig, ct, autoSave: false);
-            decimal comboIsSharpe = trainResult.Result?.SharpeRatio ?? 0m;
-
-            // Test: run engine on concatenated test folds → this combination's OOS Sharpe
-            var testConfig = BuildConfigForFolds(baseConfig, folds, testIndices.ToList());
-            var testResult = await _runScenario.RunAsync(testConfig, ct, autoSave: false);
-            decimal comboOosSharpe = testResult.Result?.SharpeRatio ?? 0m;
-
-            isDistribution.Add(comboIsSharpe);
-            oosDistribution.Add(comboOosSharpe);
-
-            // Per-combination comparison: OOS vs that same combination's IS
-            if (comboOosSharpe < comboIsSharpe)
+            if (oosSharpe < isSharpe)
                 overfitCount++;
-
-            completedCombinations++;
-            progress?.Report(new ProgressUpdate(completedCombinations, totalCombinations,
-                $"Completed combination {completedCombinations} of {totalCombinations}"));
         }
 
-        // Step 4: Compute summary statistics
         decimal medianOos = Median(oosDistribution);
         decimal medianIs = Median(isDistribution);
-        decimal probOverfit = combinations.Count > 0
-            ? (decimal)overfitCount / combinations.Count
+        decimal probOverfit = totalCombinations > 0
+            ? (decimal)overfitCount / totalCombinations
             : 1.0m;
         decimal degradation = medianIs != 0m
             ? 1m - (medianOos / medianIs)
@@ -114,7 +139,7 @@ public sealed class CpcvStudyHandler : IResearchWorkflow<CpcvOptions, CpcvResult
 
         return new CpcvResult(
             medianOos, probOverfit, degradation,
-            oosDistribution, combinations.Count,
+            oosDistribution, totalCombinations,
             isDistribution);
     }
 

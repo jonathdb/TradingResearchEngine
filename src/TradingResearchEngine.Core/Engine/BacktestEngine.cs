@@ -87,9 +87,9 @@ public sealed class BacktestEngine : IBacktestEngine
         strategy.Initialize(config.EffectiveStrategyConfig);
 
         int barsProcessed = 0;
-        // Estimate ~100 progress updates per run using Math.Max(1, estimatedTotalBars / 100).
-        // Since totalBars is unknown from streaming data, estimate from BarsPerYear * 5 (typical 5-year run).
-        int estimatedTotalBars = config.BarsPerYear * 5;
+        // Use provider-aware progress estimation (Requirement 13.1–13.4)
+        await dataHandler.InitializeEstimateAsync(ct);
+        int estimatedTotalBars = dataHandler.EstimatedTotalBars;
         int progressInterval = Math.Max(1, estimatedTotalBars / 100);
 
         try
@@ -104,10 +104,18 @@ public sealed class BacktestEngine : IBacktestEngine
                     {
                         ProcessBar(mde, queue, portfolio, state, strategy);
                         barsProcessed++;
+                        dataHandler.NotifyBarConsumed();
 
                         if (progress is not null && barsProcessed % progressInterval == 0)
                         {
-                            progress.Report(new ProgressUpdate(barsProcessed, 0, "Processing bars..."));
+                            // Use refined estimate from DataHandler as bars are consumed
+                            int currentEstimate = dataHandler.EstimatedTotalBars;
+                            if (currentEstimate != estimatedTotalBars)
+                            {
+                                estimatedTotalBars = currentEstimate;
+                                progressInterval = Math.Max(1, estimatedTotalBars / 100);
+                            }
+                            progress.Report(new ProgressUpdate(barsProcessed, estimatedTotalBars, "Processing bars..."));
                         }
                     }
                     else
