@@ -106,7 +106,8 @@ public sealed class WalkForwardWorkflow : IResearchWorkflow<WalkForwardOptions, 
                 $"Data range too short to form at least one complete window. " +
                 $"Minimum required: InSampleLength ({options.InSampleLength}) + OutOfSampleLength ({options.OutOfSampleLength}).");
 
-        return new WalkForwardResult(sorted, ComputeMeanEfficiency(sorted));
+        var analytics = ComputeAnalytics(sorted);
+        return new WalkForwardResult(sorted, ComputeMeanEfficiency(sorted), analytics);
     }
 
     /// <summary>Pre-computes all window date ranges without I/O.</summary>
@@ -348,6 +349,42 @@ public sealed class WalkForwardWorkflow : IResearchWorkflow<WalkForwardOptions, 
             ["To"] = to
         };
         return copy;
+    }
+
+    /// <summary>
+    /// Computes enriched walk-forward analytics from completed windows.
+    /// Includes OOS profitability rate, concatenated equity curve, parameter drift, and parameter history.
+    /// </summary>
+    internal static WalkForwardAnalytics ComputeAnalytics(IReadOnlyList<WalkForwardWindow> windows)
+    {
+        var oosProfitabilityRate = ComputeOosProfitabilityRate(windows);
+        var concatenatedCurve = StitchOosEquityCurves(windows);
+        var driftScore = ComputeParameterDrift(windows);
+        var parameterHistory = windows
+            .Where(w => w.SelectedParameters.Count > 0 && w.OptimizationMetricValue.HasValue)
+            .Select(w => new ParameterWindowSnapshot(
+                w.WindowIndex,
+                new Dictionary<string, object>(w.SelectedParameters),
+                w.OptimizationMetricValue!.Value))
+            .ToList();
+
+        return new WalkForwardAnalytics(
+            oosProfitabilityRate,
+            concatenatedCurve,
+            driftScore,
+            parameterHistory);
+    }
+
+    /// <summary>
+    /// Computes the fraction of OOS windows that are profitable.
+    /// A window is profitable when its OOS result has EndEquity greater than StartEquity.
+    /// </summary>
+    internal static decimal ComputeOosProfitabilityRate(IReadOnlyList<WalkForwardWindow> windows)
+    {
+        if (windows.Count == 0) return 0m;
+
+        int profitableCount = windows.Count(w => w.OutOfSampleResult.EndEquity > w.OutOfSampleResult.StartEquity);
+        return (decimal)profitableCount / windows.Count;
     }
 
     private static decimal? ComputeMeanEfficiency(IReadOnlyList<WalkForwardWindow> windows)

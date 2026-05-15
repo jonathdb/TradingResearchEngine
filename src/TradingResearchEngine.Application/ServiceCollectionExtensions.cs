@@ -131,6 +131,10 @@ public static class ServiceCollectionExtensions
         // V8: Result export service for browser file downloads
         services.AddSingleton<IResultExportService, ResultExportService>();
 
+        // Comparison report generation — bound from appsettings.json:Reports:Comparison
+        services.Configure<ComparisonReportOptions>(configuration.GetSection("Reports:Comparison"));
+        services.AddScoped<ComparisonReportGenerator>();
+
         // V8: BarDataPool singleton for hot-path allocation reduction
         services.AddSingleton<BarDataPool>();
 

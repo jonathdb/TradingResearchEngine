@@ -252,7 +252,7 @@ This implementation plan covers 35+ requirements across 10 sequential PR gates f
 
 
 - [ ] 13. PR Gate 7 — Research Analytics Expansion
-  - [ ] 13.1 Implement expanded Monte Carlo simulation modes
+  - [x] 13.1 Implement expanded Monte Carlo simulation modes
     - Create `MonteCarloSimulationMode` enum with `TradeResample`, `BlockBootstrap`, `ReturnSeries`
     - Add `SimulationMode` property to `MonteCarloOptions`
     - Implement `ReturnSeries` mode: resample equity curve period returns directly
@@ -261,7 +261,7 @@ This implementation plan covers 35+ requirements across 10 sequential PR gates f
   - [ ]* 13.2 Write property test for Monte Carlo mode isolation
     - **Property 20: Monte Carlo Mode Isolation**
     - **Validates: Requirements 24.5**
-  - [ ] 13.3 Implement enriched walk-forward analytics
+  - [x] 13.3 Implement enriched walk-forward analytics
     - Create `WalkForwardAnalytics` record with OOS profitability rate, concatenated equity curve, parameter drift score
     - Compute OOS profitability rate as fraction of profitable OOS windows
     - Stitch individual OOS equity curves chronologically into concatenated curve
@@ -274,7 +274,7 @@ This implementation plan covers 35+ requirements across 10 sequential PR gates f
   - [ ]* 13.5 Write property test for concatenated OOS equity curve chronological continuity
     - **Property 11: Concatenated OOS Equity Curve Chronological Continuity**
     - **Validates: Requirements 25.2**
-  - [ ] 13.6 Implement trade anatomy analytics (MAE/MFE/Duration)
+  - [x] 13.6 Implement trade anatomy analytics (MAE/MFE/Duration)
     - Create `Core/Portfolio/TradeAnatomy.cs` record with MAE, MFE, Duration
     - Extend `ClosedTrade` with optional `TradeAnatomy? Anatomy` field
     - Compute MAE/MFE from intra-trade price data when `TraceOptions.EnableEventTrace` is active
@@ -284,7 +284,7 @@ This implementation plan covers 35+ requirements across 10 sequential PR gates f
   - [ ]* 13.7 Write property test for trade excursion computation (MAE/MFE)
     - **Property 12: Trade Excursion Computation (MAE/MFE)**
     - **Validates: Requirements 26.1, 26.2, 26.3**
-  - [ ] 13.8 Implement correlation-aware portfolio constraints
+  - [x] 13.8 Implement correlation-aware portfolio constraints
     - Extend `PortfolioRiskConfig` with `MaxPairwiseCorrelation` and `CorrelationLookbackBars`
     - Create `Application/Risk/CorrelationConstraintEnforcer.cs`
     - Integrate into `DefaultRiskLayer` — evaluate correlation before approving orders
@@ -293,7 +293,7 @@ This implementation plan covers 35+ requirements across 10 sequential PR gates f
   - [ ]* 13.9 Write property test for correlation constraint enforcement
     - **Property 13: Correlation Constraint Enforcement**
     - **Validates: Requirements 27.1, 27.2**
-  - [ ] 13.10 Implement persistent comparison report generation
+  - [x] 13.10 Implement persistent comparison report generation
     - Create `Application/Export/ComparisonReportGenerator.cs`
     - Generate Markdown comparison reports with key metrics, equity curves, summary statistics
     - Persist Markdown artifact to configured output location

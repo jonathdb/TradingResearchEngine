@@ -40,6 +40,15 @@ public sealed class MonteCarloOptions
     /// holding period in trades.
     /// </summary>
     public int BlockSize { get; set; } = 1;
+
+    /// <summary>
+    /// Simulation mode controlling the statistical approach.
+    /// <see cref="TradingResearchEngine.Application.Research.MonteCarloSimulationMode.TradeResample"/> resamples individual trades (IID bootstrap).
+    /// <see cref="TradingResearchEngine.Application.Research.MonteCarloSimulationMode.BlockBootstrap"/> resamples contiguous trade blocks.
+    /// <see cref="TradingResearchEngine.Application.Research.MonteCarloSimulationMode.ReturnSeries"/> resamples equity curve period returns directly.
+    /// Defaults to <see cref="TradingResearchEngine.Application.Research.MonteCarloSimulationMode.TradeResample"/>.
+    /// </summary>
+    public TradingResearchEngine.Application.Research.MonteCarloSimulationMode SimulationMode { get; set; } = TradingResearchEngine.Application.Research.MonteCarloSimulationMode.TradeResample;
 }
 
 /// <summary>Options for the risk layer.</summary>

@@ -74,7 +74,8 @@ public sealed class BacktestEngine : IBacktestEngine
     {
         var sw = Stopwatch.StartNew();
         var portfolio = new Portfolio.Portfolio(config.InitialCash,
-            _loggerFactory.CreateLogger<Portfolio.Portfolio>());
+            _loggerFactory.CreateLogger<Portfolio.Portfolio>(),
+            enableTradeAnatomy: config.EnableEventTrace);
         var queue = new EventQueue();
         var dataHandler = new DataHandler(_dataProvider, config, _loggerFactory.CreateLogger<DataHandler>(), _barDataPool);
         var state = new RunState(config.EffectiveFillMode, config.EnableEventTrace,

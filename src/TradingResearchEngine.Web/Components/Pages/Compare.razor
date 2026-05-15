@@ -1,5 +1,6 @@
 @page "/compare"
 @inject TradingResearchEngine.Application.Research.ScenarioComparisonUseCase CompareUseCase
+@inject TradingResearchEngine.Application.Export.ComparisonReportGenerator ReportGenerator
 @inject ISnackbar Snackbar
 
 <PageTitle>Compare Runs — TradingResearchEngine</PageTitle>
@@ -30,10 +31,23 @@
     <MudGrid Class="mt-4">
         <MudItem xs="12">
             <MudPaper Class="pa-4" Elevation="2">
-                <MudText Typo="Typo.h6" Class="mb-2">
-                    Best by Sharpe: <MudChip T="string" Color="MudBlazor.Color.Success" Size="MudBlazor.Size.Small">@_report.BestBySharpe</MudChip>
-                    Best by Drawdown: <MudChip T="string" Color="MudBlazor.Color.Info" Size="MudBlazor.Size.Small">@_report.BestByDrawdown</MudChip>
-                </MudText>
+                <div class="d-flex justify-space-between align-center mb-2">
+                    <MudText Typo="Typo.h6">
+                        Best by Sharpe: <MudChip T="string" Color="MudBlazor.Color.Success" Size="MudBlazor.Size.Small">@_report.BestBySharpe</MudChip>
+                        Best by Drawdown: <MudChip T="string" Color="MudBlazor.Color.Info" Size="MudBlazor.Size.Small">@_report.BestByDrawdown</MudChip>
+                    </MudText>
+                    <MudButton Variant="Variant.Outlined" Color="MudBlazor.Color.Secondary"
+                               StartIcon="@Icons.Material.Filled.FileDownload"
+                               OnClick="ExportReport"
+                               Disabled="_exporting"
+                               aria-label="Export comparison report">
+                        @if (_exporting)
+                        {
+                            <MudProgressCircular Size="MudBlazor.Size.Small" Indeterminate="true" Class="mr-2" />
+                        }
+                        Export Report
+                    </MudButton>
+                </div>
 
                 <MudTable Items="_report.Rows" Dense="true" Hover="true" Striped="true">
                     <HeaderContent>
@@ -94,6 +108,7 @@
     private TradingResearchEngine.Core.Results.ComparisonReport? _report;
     private IReadOnlyList<BacktestResult>? _selectedResults;
     private string? _error;
+    private bool _exporting;
 
     private void RunComparison()
     {
@@ -117,6 +132,27 @@
         catch (Exception ex)
         {
             _error = ex.Message;
+        }
+    }
+
+    private async Task ExportReport()
+    {
+        if (_selectedResults is null || _selectedResults.Count < 2)
+            return;
+
+        _exporting = true;
+        try
+        {
+            var artifact = await ReportGenerator.GenerateAsync(_selectedResults);
+            Snackbar.Add($"Report exported to {artifact.OutputPath}", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Export failed: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _exporting = false;
         }
     }
 }

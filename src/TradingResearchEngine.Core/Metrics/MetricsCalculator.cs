@@ -346,6 +346,43 @@ public static class MetricsCalculator
         return maxGap;
     }
 
+    /// <summary>
+    /// Computes duration distribution statistics from closed trades.
+    /// Returns null when no trades are available.
+    /// </summary>
+    public static DurationDistribution? ComputeDurationDistribution(IReadOnlyList<ClosedTrade> trades)
+    {
+        if (trades.Count == 0)
+            return null;
+
+        var durations = trades
+            .Select(t => t.Anatomy?.Duration ?? (t.ExitTime - t.EntryTime))
+            .OrderBy(d => d)
+            .ToList();
+
+        double meanTicks = durations.Average(d => d.Ticks);
+        var meanDuration = TimeSpan.FromTicks((long)meanTicks);
+
+        TimeSpan medianDuration;
+        int mid = durations.Count / 2;
+        if (durations.Count % 2 == 0)
+            medianDuration = TimeSpan.FromTicks((durations[mid - 1].Ticks + durations[mid].Ticks) / 2);
+        else
+            medianDuration = durations[mid];
+
+        var minDuration = durations[0];
+        var maxDuration = durations[^1];
+
+        // Standard deviation of durations
+        double varianceTicks = durations.Count < 2
+            ? 0.0
+            : durations.Sum(d => Math.Pow(d.Ticks - meanTicks, 2)) / (durations.Count - 1);
+        var stdDev = TimeSpan.FromTicks((long)Math.Sqrt(varianceTicks));
+
+        return new DurationDistribution(
+            meanDuration, medianDuration, minDuration, maxDuration, stdDev, trades.Count);
+    }
+
     private static decimal StdDev(IEnumerable<decimal> values)
     {
         var list = values.ToList();

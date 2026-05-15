@@ -416,7 +416,7 @@ using var permit = await _concurrencyBudget.AcquireAsync(ct);
 // permit is released when disposed
 ```
 
-Workflows use `ConcurrencyBudget.Available` as the `MaxDegreeOfParallelism` for `Parallel.ForEachAsync`, then acquire a permit inside each iteration body. This ensures the total concurrent work across all active workflows never exceeds the configured budget.
+Workflows acquire a permit from `ConcurrencyBudget` inside each `Parallel.ForEachAsync` iteration body. The semaphore is the sole concurrency gate — `MaxDegreeOfParallelism` is not set on `ParallelOptions`, avoiding a stale-snapshot race condition where a zero `Available` count would cause `ArgumentOutOfRangeException`. This ensures the total concurrent work across all active workflows never exceeds the configured budget.
 
 ## ScenarioConfig Persistence
 
@@ -530,7 +530,7 @@ When a `ConcurrencyBudget` is available, the workflow-entry overloads (`RunAsync
 When a `ConcurrencyBudget` is injected, the workflow parallelises simulations with deterministic seeding:
 
 1. **Seed pre-generation** — Per-iteration seeds are generated sequentially from the master RNG (either from `MonteCarloOptions.Seed` or a random seed). This ensures the seed sequence is identical regardless of execution order.
-2. **Parallel dispatch** — Simulations are dispatched via `Parallel.ForEachAsync` with `MaxDegreeOfParallelism` set to `ConcurrencyBudget.Available`. Each iteration acquires a permit from the budget before executing.
+2. **Parallel dispatch** — Simulations are dispatched via `Parallel.ForEachAsync`. Each iteration acquires a permit from `ConcurrencyBudget` before executing — the semaphore is the sole concurrency gate (no `MaxDegreeOfParallelism` on `ParallelOptions`).
 3. **Per-iteration RNG** — Each simulation creates its own `Random` instance seeded from the pre-generated seed array. No shared mutable state between iterations.
 4. **Indexed result collection** — Results are written into pre-allocated arrays at the simulation's index. No locking required since each simulation writes to its own slot.
 5. **Aggregation** — After all simulations complete, percentile bands and summary statistics are computed from the indexed arrays. Order-independence is guaranteed by the indexed storage.

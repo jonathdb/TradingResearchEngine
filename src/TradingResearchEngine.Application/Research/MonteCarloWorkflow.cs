@@ -8,8 +8,10 @@ using TradingResearchEngine.Core.Results;
 namespace TradingResearchEngine.Application.Research;
 
 /// <summary>
-/// Bootstrap-resamples the closed-trade return sequence to produce a distribution of outcomes.
+/// Bootstrap-resamples the closed-trade return sequence or equity curve period returns
+/// to produce a distribution of outcomes.
 /// Supports parallel execution with deterministic seeding via <see cref="ConcurrencyBudget"/>.
+/// Dispatches to mode-specific logic based on <see cref="MonteCarloSimulationMode"/>; never mixes approaches.
 /// </summary>
 public sealed class MonteCarloWorkflow : IResearchWorkflow<MonteCarloOptions, MonteCarloResult>
 {
@@ -106,11 +108,55 @@ public sealed class MonteCarloWorkflow : IResearchWorkflow<MonteCarloOptions, Mo
 
     /// <summary>
     /// Parallel Monte Carlo simulation with deterministic seeding.
+    /// Dispatches to mode-specific logic based on <see cref="MonteCarloSimulationMode"/>.
     /// Pre-generates per-iteration seeds sequentially from the master RNG,
     /// then dispatches simulations via <see cref="Parallel.ForEachAsync{TSource}"/>
     /// with bounded concurrency from <see cref="ConcurrencyBudget"/>.
     /// </summary>
     private async Task<MonteCarloResult> RunSimulationParallel(
+        BacktestResult sourceResult, MonteCarloOptions options, CancellationToken ct,
+        IProgress<ProgressUpdate>? progress)
+    {
+        return options.SimulationMode switch
+        {
+            MonteCarloSimulationMode.ReturnSeries =>
+                await RunReturnSeriesParallel(sourceResult, options, ct, progress),
+            // TradeResample and BlockBootstrap both use trade-level resampling;
+            // BlockSize controls whether it's IID (1) or block-correlated (>1).
+            MonteCarloSimulationMode.TradeResample or MonteCarloSimulationMode.BlockBootstrap =>
+                await RunTradeResampleParallel(sourceResult, options, ct, progress),
+            _ => throw new ArgumentOutOfRangeException(
+                nameof(options), $"Unsupported simulation mode: {options.SimulationMode}")
+        };
+    }
+
+    /// <summary>
+    /// Sequential Monte Carlo simulation dispatching to mode-specific logic.
+    /// Used when no concurrency budget is available or for direct BacktestResult overloads.
+    /// </summary>
+    private static MonteCarloResult RunSimulationSequential(
+        BacktestResult sourceResult, MonteCarloOptions options, CancellationToken ct,
+        IProgress<ProgressUpdate>? progress = null)
+    {
+        return options.SimulationMode switch
+        {
+            MonteCarloSimulationMode.ReturnSeries =>
+                RunReturnSeriesSequential(sourceResult, options, ct, progress),
+            // TradeResample and BlockBootstrap both use trade-level resampling;
+            // BlockSize controls whether it's IID (1) or block-correlated (>1).
+            MonteCarloSimulationMode.TradeResample or MonteCarloSimulationMode.BlockBootstrap =>
+                RunTradeResampleSequential(sourceResult, options, ct, progress),
+            _ => throw new ArgumentOutOfRangeException(
+                nameof(options), $"Unsupported simulation mode: {options.SimulationMode}")
+        };
+    }
+
+    /// <summary>
+    /// Parallel trade-resample simulation (TradeResample and BlockBootstrap modes).
+    /// Pre-generates per-iteration seeds sequentially from the master RNG,
+    /// then dispatches simulations with bounded concurrency.
+    /// </summary>
+    private async Task<MonteCarloResult> RunTradeResampleParallel(
         BacktestResult sourceResult, MonteCarloOptions options, CancellationToken ct,
         IProgress<ProgressUpdate>? progress)
     {
@@ -228,49 +274,125 @@ public sealed class MonteCarloWorkflow : IResearchWorkflow<MonteCarloOptions, Mo
                 }
             });
 
-        // 4. Aggregate results (order-independent — indexed array preserves deterministic ordering)
-        int ruinCount = ruinFlags.Sum();
-
-        // Compute percentile bands at each step
-        var bands = new List<MonteCarloPercentileBand>(tradeCount + 1);
-        for (int s = 0; s <= tradeCount; s++)
-        {
-            var sorted = stepEquities[s].OrderBy(v => v).ToArray();
-            int n = sorted.Length;
-            bands.Add(new MonteCarloPercentileBand(
-                s,
-                sorted[Math.Max(0, (int)(n * 0.10) - 1)],
-                sorted[Math.Max(0, (int)(n * 0.50) - 1)],
-                sorted[Math.Min((int)(n * 0.90), n - 1)]));
-        }
-
-        var sortedEndEquities = endEquities.OrderBy(v => v).ToList();
-        var sortedMaxDrawdowns = maxDrawdowns.OrderBy(v => v).ToList();
-        var sortedMaxConsecLosses = maxConsecLosses.OrderBy(v => v).ToList();
-        var sortedMaxConsecWins = maxConsecWins.OrderBy(v => v).ToList();
-
-        int count = sortedEndEquities.Count;
-        decimal p10 = sortedEndEquities[Math.Max(0, (int)(count * 0.10) - 1)];
-        decimal p50 = sortedEndEquities[Math.Max(0, (int)(count * 0.50) - 1)];
-        decimal p90 = sortedEndEquities[Math.Min((int)(count * 0.90), count - 1)];
-        decimal ruinProb = (decimal)ruinCount / count;
-        decimal medianDd = sortedMaxDrawdowns[Math.Max(0, (int)(sortedMaxDrawdowns.Count * 0.50) - 1)];
-        int p90ConsecLosses = sortedMaxConsecLosses[Math.Min((int)(count * 0.90), count - 1)];
-        int p90ConsecWins = sortedMaxConsecWins[Math.Min((int)(count * 0.90), count - 1)];
-
-        // Final progress report
-        progress?.Report(new ProgressUpdate(simulationCount, simulationCount,
-            $"Completed {simulationCount} simulations"));
-
-        return new MonteCarloResult(p10, p50, p90, ruinProb, medianDd, sortedEndEquities,
-            p90ConsecLosses, p90ConsecWins, allPaths.ToList(), bands);
+        // 4. Aggregate results
+        return AggregateResults(endEquities, maxDrawdowns, maxConsecLosses, maxConsecWins,
+            ruinFlags, allPaths, stepEquities, simulationCount, tradeCount, progress);
     }
 
     /// <summary>
-    /// Sequential Monte Carlo simulation preserving original algorithm behavior.
-    /// Used when no concurrency budget is available or for direct BacktestResult overloads.
+    /// Parallel return-series simulation. Resamples equity curve period returns directly
+    /// rather than trade-level returns, providing a different statistical perspective
+    /// on path variability that captures intra-trade equity fluctuations.
     /// </summary>
-    private static MonteCarloResult RunSimulationSequential(
+    private async Task<MonteCarloResult> RunReturnSeriesParallel(
+        BacktestResult sourceResult, MonteCarloOptions options, CancellationToken ct,
+        IProgress<ProgressUpdate>? progress)
+    {
+        var periodReturns = ComputePeriodReturns(sourceResult);
+        if (periodReturns.Length == 0)
+        {
+            return new MonteCarloResult(
+                sourceResult.EndEquity, sourceResult.EndEquity, sourceResult.EndEquity,
+                0m, 0m, new List<decimal> { sourceResult.EndEquity }, 0, 0,
+                new List<MonteCarloPath>(), new List<MonteCarloPercentileBand>());
+        }
+
+        int returnCount = periodReturns.Length;
+        int simulationCount = options.SimulationCount;
+
+        // 1. Pre-generate per-iteration seeds sequentially from master RNG (deterministic)
+        var masterRng = options.Seed.HasValue ? new Random(options.Seed.Value) : new Random();
+        var seeds = new int[simulationCount];
+        for (int i = 0; i < simulationCount; i++)
+            seeds[i] = masterRng.Next();
+
+        var ruinThreshold = sourceResult.StartEquity * (1m - options.RuinThresholdPercent);
+
+        // 2. Pre-allocate indexed arrays for results
+        var allPaths = new MonteCarloPath[simulationCount];
+        var endEquities = new decimal[simulationCount];
+        var maxDrawdowns = new decimal[simulationCount];
+        var maxConsecLosses = new int[simulationCount];
+        var maxConsecWins = new int[simulationCount];
+        var ruinFlags = new int[simulationCount];
+
+        // Matrix for percentile band computation: [step][sim]
+        var stepEquities = new decimal[returnCount + 1][];
+        for (int s = 0; s <= returnCount; s++)
+            stepEquities[s] = new decimal[simulationCount];
+
+        // Progress tracking
+        int completedCount = 0;
+        int progressInterval = Math.Max(1, simulationCount / 100);
+
+        // 3. Dispatch simulations via Parallel.ForEachAsync with ConcurrencyBudget
+        await Parallel.ForEachAsync(
+            Enumerable.Range(0, simulationCount),
+            new ParallelOptions
+            {
+                MaxDegreeOfParallelism = _concurrencyBudget!.Available,
+                CancellationToken = ct
+            },
+            async (sim, token) =>
+            {
+                using var permit = await _concurrencyBudget.AcquireAsync(token);
+
+                var rng = new Random(seeds[sim]);
+
+                decimal equity = sourceResult.StartEquity;
+                decimal peak = equity;
+                decimal maxDd = 0m;
+                bool ruined = false;
+                int consecLosses = 0, maxCL = 0;
+                int consecWins = 0, maxCW = 0;
+                var path = new decimal[returnCount + 1];
+                path[0] = equity;
+                stepEquities[0][sim] = equity;
+
+                for (int i = 0; i < returnCount; i++)
+                {
+                    // IID resample of period returns
+                    int idx = rng.Next(returnCount);
+                    decimal sampledReturn = periodReturns[idx];
+                    equity *= (1m + sampledReturn);
+                    path[i + 1] = equity;
+                    stepEquities[i + 1][sim] = equity;
+
+                    if (equity > peak) peak = equity;
+                    decimal dd = peak > 0 ? (peak - equity) / peak : 0m;
+                    if (dd > maxDd) maxDd = dd;
+                    if (!ruined && equity <= ruinThreshold) ruined = true;
+
+                    if (sampledReturn < 0) { consecLosses++; consecWins = 0; if (consecLosses > maxCL) maxCL = consecLosses; }
+                    else if (sampledReturn > 0) { consecWins++; consecLosses = 0; if (consecWins > maxCW) maxCW = consecWins; }
+                    else { consecLosses = 0; consecWins = 0; }
+                }
+
+                allPaths[sim] = new MonteCarloPath(path);
+                endEquities[sim] = equity;
+                maxDrawdowns[sim] = maxDd;
+                maxConsecLosses[sim] = maxCL;
+                maxConsecWins[sim] = maxCW;
+                ruinFlags[sim] = ruined ? 1 : 0;
+
+                int completed = Interlocked.Increment(ref completedCount);
+                if (progress is not null && completed % progressInterval == 0)
+                {
+                    progress.Report(new ProgressUpdate(completed, simulationCount,
+                        $"Simulating path {completed} of {simulationCount}"));
+                }
+            });
+
+        // 4. Aggregate results
+        return AggregateResults(endEquities, maxDrawdowns, maxConsecLosses, maxConsecWins,
+            ruinFlags, allPaths, stepEquities, simulationCount, returnCount, progress);
+    }
+
+    /// <summary>
+    /// Sequential trade-resample simulation (TradeResample and BlockBootstrap modes).
+    /// Preserves original algorithm behavior.
+    /// </summary>
+    private static MonteCarloResult RunTradeResampleSequential(
         BacktestResult sourceResult, MonteCarloOptions options, CancellationToken ct,
         IProgress<ProgressUpdate>? progress = null)
     {
@@ -302,10 +424,7 @@ public sealed class MonteCarloWorkflow : IResearchWorkflow<MonteCarloOptions, Mo
         // Block bootstrap resampling:
         // When BlockSize == 1 (default), this is standard IID bootstrap — each trade is sampled independently.
         // When BlockSize > 1, contiguous blocks of trades are sampled together to preserve serial
-        // autocorrelation in the return sequence. This is important for trend-following strategies
-        // where consecutive trade outcomes are correlated. The block start is randomized every
-        // `effectiveBlockSize` trades, and indices wrap around using modular arithmetic.
-        // Clamp BlockSize to tradeCount when it exceeds the number of trades
+        // autocorrelation in the return sequence.
         int effectiveBlockSize = Math.Min(Math.Max(options.BlockSize, 1), tradeCount);
 
         // Progress reporting interval: emit ~100 updates per run
@@ -315,7 +434,6 @@ public sealed class MonteCarloWorkflow : IResearchWorkflow<MonteCarloOptions, Mo
         {
             ct.ThrowIfCancellationRequested();
 
-            // Emit progress at regular intervals
             if (progress is not null && sim % progressInterval == 0)
             {
                 progress.Report(new ProgressUpdate(sim, options.SimulationCount,
@@ -373,17 +491,7 @@ public sealed class MonteCarloWorkflow : IResearchWorkflow<MonteCarloOptions, Mo
         }
 
         // Compute percentile bands at each step
-        var bands = new List<MonteCarloPercentileBand>(tradeCount + 1);
-        for (int s = 0; s <= tradeCount; s++)
-        {
-            var sorted = stepEquities[s].OrderBy(v => v).ToArray();
-            int n = sorted.Length;
-            bands.Add(new MonteCarloPercentileBand(
-                s,
-                sorted[Math.Max(0, (int)(n * 0.10) - 1)],
-                sorted[Math.Max(0, (int)(n * 0.50) - 1)],
-                sorted[Math.Min((int)(n * 0.90), n - 1)]));
-        }
+        var bands = ComputePercentileBands(stepEquities, tradeCount, options.SimulationCount);
 
         endEquities.Sort();
         maxDrawdowns.Sort();
@@ -405,5 +513,202 @@ public sealed class MonteCarloWorkflow : IResearchWorkflow<MonteCarloOptions, Mo
 
         return new MonteCarloResult(p10, p50, p90, ruinProb, medianDd, endEquities,
             p90ConsecLosses, p90ConsecWins, allPaths, bands);
+    }
+
+    /// <summary>
+    /// Sequential return-series simulation. Resamples equity curve period returns directly
+    /// rather than trade-level returns.
+    /// </summary>
+    private static MonteCarloResult RunReturnSeriesSequential(
+        BacktestResult sourceResult, MonteCarloOptions options, CancellationToken ct,
+        IProgress<ProgressUpdate>? progress = null)
+    {
+        var periodReturns = ComputePeriodReturns(sourceResult);
+        if (periodReturns.Length == 0)
+        {
+            return new MonteCarloResult(
+                sourceResult.EndEquity, sourceResult.EndEquity, sourceResult.EndEquity,
+                0m, 0m, new List<decimal> { sourceResult.EndEquity }, 0, 0,
+                new List<MonteCarloPath>(), new List<MonteCarloPercentileBand>());
+        }
+
+        int returnCount = periodReturns.Length;
+        var rng = options.Seed.HasValue ? new Random(options.Seed.Value) : new Random();
+        var endEquities = new List<decimal>(options.SimulationCount);
+        var maxDrawdowns = new List<decimal>(options.SimulationCount);
+        var maxConsecLosses = new List<int>(options.SimulationCount);
+        var maxConsecWins = new List<int>(options.SimulationCount);
+        var allPaths = new List<MonteCarloPath>(options.SimulationCount);
+        var ruinThreshold = sourceResult.StartEquity * (1m - options.RuinThresholdPercent);
+        int ruinCount = 0;
+
+        // Matrix for percentile band computation: [step][sim]
+        var stepEquities = new decimal[returnCount + 1][];
+        for (int s = 0; s <= returnCount; s++)
+            stepEquities[s] = new decimal[options.SimulationCount];
+
+        // Progress reporting interval: emit ~100 updates per run
+        int progressInterval = Math.Max(1, options.SimulationCount / 100);
+
+        for (int sim = 0; sim < options.SimulationCount; sim++)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            if (progress is not null && sim % progressInterval == 0)
+            {
+                progress.Report(new ProgressUpdate(sim, options.SimulationCount,
+                    $"Simulating path {sim + 1} of {options.SimulationCount}"));
+            }
+
+            decimal equity = sourceResult.StartEquity;
+            decimal peak = equity;
+            decimal maxDd = 0m;
+            bool ruined = false;
+            int consecLosses = 0, maxCL = 0;
+            int consecWins = 0, maxCW = 0;
+            var path = new decimal[returnCount + 1];
+            path[0] = equity;
+            stepEquities[0][sim] = equity;
+
+            for (int i = 0; i < returnCount; i++)
+            {
+                // IID resample of period returns
+                int idx = rng.Next(returnCount);
+                decimal sampledReturn = periodReturns[idx];
+                equity *= (1m + sampledReturn);
+                path[i + 1] = equity;
+                stepEquities[i + 1][sim] = equity;
+
+                if (equity > peak) peak = equity;
+                decimal dd = peak > 0 ? (peak - equity) / peak : 0m;
+                if (dd > maxDd) maxDd = dd;
+                if (!ruined && equity <= ruinThreshold) ruined = true;
+
+                if (sampledReturn < 0) { consecLosses++; consecWins = 0; if (consecLosses > maxCL) maxCL = consecLosses; }
+                else if (sampledReturn > 0) { consecWins++; consecLosses = 0; if (consecWins > maxCW) maxCW = consecWins; }
+                else { consecLosses = 0; consecWins = 0; }
+            }
+
+            allPaths.Add(new MonteCarloPath(path));
+            endEquities.Add(equity);
+            maxDrawdowns.Add(maxDd);
+            maxConsecLosses.Add(maxCL);
+            maxConsecWins.Add(maxCW);
+            if (ruined) ruinCount++;
+        }
+
+        // Compute percentile bands at each step
+        var bands = ComputePercentileBands(stepEquities, returnCount, options.SimulationCount);
+
+        endEquities.Sort();
+        maxDrawdowns.Sort();
+        maxConsecLosses.Sort();
+        maxConsecWins.Sort();
+
+        int count = endEquities.Count;
+        decimal p10 = endEquities[Math.Max(0, (int)(count * 0.10) - 1)];
+        decimal p50 = endEquities[Math.Max(0, (int)(count * 0.50) - 1)];
+        decimal p90 = endEquities[Math.Min((int)(count * 0.90), count - 1)];
+        decimal ruinProb = (decimal)ruinCount / count;
+        decimal medianDd = maxDrawdowns[Math.Max(0, (int)(maxDrawdowns.Count * 0.50) - 1)];
+        int p90ConsecLosses = maxConsecLosses[Math.Min((int)(count * 0.90), count - 1)];
+        int p90ConsecWins = maxConsecWins[Math.Min((int)(count * 0.90), count - 1)];
+
+        // Final progress report
+        progress?.Report(new ProgressUpdate(options.SimulationCount, options.SimulationCount,
+            $"Completed {options.SimulationCount} simulations"));
+
+        return new MonteCarloResult(p10, p50, p90, ruinProb, medianDd, endEquities,
+            p90ConsecLosses, p90ConsecWins, allPaths, bands);
+    }
+
+    /// <summary>
+    /// Computes period returns from the equity curve. Each return is the fractional change
+    /// between consecutive equity curve points: (E[i] - E[i-1]) / E[i-1].
+    /// Skips any period where the prior equity is zero to avoid division by zero.
+    /// </summary>
+    private static decimal[] ComputePeriodReturns(BacktestResult sourceResult)
+    {
+        var equityCurve = sourceResult.EquityCurve;
+        if (equityCurve.Count < 2)
+            return Array.Empty<decimal>();
+
+        var returns = new List<decimal>(equityCurve.Count - 1);
+        for (int i = 1; i < equityCurve.Count; i++)
+        {
+            decimal prev = equityCurve[i - 1].TotalEquity;
+            if (prev == 0m) continue;
+            decimal periodReturn = (equityCurve[i].TotalEquity - prev) / prev;
+            returns.Add(periodReturn);
+        }
+
+        return returns.ToArray();
+    }
+
+    /// <summary>
+    /// Aggregates pre-allocated result arrays into a <see cref="MonteCarloResult"/>.
+    /// Used by parallel execution paths.
+    /// </summary>
+    private static MonteCarloResult AggregateResults(
+        decimal[] endEquities, decimal[] maxDrawdowns, int[] maxConsecLosses, int[] maxConsecWins,
+        int[] ruinFlags, MonteCarloPath[] allPaths, decimal[][] stepEquities,
+        int simulationCount, int stepCount, IProgress<ProgressUpdate>? progress)
+    {
+        int ruinCount = ruinFlags.Sum();
+
+        // Compute percentile bands at each step
+        var bands = new List<MonteCarloPercentileBand>(stepCount + 1);
+        for (int s = 0; s <= stepCount; s++)
+        {
+            var sorted = stepEquities[s].OrderBy(v => v).ToArray();
+            int n = sorted.Length;
+            bands.Add(new MonteCarloPercentileBand(
+                s,
+                sorted[Math.Max(0, (int)(n * 0.10) - 1)],
+                sorted[Math.Max(0, (int)(n * 0.50) - 1)],
+                sorted[Math.Min((int)(n * 0.90), n - 1)]));
+        }
+
+        var sortedEndEquities = endEquities.OrderBy(v => v).ToList();
+        var sortedMaxDrawdowns = maxDrawdowns.OrderBy(v => v).ToList();
+        var sortedMaxConsecLosses = maxConsecLosses.OrderBy(v => v).ToList();
+        var sortedMaxConsecWins = maxConsecWins.OrderBy(v => v).ToList();
+
+        int count = sortedEndEquities.Count;
+        decimal p10 = sortedEndEquities[Math.Max(0, (int)(count * 0.10) - 1)];
+        decimal p50 = sortedEndEquities[Math.Max(0, (int)(count * 0.50) - 1)];
+        decimal p90 = sortedEndEquities[Math.Min((int)(count * 0.90), count - 1)];
+        decimal ruinProb = (decimal)ruinCount / count;
+        decimal medianDd = sortedMaxDrawdowns[Math.Max(0, (int)(sortedMaxDrawdowns.Count * 0.50) - 1)];
+        int p90ConsecLosses = sortedMaxConsecLosses[Math.Min((int)(count * 0.90), count - 1)];
+        int p90ConsecWins = sortedMaxConsecWins[Math.Min((int)(count * 0.90), count - 1)];
+
+        // Final progress report
+        progress?.Report(new ProgressUpdate(simulationCount, simulationCount,
+            $"Completed {simulationCount} simulations"));
+
+        return new MonteCarloResult(p10, p50, p90, ruinProb, medianDd, sortedEndEquities,
+            p90ConsecLosses, p90ConsecWins, allPaths.ToList(), bands);
+    }
+
+    /// <summary>
+    /// Computes percentile bands from the step-equity matrix.
+    /// Used by sequential execution paths.
+    /// </summary>
+    private static List<MonteCarloPercentileBand> ComputePercentileBands(
+        decimal[][] stepEquities, int stepCount, int simulationCount)
+    {
+        var bands = new List<MonteCarloPercentileBand>(stepCount + 1);
+        for (int s = 0; s <= stepCount; s++)
+        {
+            var sorted = stepEquities[s].OrderBy(v => v).ToArray();
+            int n = sorted.Length;
+            bands.Add(new MonteCarloPercentileBand(
+                s,
+                sorted[Math.Max(0, (int)(n * 0.10) - 1)],
+                sorted[Math.Max(0, (int)(n * 0.50) - 1)],
+                sorted[Math.Min((int)(n * 0.90), n - 1)]));
+        }
+        return bands;
     }
 }
