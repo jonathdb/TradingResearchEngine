@@ -442,7 +442,7 @@ Bound from `appsettings.json:Concurrency` via `IOptions<ConcurrencyOptions>`.
 
 ### Registration
 
-`ConcurrencyBudget` is registered as a singleton in DI. All parallel research workflows (Monte Carlo, CPCV, parameter perturbation) share the same budget instance to prevent oversubscription when multiple workflows run concurrently.
+`ConcurrencyBudget` is registered as a singleton in DI. All parallel research workflows (Monte Carlo, CPCV, parameter perturbation, portfolio backtest) share the same budget instance to prevent oversubscription when multiple workflows run concurrently.
 
 ### Usage Pattern
 
