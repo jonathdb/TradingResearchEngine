@@ -88,6 +88,12 @@ public static class ServiceCollectionExtensions
             return new JsonStudyRepository(DataSubDir("studies"));
         });
 
+        // V10: Research journal repository
+        services.AddSingleton<TradingResearchEngine.Application.Research.IResearchJournalRepository>(sp =>
+        {
+            return new JsonResearchJournalRepository(DataSubDir("journal"));
+        });
+
         // V3: Settings service
         services.AddSingleton(sp =>
         {

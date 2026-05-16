@@ -21,7 +21,9 @@ public sealed class PropFirmVarianceWorkflow
     /// <summary>
     /// Runs variance analysis across presets for an instant-funding configuration.
     /// </summary>
-    public PropFirmVarianceResult Run(InstantFundingConfig baseConfig, Dictionary<string, object>? userPreset = null)
+    /// <param name="baseConfig">The base instant-funding configuration to vary.</param>
+    /// <param name="userPreset">Optional typed overrides for a user-defined scenario.</param>
+    public PropFirmVarianceResult Run(InstantFundingConfig baseConfig, PropFirmPresetOverrides? userPreset = null)
     {
         var presets = new List<(string Name, decimal GrossReturn, decimal Friction, decimal PassRate)>
         {
@@ -32,9 +34,9 @@ public sealed class PropFirmVarianceWorkflow
 
         if (userPreset is not null)
         {
-            var gross = userPreset.TryGetValue("GrossMonthlyReturnPercent", out var g) && g is decimal gd ? gd : baseConfig.GrossMonthlyReturnPercent;
-            var friction = userPreset.TryGetValue("PayoutFrictionFactor", out var f) && f is decimal fd ? fd : baseConfig.PayoutFrictionFactor;
-            var pass = userPreset.TryGetValue("PassRatePercent", out var p) && p is decimal pd ? pd : baseConfig.DirectFundedProbabilityPercent;
+            var gross = userPreset.GrossMonthlyReturnPercent ?? baseConfig.GrossMonthlyReturnPercent;
+            var friction = userPreset.PayoutFrictionFactor ?? baseConfig.PayoutFrictionFactor;
+            var pass = userPreset.PassRatePercent ?? baseConfig.DirectFundedProbabilityPercent;
             presets.Add(("UserDefined", gross, friction, pass));
         }
 

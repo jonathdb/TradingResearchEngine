@@ -145,12 +145,7 @@ public sealed class WalkForwardWorkflow : IResearchWorkflow<WalkForwardOptions, 
         IStrategyFactory factory, CancellationToken ct)
     {
         // Build in-sample config with restricted date range
-#pragma warning disable CS0618 // Legacy dictionary access for backward compatibility
-        var isConfig = baseConfig with
-        {
-            DataProviderOptions = WithDateRange(baseConfig.DataProviderOptions, spec.IsStart, spec.IsEnd)
-        };
-#pragma warning restore CS0618
+        var isConfig = WithTypedDateRange(baseConfig, spec.IsStart, spec.IsEnd);
 
         Dictionary<string, object> bestParams;
         decimal? optimizationMetricValue;
@@ -182,13 +177,11 @@ public sealed class WalkForwardWorkflow : IResearchWorkflow<WalkForwardOptions, 
         }
 
         // Run engine on out-of-sample with best params — creates its own EventQueue
-#pragma warning disable CS0618 // Legacy dictionary access for backward compatibility
-        var oosConfig = baseConfig with
+        var oosConfig = WithTypedDateRange(baseConfig, spec.OosStart, spec.OosEnd);
+        oosConfig = oosConfig with
         {
-            StrategyParameters = new Dictionary<string, object>(bestParams),
-            DataProviderOptions = WithDateRange(baseConfig.DataProviderOptions, spec.OosStart, spec.OosEnd)
+            StrategyParameters = new Dictionary<string, object>(bestParams)
         };
-#pragma warning restore CS0618
 
         // Create an isolated strategy instance for this OOS iteration via factory
         var oosStrategyConfig = oosConfig.EffectiveStrategyConfig;
@@ -355,6 +348,26 @@ public sealed class WalkForwardWorkflow : IResearchWorkflow<WalkForwardOptions, 
             ["To"] = to
         };
         return copy;
+    }
+
+    /// <summary>
+    /// Creates a new <see cref="ScenarioConfig"/> with the date range applied to the typed
+    /// <see cref="DataProviderConfig"/> when available, falling back to the legacy dictionary path.
+    /// </summary>
+    private static ScenarioConfig WithTypedDateRange(
+        ScenarioConfig config, DateTimeOffset from, DateTimeOffset to)
+    {
+        var effectiveData = config.EffectiveDataConfig;
+        var typedConfig = effectiveData.EffectiveTypedConfig with { From = from, To = to };
+        var updatedData = effectiveData with { TypedProviderConfig = typedConfig };
+
+#pragma warning disable CS0618 // Legacy dictionary retained for backward compatibility
+        return config with
+        {
+            Data = updatedData,
+            DataProviderOptions = WithDateRange(config.DataProviderOptions, from, to)
+        };
+#pragma warning restore CS0618
     }
 
     /// <summary>

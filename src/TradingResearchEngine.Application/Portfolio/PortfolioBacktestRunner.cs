@@ -16,18 +16,22 @@ namespace TradingResearchEngine.Application.Portfolio;
 public sealed class PortfolioBacktestRunner
 {
     private readonly RunScenarioUseCase _runScenario;
+    private readonly ConcurrencyBudget _concurrencyBudget;
     private readonly ILogger<PortfolioBacktestRunner> _logger;
 
     /// <summary>
-    /// Initialises the portfolio backtest runner with the scenario use case and logger.
+    /// Initialises the portfolio backtest runner with the scenario use case, concurrency budget, and logger.
     /// </summary>
     /// <param name="runScenario">Use case for running individual symbol backtests.</param>
+    /// <param name="concurrencyBudget">Global concurrency budget for parallel execution throttling.</param>
     /// <param name="logger">Logger for diagnostics.</param>
     public PortfolioBacktestRunner(
         RunScenarioUseCase runScenario,
+        ConcurrencyBudget concurrencyBudget,
         ILogger<PortfolioBacktestRunner> logger)
     {
         _runScenario = runScenario;
+        _concurrencyBudget = concurrencyBudget;
         _logger = logger;
     }
 
@@ -55,17 +59,16 @@ public sealed class PortfolioBacktestRunner
         var symbolResults = new BacktestResult[symbolCount];
         int completed = 0;
 
-        int maxParallelism = Math.Max(1, Environment.ProcessorCount - 1);
-
         await Parallel.ForEachAsync(
             Enumerable.Range(0, symbolCount),
             new ParallelOptions
             {
-                MaxDegreeOfParallelism = maxParallelism,
+                MaxDegreeOfParallelism = Environment.ProcessorCount,
                 CancellationToken = ct
             },
             async (index, token) =>
             {
+                using var permit = await _concurrencyBudget.AcquireAsync(token);
                 var scenarioConfig = BuildScenarioConfig(config, index);
                 var result = await _runScenario.RunAsync(scenarioConfig, token, autoSave: false);
 
