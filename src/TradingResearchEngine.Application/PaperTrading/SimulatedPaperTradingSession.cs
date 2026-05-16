@@ -275,14 +275,36 @@ public sealed class SimulatedPaperTradingSession : IPaperTradingSession, IDispos
 
         // Emit bar event
         var snapshot = _portfolio.TakeSnapshot();
-        _barSubject.OnNext(new PaperBarEvent(bar, DateTimeOffset.UtcNow, snapshot));
+        EmitSafely(_barSubject, new PaperBarEvent(bar, DateTimeOffset.UtcNow, snapshot), "PaperBarEvent");
 
         // Emit trade events for any new closed trades
         var closedTrades = _portfolio.ClosedTrades;
         for (int i = previousTradeCount; i < closedTrades.Count; i++)
         {
             var tradeSnapshot = _portfolio.TakeSnapshot();
-            _tradeSubject.OnNext(new PaperTradeEvent(closedTrades[i], DateTimeOffset.UtcNow, tradeSnapshot));
+            EmitSafely(_tradeSubject, new PaperTradeEvent(closedTrades[i], DateTimeOffset.UtcNow, tradeSnapshot), "PaperTradeEvent");
+        }
+    }
+
+    /// <summary>
+    /// Safely emits a value to a Subject, catching any synchronous exceptions thrown by subscribers.
+    /// This ensures that a failing subscriber does not terminate the event stream or affect the session state machine.
+    /// Note: This catches synchronous exceptions only. Async void subscribers are not protected by this pattern.
+    /// </summary>
+    /// <typeparam name="T">The type of value being emitted.</typeparam>
+    /// <param name="subject">The Subject to emit the value on.</param>
+    /// <param name="value">The value to emit.</param>
+    /// <param name="eventType">A descriptive name for the event type, used in error logging.</param>
+    private void EmitSafely<T>(Subject<T> subject, T value, string eventType)
+    {
+        try
+        {
+            subject.OnNext(value);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Subscriber exception during {EventType} emission: {Message}",
+                eventType, ex.Message);
         }
     }
 

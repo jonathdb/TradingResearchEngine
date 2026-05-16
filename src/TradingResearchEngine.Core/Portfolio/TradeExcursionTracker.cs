@@ -1,3 +1,4 @@
+using TradingResearchEngine.Core.DataHandling;
 using TradingResearchEngine.Core.Events;
 
 namespace TradingResearchEngine.Core.Portfolio;
@@ -33,30 +34,57 @@ public sealed class TradeExcursionTracker
     }
 
     /// <summary>
-    /// Updates the tracker with the current market price.
-    /// Tracks the highest and lowest prices seen during the trade's lifetime.
+    /// Updates the tracker with a full OHLC bar. Uses intra-bar High/Low extremes
+    /// based on position direction for accurate MAE/MFE computation.
     /// </summary>
-    /// <param name="currentPrice">The current market price for the symbol.</param>
-    public void UpdatePrice(decimal currentPrice)
+    /// <param name="bar">The bar record containing Open, High, Low, Close prices.</param>
+    public void UpdateBar(BarRecord bar)
     {
         _hasUpdates = true;
 
         if (_direction == Direction.Long)
         {
-            // For longs: favorable = price goes up, adverse = price goes down
-            if (currentPrice > _maxFavorablePrice)
-                _maxFavorablePrice = currentPrice;
-            if (currentPrice < _maxAdversePrice)
-                _maxAdversePrice = currentPrice;
+            // For longs: favorable = bar.High (best price), adverse = bar.Low (worst price)
+            decimal favorablePrice = bar.High;
+            decimal adversePrice = bar.Low;
+
+            if (favorablePrice > _maxFavorablePrice)
+                _maxFavorablePrice = favorablePrice;
+            if (adversePrice < _maxAdversePrice)
+                _maxAdversePrice = adversePrice;
         }
         else if (_direction == Direction.Short)
         {
-            // For shorts: favorable = price goes down, adverse = price goes up
-            if (currentPrice < _maxFavorablePrice)
-                _maxFavorablePrice = currentPrice;
-            if (currentPrice > _maxAdversePrice)
-                _maxAdversePrice = currentPrice;
+            // For shorts: favorable = bar.Low (best price), adverse = bar.High (worst price)
+            decimal favorablePrice = bar.Low;
+            decimal adversePrice = bar.High;
+
+            if (favorablePrice < _maxFavorablePrice)
+                _maxFavorablePrice = favorablePrice;
+            if (adversePrice > _maxAdversePrice)
+                _maxAdversePrice = adversePrice;
         }
+    }
+
+    /// <summary>
+    /// Convenience overload that constructs a synthetic bar from a single price
+    /// (Open = High = Low = Close = price) and delegates to <see cref="UpdateBar"/>.
+    /// Preserves backward compatibility for callers that only have a close price.
+    /// </summary>
+    /// <param name="price">The current market price for the symbol.</param>
+    public void UpdatePrice(decimal price)
+    {
+        var syntheticBar = new BarRecord(
+            Symbol: string.Empty,
+            Interval: string.Empty,
+            Open: price,
+            High: price,
+            Low: price,
+            Close: price,
+            Volume: 0m,
+            Timestamp: DateTimeOffset.MinValue);
+
+        UpdateBar(syntheticBar);
     }
 
     /// <summary>

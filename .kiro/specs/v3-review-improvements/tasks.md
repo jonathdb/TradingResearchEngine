@@ -73,8 +73,8 @@ This plan implements 23 requirements from the v3 review improvements specificati
 - [x] 2. Checkpoint - Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 3. Engine/Quant: TradeExcursionTracker OHLC Bar Support and Property Tests (Requirements 4, 19)
-  - [ ] 3.1 Refactor TradeExcursionTracker to accept BarRecord
+- [x] 3. Engine/Quant: TradeExcursionTracker OHLC Bar Support and Property Tests (Requirements 4, 19)
+  - [x] 3.1 Refactor TradeExcursionTracker to accept BarRecord
     - Change `UpdatePrice(decimal price)` to `UpdateBar(BarRecord bar)`
     - Long position: `adversePrice = bar.Low`, `favorablePrice = bar.High`
     - Short position: `adversePrice = bar.High`, `favorablePrice = bar.Low`
@@ -108,13 +108,13 @@ This plan implements 23 requirements from the v3 review improvements specificati
     - MFE computed from High/Low extremes >= MFE computed from Close prices only
     - **Validates: Requirements 4.5**
 
-- [ ] 4. Engine/Quant: Research Checklist DSR and MinBTL (Requirement 7)
-  - [ ] 4.1 Add DSR checklist item to ResearchChecklistService
+- [x] 4. Engine/Quant: Research Checklist DSR and MinBTL (Requirement 7)
+  - [x] 4.1 Add DSR checklist item to ResearchChecklistService
     - Add `MinDsrThreshold` to configuration options (default 0.5)
     - Implement DSR evaluation: null → Incomplete, below threshold → Failed with actual/threshold, otherwise → Passed
     - _Requirements: 7.1, 7.2, 7.3, 7.4_
 
-  - [ ] 4.2 Add MinBTL checklist item to ResearchChecklistService
+  - [x] 4.2 Add MinBTL checklist item to ResearchChecklistService
     - Call `MinBtlCalculator.Compute(BacktestResult)` using Bailey–López de Prado formula
     - Compare result against `BacktestResult.EquityCurve.Count`
     - Report Failed if actual bars < required minimum with both values in message
@@ -127,8 +127,8 @@ This plan implements 23 requirements from the v3 review improvements specificati
     - Test MinBTL pass and fail scenarios
     - _Requirements: 7.1, 7.2, 7.3, 7.4, 7.5_
 
-- [ ] 5. Architecture/Code Quality: MarkdownReporter Metrics Completeness (Requirement 3)
-  - [ ] 5.1 Extend MarkdownReporter with missing risk metrics
+- [x] 5. Architecture/Code Quality: MarkdownReporter Metrics Completeness (Requirement 3)
+  - [x] 5.1 Extend MarkdownReporter with missing risk metrics
     - Add VaR95, CVaR95, OmegaRatio, UlcerIndex rows to the metrics table
     - Implement `AppendMetricRow` helper that renders "N/A" when value is null
     - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5_
@@ -138,8 +138,8 @@ This plan implements 23 requirements from the v3 review improvements specificati
     - Test "N/A" rendering when any metric is null
     - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5_
 
-- [ ] 6. Architecture/Code Quality: Condition Length Guard (Requirement 16)
-  - [ ] 6.1 Implement condition length and nesting depth validation in CompositeStrategyConfigValidator
+- [x] 6. Architecture/Code Quality: Condition Length Guard (Requirement 16)
+  - [x] 6.1 Implement condition length and nesting depth validation in CompositeStrategyConfigValidator
     - Add `ConditionLimits` static class with `MaxCharacterLength = 2000` and `MaxNestingDepth = 50`
     - Validate entry/exit condition string length against max
     - Parse condition and count max operator nesting depth
@@ -153,8 +153,8 @@ This plan implements 23 requirements from the v3 review improvements specificati
     - Test nesting exceeding max depth fails with correct error
     - _Requirements: 16.1, 16.2, 16.3, 16.4, 16.5_
 
-- [ ] 7. Architecture/Code Quality: Source-Generated Regex in ExportValidator (Requirement 18)
-  - [ ] 7.1 Rewrite ExportValidator to use [GeneratedRegex] attribute
+- [x] 7. Architecture/Code Quality: Source-Generated Regex in ExportValidator (Requirement 18)
+  - [x] 7.1 Rewrite ExportValidator to use [GeneratedRegex] attribute
     - Make class `partial`
     - Replace all `static readonly Regex` fields and `new Regex(...)` calls with `[GeneratedRegex]` on static partial methods
     - Include `matchTimeoutMilliseconds: 1000` on all patterns
@@ -166,8 +166,8 @@ This plan implements 23 requirements from the v3 review improvements specificati
     - Test MQL validation produces same results as before
     - _Requirements: 18.3_
 
-- [ ] 8. Architecture/Code Quality: Paper Trading Session Error Resilience (Requirement 17)
-  - [ ] 8.1 Implement EmitSafely helper in SimulatedPaperTradingSession
+- [x] 8. Architecture/Code Quality: Paper Trading Session Error Resilience (Requirement 17)
+  - [x] 8.1 Implement EmitSafely helper in SimulatedPaperTradingSession
     - Add `EmitSafely<T>(Subject<T> subject, T value, string eventType)` method with try/catch
     - Replace all `_barSubject.OnNext(...)` and `_tradeSubject.OnNext(...)` calls with `EmitSafely(...)`
     - Log caught exceptions at Error level with subscriber exception message and stack trace
@@ -181,7 +181,7 @@ This plan implements 23 requirements from the v3 review improvements specificati
     - Test that exception is logged with message and stack trace
     - _Requirements: 17.1, 17.2, 17.3, 17.4_
 
-- [ ] 9. Checkpoint - Ensure all tests pass
+- [x] 9. Checkpoint - Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
 - [ ] 10. Product UX: Live Data Feed and Polling Provider (Requirements 2, 22)

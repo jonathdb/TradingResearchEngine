@@ -36,20 +36,21 @@ public class PropFirmChecklistTests
     [Fact]
     public async Task ConfidenceReachesHigh_With8Of9Items()
     {
-        // All 8 original items complete + CPCV not done = 8/9 = HIGH
+        // 8 original boolean items complete + CPCV not done = 8/11 = MEDIUM
+        // (V10: HIGH now requires ≥ 9 of 11 items including DSR and MinBTL)
         var (service, _) = CreateServiceWithAllStudies(propFirmEval: true, cpcvDone: false);
 
         var checklist = await service.ComputeAsync("v1");
 
         Assert.Equal(8, checklist.PassedCount);
-        Assert.Equal(9, checklist.TotalChecks);
-        Assert.Equal("HIGH", checklist.ConfidenceLevel);
+        Assert.Equal(11, checklist.TotalChecks);
+        Assert.Equal("MEDIUM", checklist.ConfidenceLevel);
     }
 
     [Fact]
     public async Task ConfidenceIsMedium_With7Of9Items()
     {
-        // 7 items complete = MEDIUM (needs ≥ 8 for HIGH)
+        // 7 items complete = MEDIUM (needs ≥ 9 for HIGH)
         var (service, _) = CreateServiceWithAllStudies(propFirmEval: false, cpcvDone: false);
 
         var checklist = await service.ComputeAsync("v1");
@@ -59,13 +60,13 @@ public class PropFirmChecklistTests
     }
 
     [Fact]
-    public async Task TotalChecks_Is9()
+    public async Task TotalChecks_Is11()
     {
         var (service, _) = CreateService(propFirmEval: false);
 
         var checklist = await service.ComputeAsync("v1");
 
-        Assert.Equal(9, checklist.TotalChecks);
+        Assert.Equal(11, checklist.TotalChecks);
     }
 
     [Fact]

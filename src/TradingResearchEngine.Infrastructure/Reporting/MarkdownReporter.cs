@@ -46,6 +46,10 @@ public sealed class MarkdownReporter : IReporter
         sb.AppendLine($"| Avg Loss | ${result.AverageLoss?.ToString($"F{_dp}") ?? "N/A"} |");
         sb.AppendLine($"| Avg Holding Period | {result.AverageHoldingPeriod?.ToString() ?? "N/A"} |");
         sb.AppendLine($"| K-Ratio | {result.EquityCurveSmoothness?.ToString("F4") ?? "N/A"} |");
+        AppendMetricRow(sb, "VaR (95%)", result.VaR95, _dp);
+        AppendMetricRow(sb, "CVaR (95%)", result.CVaR95, _dp);
+        AppendMetricRow(sb, "Omega Ratio", result.OmegaRatio, _dp);
+        AppendMetricRow(sb, "Ulcer Index", result.UlcerIndex, _dp);
         sb.AppendLine($"| Max Consec Losses | {result.MaxConsecutiveLosses} |");
         sb.AppendLine($"| Max Consec Wins | {result.MaxConsecutiveWins} |");
         sb.AppendLine();
@@ -53,6 +57,19 @@ public sealed class MarkdownReporter : IReporter
         sb.AppendLine();
         sb.AppendLine($"Points: {result.EquityCurve.Count}");
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// Appends a metric row to the Markdown table, rendering "N/A" when the value is null.
+    /// </summary>
+    /// <param name="sb">The string builder to append to.</param>
+    /// <param name="label">The metric display name.</param>
+    /// <param name="value">The nullable metric value.</param>
+    /// <param name="decimalPlaces">Number of decimal places for formatting.</param>
+    private static void AppendMetricRow(StringBuilder sb, string label, decimal? value, int decimalPlaces)
+    {
+        var formatted = value?.ToString($"F{decimalPlaces}") ?? "N/A";
+        sb.AppendLine($"| {label} | {formatted} |");
     }
 
     /// <inheritdoc/>

@@ -1,4 +1,7 @@
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using TradingResearchEngine.Application.Configuration;
+using TradingResearchEngine.Application.Metrics;
 using TradingResearchEngine.Application.PropFirm;
 using TradingResearchEngine.Application.Strategies;
 using TradingResearchEngine.Core.Results;
@@ -50,6 +53,7 @@ public sealed class ResearchChecklistService
     private readonly IStrategyRepository _strategyRepo;
     private readonly IPropFirmEvaluationRepository _evalRepo;
     private readonly ILogger<ResearchChecklistService> _logger;
+    private readonly ResearchChecklistOptions _options;
 
     /// <summary>
     /// Navigation paths for each checklist item, mapping step keys to workflow routes.
@@ -64,7 +68,9 @@ public sealed class ResearchChecklistService
         ["ParameterSurface"] = "/research/sweep",
         ["FinalHeldOutTest"] = "/strategies",
         ["PropFirmEvaluation"] = "/propfirm",
-        ["CpcvDone"] = "/research/explorer"
+        ["CpcvDone"] = "/research/explorer",
+        ["DsrThreshold"] = "/strategies",
+        ["MinBtl"] = "/strategies"
     };
 
     /// <summary>
@@ -81,7 +87,9 @@ public sealed class ResearchChecklistService
         ["ParameterSurface"] = "Parameter stability has not been assessed. The strategy may rely on a fragile optimum that breaks with small parameter changes.",
         ["FinalHeldOutTest"] = "The sealed held-out test has not been run. Final out-of-sample confirmation is required before deployment confidence can be established.",
         ["PropFirmEvaluation"] = "Prop firm rule compliance has not been evaluated. The strategy may violate drawdown limits, profit targets, or other challenge constraints.",
-        ["CpcvDone"] = "Combinatorial purged cross-validation has not been performed. The probability of backtest overfitting has not been quantified."
+        ["CpcvDone"] = "Combinatorial purged cross-validation has not been performed. The probability of backtest overfitting has not been quantified.",
+        ["DsrThreshold"] = "Deflated Sharpe Ratio has not met the minimum threshold. The observed Sharpe may be inflated by multiple-testing bias.",
+        ["MinBtl"] = "The backtest does not meet the minimum length required for statistical significance. Results may not be reliable."
     };
 
     /// <summary>
@@ -98,7 +106,9 @@ public sealed class ResearchChecklistService
         ["ParameterSurface"] = true,
         ["FinalHeldOutTest"] = false, // This IS the final validation step itself
         ["PropFirmEvaluation"] = false,
-        ["CpcvDone"] = false
+        ["CpcvDone"] = false,
+        ["DsrThreshold"] = false,
+        ["MinBtl"] = false
     };
 
     /// <inheritdoc cref="ResearchChecklistService"/>
@@ -107,13 +117,15 @@ public sealed class ResearchChecklistService
         IStudyRepository studyRepo,
         IStrategyRepository strategyRepo,
         IPropFirmEvaluationRepository evalRepo,
-        ILogger<ResearchChecklistService> logger)
+        ILogger<ResearchChecklistService> logger,
+        IOptions<ResearchChecklistOptions>? options = null)
     {
         _resultRepo = resultRepo;
         _studyRepo = studyRepo;
         _strategyRepo = strategyRepo;
         _evalRepo = evalRepo;
         _logger = logger;
+        _options = options?.Value ?? new ResearchChecklistOptions();
     }
 
     /// <summary>
@@ -177,6 +189,15 @@ public sealed class ResearchChecklistService
         bool cpcvDone = completedStudies
             .Any(s => s.Type is StudyType.CombinatorialPurgedCV or StudyType.Cpcv);
 
+        // V10: DSR checklist item — evaluate DeflatedSharpeRatio against threshold
+        var latestCompleted = versionResults
+            .Where(r => r.Status == BacktestStatus.Completed)
+            .OrderByDescending(r => r.CreatedAt)
+            .FirstOrDefault();
+
+        var dsrStatus = EvaluateDsr(latestCompleted);
+        var minBtlStatus = EvaluateMinBtl(latestCompleted);
+
         // V5: Compute trial budget status
         int totalTrialsRun = version?.TotalTrialsRun ?? 0;
         var trialBudget = ComputeTrialBudgetStatus(totalTrialsRun, walkForwardValidation);
@@ -191,7 +212,8 @@ public sealed class ResearchChecklistService
         return new ResearchChecklist(
             initialBacktest, monteCarloRobustness, walkForwardValidation,
             regimeSensitivity, realismImpact, parameterSurface,
-            finalHeldOutTest, propFirmEvaluation, cpcvDone, trialBudget, nextAction);
+            finalHeldOutTest, propFirmEvaluation, cpcvDone, trialBudget, nextAction,
+            dsrStatus, minBtlStatus);
     }
 
     /// <summary>
@@ -301,6 +323,100 @@ public sealed class ResearchChecklistService
     }
 
     /// <summary>
+    /// Evaluates the Deflated Sharpe Ratio checklist item against the configured threshold.
+    /// </summary>
+    private ChecklistItemStatus EvaluateDsr(BacktestResult? latestResult)
+    {
+        if (latestResult is null)
+            return ChecklistItemStatus.Incomplete("DSR has not been computed");
+
+        var dsr = latestResult.DeflatedSharpeRatio;
+
+        return dsr switch
+        {
+            null => ChecklistItemStatus.Incomplete("DSR has not been computed"),
+            var value when value < _options.MinDsrThreshold =>
+                ChecklistItemStatus.Failed(
+                    $"DSR {value:F3} below threshold {_options.MinDsrThreshold}"),
+            _ => ChecklistItemStatus.Passed($"DSR {dsr:F3} meets threshold {_options.MinDsrThreshold}")
+        };
+    }
+
+    /// <summary>
+    /// Evaluates the Minimum Backtest Length checklist item using the Bailey–López de Prado formula.
+    /// Compares the required minimum bars against the actual equity curve length.
+    /// </summary>
+    private static ChecklistItemStatus EvaluateMinBtl(BacktestResult? latestResult)
+    {
+        if (latestResult is null)
+            return ChecklistItemStatus.Incomplete("No completed backtest available for MinBTL evaluation");
+
+        var sharpe = latestResult.SharpeRatio;
+        if (sharpe is null or 0m)
+            return ChecklistItemStatus.Incomplete("Sharpe ratio not available for MinBTL calculation");
+
+        int trialCount = latestResult.TrialCount ?? 1;
+        var (skewness, kurtosis) = ComputeReturnMoments(latestResult);
+
+        int minBtl = MinBtlCalculator.MinimumBarsRequired(
+            sharpe.Value,
+            trialCount,
+            skewness,
+            kurtosis);
+
+        int actualBars = latestResult.EquityCurve.Count;
+
+        if (minBtl <= 0)
+            return ChecklistItemStatus.Passed("MinBTL requirement satisfied (degenerate inputs)");
+
+        return actualBars >= minBtl
+            ? ChecklistItemStatus.Passed($"Backtest has {actualBars} bars (MinBTL requires {minBtl})")
+            : ChecklistItemStatus.Failed($"Backtest has {actualBars} bars but MinBTL requires {minBtl}");
+    }
+
+    /// <summary>
+    /// Computes skewness and excess kurtosis from the backtest result's return series.
+    /// Prefers trade-level returns when available (≥ 3 trades) as per Bailey &amp; López de Prado.
+    /// Falls back to equity curve bar returns when trades are insufficient.
+    /// </summary>
+    internal static (decimal Skewness, decimal Kurtosis) ComputeReturnMoments(BacktestResult result)
+    {
+        List<double> returns;
+
+        if (result.Trades is { Count: >= 3 })
+        {
+            returns = result.Trades
+                .Where(t => t.EntryPrice > 0 && t.Quantity > 0)
+                .Select(t => (double)(t.NetPnl / (t.EntryPrice * t.Quantity)))
+                .ToList();
+        }
+        else
+        {
+            returns = new List<double>();
+            for (int i = 1; i < result.EquityCurve.Count; i++)
+            {
+                var prev = (double)result.EquityCurve[i - 1].TotalEquity;
+                var curr = (double)result.EquityCurve[i].TotalEquity;
+                if (prev > 0) returns.Add(curr / prev - 1.0);
+            }
+        }
+
+        if (returns.Count < 3) return (0m, 0m);
+
+        double n = returns.Count;
+        double mean = returns.Average();
+        double variance = returns.Sum(r => (r - mean) * (r - mean)) / (n - 1);
+        double std = Math.Sqrt(variance);
+        if (std <= 0) return (0m, 0m);
+
+        double skew = returns.Sum(r => Math.Pow((r - mean) / std, 3)) * n / ((n - 1) * (n - 2));
+        double kurt = returns.Sum(r => Math.Pow((r - mean) / std, 4)) * n * (n + 1) / ((n - 1) * (n - 2) * (n - 3))
+                      - 3.0 * (n - 1) * (n - 1) / ((n - 2) * (n - 3));
+
+        return ((decimal)Math.Round(skew, 6), (decimal)Math.Round(kurt, 6));
+    }
+
+    /// <summary>
     /// Returns detailed information for all checklist items, including navigation paths,
     /// confidence explanations, and criticality flags.
     /// </summary>
@@ -318,7 +434,9 @@ public sealed class ResearchChecklistService
             ("ParameterSurface", "Parameter surface mapped", checklist.ParameterSurface),
             ("FinalHeldOutTest", "Final held-out test", checklist.FinalHeldOutTest),
             ("PropFirmEvaluation", "Prop firm evaluation", checklist.PropFirmEvaluation),
-            ("CpcvDone", "CPCV overfitting assessment", checklist.CpcvDone)
+            ("CpcvDone", "CPCV overfitting assessment", checklist.CpcvDone),
+            ("DsrThreshold", "DSR meets minimum threshold", checklist.DsrStatus?.IsComplete ?? false),
+            ("MinBtl", "Minimum backtest length satisfied", checklist.MinBtlStatus?.IsComplete ?? false)
         };
 
         return items.Select(item => new ChecklistItemDetail(
@@ -442,9 +560,10 @@ public sealed class ResearchChecklistService
 }
 
 /// <summary>
-/// The 9-item research checklist with a computed Confidence Level.
+/// The 11-item research checklist with a computed Confidence Level.
 /// V5: Extended with TrialBudget and NextAction fields.
 /// V6: Added CpcvDone as 9th item; updated thresholds: HIGH ≥ 8, MEDIUM ≥ 5, LOW &lt; 5.
+/// V10: Added DsrStatus and MinBtlStatus as quantitative checklist items (10th and 11th).
 /// </summary>
 public sealed record ResearchChecklist(
     bool InitialBacktest,
@@ -460,24 +579,39 @@ public sealed record ResearchChecklist(
     /// <summary>V5: Trial budget status.</summary>
     TrialBudgetStatus TrialBudget = TrialBudgetStatus.Green,
     /// <summary>V5: Computed next recommended action.</summary>
-    NextRecommendedAction? NextAction = null)
+    NextRecommendedAction? NextAction = null,
+    /// <summary>V10: Deflated Sharpe Ratio evaluation status.</summary>
+    ChecklistItemStatus? DsrStatus = null,
+    /// <summary>V10: Minimum Backtest Length evaluation status.</summary>
+    ChecklistItemStatus? MinBtlStatus = null)
 {
     /// <summary>Number of checks that have passed.</summary>
-    public int PassedCount => new[]
+    public int PassedCount
     {
-        InitialBacktest, MonteCarloRobustness, WalkForwardValidation,
-        RegimeSensitivity, RealismImpact, ParameterSurface,
-        FinalHeldOutTest, PropFirmEvaluation, CpcvDone
-    }.Count(x => x);
+        get
+        {
+            int count = new[]
+            {
+                InitialBacktest, MonteCarloRobustness, WalkForwardValidation,
+                RegimeSensitivity, RealismImpact, ParameterSurface,
+                FinalHeldOutTest, PropFirmEvaluation, CpcvDone
+            }.Count(x => x);
+
+            if (DsrStatus?.IsComplete == true) count++;
+            if (MinBtlStatus?.IsComplete == true) count++;
+
+            return count;
+        }
+    }
 
     /// <summary>Total number of checks.</summary>
-    public int TotalChecks => 9;
+    public int TotalChecks => 11;
 
-    /// <summary>Confidence level based on passed checks. V6: HIGH ≥ 8, MEDIUM ≥ 5, LOW &lt; 5.</summary>
+    /// <summary>Confidence level based on passed checks. V10: HIGH ≥ 9, MEDIUM ≥ 6, LOW &lt; 6.</summary>
     public string ConfidenceLevel => PassedCount switch
     {
-        >= 8 => "HIGH",
-        >= 5 => "MEDIUM",
+        >= 9 => "HIGH",
+        >= 6 => "MEDIUM",
         _ => "LOW"
     };
 }

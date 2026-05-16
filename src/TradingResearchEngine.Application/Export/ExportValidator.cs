@@ -7,8 +7,17 @@ namespace TradingResearchEngine.Application.Export;
 /// Uses robust structural and syntax heuristics to detect common issues
 /// before presenting exported code to the user.
 /// </summary>
-public sealed class ExportValidator
+public sealed partial class ExportValidator
 {
+    [GeneratedRegex(@"\bstrategy\s*\(", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    private static partial Regex PineStrategyPattern();
+
+    [GeneratedRegex(@"\b(int\s+)?OnInit\s*\(", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    private static partial Regex MqlOnInitPattern();
+
+    [GeneratedRegex(@"\b(void\s+)?OnTick\s*\(", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    private static partial Regex MqlOnTickPattern();
+
     /// <summary>
     /// Validates the structural correctness of exported strategy code.
     /// </summary>
@@ -153,10 +162,7 @@ public sealed class ExportValidator
 
     private static void ValidatePineStrategyDeclaration(string code, List<ExportValidationError> errors)
     {
-        // Look for strategy() call - required for strategy scripts
-        var strategyPattern = new Regex(@"\bstrategy\s*\(", RegexOptions.None, TimeSpan.FromSeconds(1));
-
-        if (!strategyPattern.IsMatch(code))
+        if (!PineStrategyPattern().IsMatch(code))
         {
             errors.Add(new ExportValidationError(
                 null,
@@ -173,12 +179,7 @@ public sealed class ExportValidator
 
     private static void ValidateMqlOnInit(string code, List<ExportValidationError> errors)
     {
-        var onInitPattern = new Regex(
-            @"\b(int\s+)?OnInit\s*\(",
-            RegexOptions.None,
-            TimeSpan.FromSeconds(1));
-
-        if (!onInitPattern.IsMatch(code))
+        if (!MqlOnInitPattern().IsMatch(code))
         {
             errors.Add(new ExportValidationError(
                 null,
@@ -189,12 +190,7 @@ public sealed class ExportValidator
 
     private static void ValidateMqlOnTick(string code, ExportFormat format, List<ExportValidationError> errors)
     {
-        var onTickPattern = new Regex(
-            @"\b(void\s+)?OnTick\s*\(",
-            RegexOptions.None,
-            TimeSpan.FromSeconds(1));
-
-        if (!onTickPattern.IsMatch(code))
+        if (!MqlOnTickPattern().IsMatch(code))
         {
             var formatName = format == ExportFormat.MQL4 ? "MQL4" : "MQL5";
             errors.Add(new ExportValidationError(

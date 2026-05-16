@@ -10,6 +10,17 @@ namespace TradingResearchEngine.Application.Strategies.Composite;
 public static class CompositeStrategyConfigValidator
 {
     /// <summary>
+    /// Defines configurable limits for condition expression validation.
+    /// </summary>
+    public static class ConditionLimits
+    {
+        /// <summary>Maximum allowed character length for a condition expression string.</summary>
+        public const int MaxCharacterLength = 2000;
+
+        /// <summary>Maximum allowed operator nesting depth in a condition expression AST.</summary>
+        public const int MaxNestingDepth = 50;
+    }
+    /// <summary>
     /// The set of supported indicator type names (case-insensitive).
     /// Includes both hardcoded built-in types and all keys from the Skender indicator catalog.
     /// </summary>
@@ -94,8 +105,8 @@ public static class CompositeStrategyConfigValidator
     }
 
     /// <summary>
-    /// Validates a condition expression by attempting to parse it and then validating
-    /// that all indicator references are defined.
+    /// Validates a condition expression by checking length limits, attempting to parse it,
+    /// validating nesting depth, and then validating that all indicator references are defined.
     /// </summary>
     private static void ValidateExpression(
         string? expression,
@@ -106,6 +117,15 @@ public static class CompositeStrategyConfigValidator
         if (string.IsNullOrWhiteSpace(expression))
         {
             errors.Add($"The {expressionName} condition expression must not be empty.");
+            return;
+        }
+
+        // Check character length limit
+        if (expression.Length > ConditionLimits.MaxCharacterLength)
+        {
+            errors.Add(
+                $"The {expressionName} condition expression exceeds the maximum character length " +
+                $"(actual: {expression.Length}, max: {ConditionLimits.MaxCharacterLength}).");
             return;
         }
 
@@ -120,6 +140,16 @@ public static class CompositeStrategyConfigValidator
             return;
         }
 
+        // Check nesting depth limit
+        int depth = ComputeNestingDepth(ast);
+        if (depth > ConditionLimits.MaxNestingDepth)
+        {
+            errors.Add(
+                $"The {expressionName} condition expression exceeds the maximum nesting depth " +
+                $"(actual: {depth}, max: {ConditionLimits.MaxNestingDepth}).");
+            return;
+        }
+
         try
         {
             ConditionValidator.Validate(ast, definedIds);
@@ -131,5 +161,22 @@ public static class CompositeStrategyConfigValidator
                 $"[{string.Join(", ", ex.UndefinedReferences)}]. " +
                 $"Defined indicators: [{string.Join(", ", ex.DefinedIndicatorIds)}].");
         }
+    }
+
+    /// <summary>
+    /// Computes the maximum operator nesting depth of a condition AST.
+    /// Logical nodes (AND/OR) contribute one level of depth per nesting.
+    /// </summary>
+    private static int ComputeNestingDepth(ConditionNode node)
+    {
+        return node switch
+        {
+            LogicalNode logical => 1 + Math.Max(
+                ComputeNestingDepth(logical.Left),
+                ComputeNestingDepth(logical.Right)),
+            ComparisonNode => 1,
+            CrossNode => 1,
+            _ => 0
+        };
     }
 }
