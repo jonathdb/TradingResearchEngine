@@ -8,34 +8,37 @@
 
 <PageTitle>My Strategies — Research Engine</PageTitle>
 
-<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-4" Spacing="3">
-    <MudTextField @bind-Value="_search" Placeholder="Search strategies..."
-                  Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
-                  Variant="Variant.Outlined" Immediate="true" Class="flex-grow-1" />
-    <MudSelect T="string" @bind-Value="_typeFilter" Label="Type" Variant="Variant.Outlined"
-               Style="min-width:160px" Clearable="true">
-        @foreach (var t in _allTypes)
-        { <MudSelectItem Value="@t">@t</MudSelectItem> }
-    </MudSelect>
-    <MudSelect T="string" @bind-Value="_statusFilter" Label="Status" Variant="Variant.Outlined"
-               Style="min-width:140px" Clearable="true">
-        <MudSelectItem Value="@("Active")">Active</MudSelectItem>
-        <MudSelectItem Value="@("Stale")">Stale</MudSelectItem>
-        <MudSelectItem Value="@("Untested")">Untested</MudSelectItem>
-        <MudSelectItem Value="@("Retired")">Retired</MudSelectItem>
-    </MudSelect>
-    <MudSwitch T="bool" @bind-Value="_showRetired" Label="Show Retired" Color="Color.Secondary" />
-    @{
-        var retiredCount = _strategies.Count(s => s.Stage == DevelopmentStage.Retired);
-    }
-    @if (!_showRetired && retiredCount > 0)
-    {
-        <MudText Typo="Typo.caption" Class="text-muted">@retiredCount retired hidden</MudText>
-    }
-    <MudButton Variant="Variant.Filled" Color="Color.Primary"
-               StartIcon="@Icons.Material.Filled.Add"
-               Href="/strategies/builder">New Strategy</MudButton>
-</MudStack>
+@if (!_loading && _strategies.Count > 0)
+{
+    <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-4" Spacing="3">
+        <MudTextField @bind-Value="_search" Placeholder="Search strategies..."
+                      Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                      Variant="Variant.Outlined" Immediate="true" Class="flex-grow-1" />
+        <MudSelect T="string" @bind-Value="_typeFilter" Label="Type" Variant="Variant.Outlined"
+                   Style="min-width:160px" Clearable="true">
+            @foreach (var t in _allTypes)
+            { <MudSelectItem Value="@t">@ToTitleCase(t)</MudSelectItem> }
+        </MudSelect>
+        <MudSelect T="string" @bind-Value="_statusFilter" Label="Status" Variant="Variant.Outlined"
+                   Style="min-width:140px" Clearable="true">
+            <MudSelectItem Value="@("Active")">Active</MudSelectItem>
+            <MudSelectItem Value="@("Stale")">Stale</MudSelectItem>
+            <MudSelectItem Value="@("Untested")">Untested</MudSelectItem>
+            <MudSelectItem Value="@("Retired")">Retired</MudSelectItem>
+        </MudSelect>
+        <MudSwitch T="bool" @bind-Value="_showRetired" Label="Show Retired" Color="Color.Secondary" />
+        @{
+            var retiredCount = _strategies.Count(s => s.Stage == DevelopmentStage.Retired);
+        }
+        @if (!_showRetired && retiredCount > 0)
+        {
+            <MudText Typo="Typo.caption" Class="text-muted">@retiredCount retired hidden</MudText>
+        }
+        <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                   StartIcon="@Icons.Material.Filled.Add"
+                   Href="/strategies/builder">New Strategy</MudButton>
+    </MudStack>
+}
 
 @if (_loading)
 {
@@ -124,7 +127,7 @@ else
                         <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-1">
                             <MudText Typo="Typo.subtitle1" Style="font-weight:600">@s.StrategyName</MudText>
                         </MudStack>
-                        <MudChip T="string" Size="MudBlazor.Size.Small" Variant="Variant.Outlined" Class="mb-2">@s.StrategyType</MudChip>
+                        <MudChip T="string" Size="MudBlazor.Size.Small" Variant="Variant.Outlined" Class="mb-2">@ToTitleCase(s.StrategyType)</MudChip>
                         @if (_strategiesWithWarnings.Contains(s.StrategyType))
                         {
                             <MudChip T="string" Size="MudBlazor.Size.Small" Color="Color.Warning"
@@ -357,5 +360,12 @@ else
 
         var idx = _strategies.FindIndex(s => s.StrategyId == updated.StrategyId);
         if (idx >= 0) _strategies[idx] = updated;
+    }
+
+    private static string ToTitleCase(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return value ?? "";
+        return string.Join(" ", value.Split('-', '_')
+            .Select(w => w.Length == 0 ? w : char.ToUpperInvariant(w[0]) + w[1..].ToLowerInvariant()));
     }
 }
