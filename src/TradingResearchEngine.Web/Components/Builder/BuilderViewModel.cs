@@ -54,6 +54,16 @@ public sealed class BuilderViewModel
     public bool IsDirty { get; set; }
     public string DraftId { get; set; } = Guid.NewGuid().ToString();
 
+    // Auto-save identity
+    /// <summary>Strategy ID when editing an existing strategy. Null for new strategies.</summary>
+    public string? StrategyId { get; set; }
+    /// <summary>Strategy version ID when editing an existing version. Null for new strategies.</summary>
+    public string? StrategyVersionId { get; set; }
+    /// <summary>Transient session GUID for new strategy drafts.</summary>
+    public string SessionGuid { get; set; } = Guid.NewGuid().ToString();
+    /// <summary>Timestamp of the last successful auto-save. Null if no save has occurred.</summary>
+    public DateTimeOffset? LastDraftSavedAt { get; set; }
+
     // V9: Condition Builder state
     /// <summary>Parsed entry condition AST for the visual condition builder. Null when using raw text mode.</summary>
     public TradingResearchEngine.Application.Strategies.Composite.Conditions.ConditionNode? ParsedEntryCondition { get; set; }
@@ -116,7 +126,10 @@ public sealed class BuilderViewModel
             PresetId: PresetId,
             PresetOverrides: PresetOverrides.Count > 0 ? new Dictionary<string, object>(PresetOverrides) : null,
             CreatedAt: now,
-            UpdatedAt: now);
+            UpdatedAt: now,
+            StrategyId: StrategyId,
+            StrategyVersionId: StrategyVersionId,
+            SessionGuid: SessionGuid);
     }
 
     /// <summary>Builds a ScenarioConfig suitable for engine execution.</summary>
@@ -186,6 +199,9 @@ public sealed class BuilderViewModel
             Hypothesis = draft.Hypothesis,
             ExpectedFailureMode = draft.ExpectedFailureMode,
             PresetId = draft.PresetId,
+            StrategyId = draft.StrategyId,
+            StrategyVersionId = draft.StrategyVersionId,
+            SessionGuid = draft.SessionGuid ?? Guid.NewGuid().ToString(),
         };
 
         if (draft.DataConfig is not null)

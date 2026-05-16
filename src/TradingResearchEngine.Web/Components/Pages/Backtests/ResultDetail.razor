@@ -207,6 +207,65 @@ else
     <MudStack Row="true" Spacing="2" Class="mt-4 mb-4">
         <ExportMenu Result="_result" />
     </MudStack>
+
+    @* Notes & Tags Panel *@
+    <MudPaper Class="pa-4 mb-4" Elevation="2">
+        <MudText Typo="Typo.h6" Class="mb-3">Notes & Tags</MudText>
+
+        @* Tags *@
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Class="mb-3" Wrap="Wrap.Wrap">
+            <MudText Typo="Typo.body2" Class="mr-2" Style="min-width:50px;">Tags:</MudText>
+            @if (_tags.Count > 0)
+            {
+                @foreach (var tag in _tags)
+                {
+                    <MudChip T="string" Size="MudBlazor.Size.Small" Color="Color.Primary"
+                             Variant="Variant.Outlined" OnClose="@(() => RemoveTag(tag))"
+                             aria-label="@($"Tag: {tag}")">
+                        @tag
+                    </MudChip>
+                }
+            }
+            <MudTextField T="string" @bind-Value="_newTag" Placeholder="Add tag..."
+                          Variant="Variant.Text" Style="max-width:150px;"
+                          Immediate="true"
+                          OnKeyUp="OnTagKeyUp"
+                          aria-label="Add new tag" />
+            <MudIconButton Icon="@Icons.Material.Filled.Add" Size="MudBlazor.Size.Small"
+                           OnClick="AddTag" Disabled="@string.IsNullOrWhiteSpace(_newTag)"
+                           aria-label="Add tag" />
+        </MudStack>
+
+        @* Notes *@
+        <MudText Typo="Typo.body2" Class="mb-1">Notes:</MudText>
+        @if (_editingNotes)
+        {
+            <MudTextField T="string" @bind-Value="_notesText" Lines="3"
+                          Variant="Variant.Outlined" Placeholder="Add notes to annotate this result..."
+                          aria-label="Result notes editor" />
+            <MudStack Row="true" Spacing="2" Class="mt-2">
+                <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Filled" Color="Color.Primary"
+                           OnClick="SaveNotes">Save</MudButton>
+                <MudButton Size="MudBlazor.Size.Small" Variant="Variant.Text"
+                           OnClick="CancelNotesEdit">Cancel</MudButton>
+            </MudStack>
+        }
+        else
+        {
+            @if (string.IsNullOrWhiteSpace(_notesText))
+            {
+                <MudText Typo="Typo.body2" Class="text-muted" Style="cursor:pointer;" @onclick="StartNotesEdit">
+                    Click to add notes...
+                </MudText>
+            }
+            else
+            {
+                <MudText Typo="Typo.body2" Style="cursor:pointer; white-space:pre-wrap;" @onclick="StartNotesEdit">
+                    @_notesText
+                </MudText>
+            }
+        }
+    </MudPaper>
 }
 
 @code {
@@ -239,6 +298,12 @@ else
         _ => ""
     };
 
+    // Notes & Tags state
+    private List<string> _tags = new();
+    private string _newTag = "";
+    private string _notesText = "";
+    private bool _editingNotes;
+
     protected override async Task OnInitializedAsync()
     {
         // Parse quickSanity query parameter
@@ -268,8 +333,53 @@ else
                 var version = await StrategyRepo.GetVersionAsync(_result.StrategyVersionId);
                 _isAIGenerated = version?.SourceType == SourceType.AIGenerated;
             }
+
+            // Load tags and notes
+            _tags = _result.Tags?.ToList() ?? new();
+            _notesText = _result.Notes ?? "";
         }
         _loading = false;
+    }
+
+    private void StartNotesEdit() => _editingNotes = true;
+    private void CancelNotesEdit() => _editingNotes = false;
+
+    private async Task SaveNotes()
+    {
+        if (_result is null) return;
+        _result = _result with { Notes = _notesText };
+        await ResultRepo.SaveAsync(_result);
+        _editingNotes = false;
+        Snackbar.Add("Notes saved", Severity.Success);
+    }
+
+    private async Task AddTag()
+    {
+        if (_result is null || string.IsNullOrWhiteSpace(_newTag)) return;
+        var tag = _newTag.Trim();
+        if (!_tags.Contains(tag))
+        {
+            _tags.Add(tag);
+            _result = _result with { Tags = _tags.ToList() };
+            await ResultRepo.SaveAsync(_result);
+            Snackbar.Add($"Tag '{tag}' added", Severity.Success);
+        }
+        _newTag = "";
+    }
+
+    private async Task RemoveTag(string tag)
+    {
+        if (_result is null) return;
+        _tags.Remove(tag);
+        _result = _result with { Tags = _tags.ToList() };
+        await ResultRepo.SaveAsync(_result);
+        Snackbar.Add($"Tag '{tag}' removed", Severity.Info);
+    }
+
+    private async Task OnTagKeyUp(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+            await AddTag();
     }
 
     private Task CopyErrorToClipboard()

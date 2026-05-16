@@ -41,6 +41,7 @@ public static class ServiceCollectionExtensions
         services.Configure<WalkForwardOptions>(configuration.GetSection("WalkForward"));
         services.Configure<ConcurrencyOptions>(configuration.GetSection("Concurrency"));
         services.Configure<SweepGuardrailOptions>(configuration.GetSection("SweepGuardrails"));
+        services.Configure<SweepUiOptions>(configuration.GetSection("SweepUi"));
         services.Configure<ResearchChecklistOptions>(configuration.GetSection(ResearchChecklistOptions.SectionName));
 
         // Typed data provider configuration — bound from appsettings.json:DataProviders:{Provider}

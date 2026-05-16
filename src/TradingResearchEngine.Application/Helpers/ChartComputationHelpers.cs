@@ -12,6 +12,7 @@ public static class ChartComputationHelpers
     /// <summary>
     /// Computes monthly returns as percentages from an equity curve, grouped by calendar month.
     /// Returns one entry per calendar month with the percentage change from first to last equity point.
+    /// Returns null for months with fewer than 2 data points.
     /// </summary>
     public static IReadOnlyList<MonthlyReturn> ComputeMonthlyReturns(IReadOnlyList<EquityCurvePoint> curve)
     {
@@ -27,6 +28,11 @@ public static class ChartComputationHelpers
         foreach (var group in grouped)
         {
             var points = group.OrderBy(p => p.Timestamp).ToList();
+            if (points.Count < 2)
+            {
+                results.Add(new MonthlyReturn(group.Key.Year, group.Key.Month, null));
+                continue;
+            }
             var first = points[0].TotalEquity;
             var last = points[^1].TotalEquity;
             var returnPct = first != 0m ? (last - first) / first * 100m : 0m;
@@ -120,7 +126,7 @@ public static class ChartComputationHelpers
 
     /// <summary>
     /// Generates formatted annotation strings for all monthly return cells.
-    /// Each annotation displays the return percentage to one decimal place.
+    /// Each annotation displays the return percentage to one decimal place, or "—" for null months.
     /// </summary>
     /// <param name="returns">The collection of monthly return values.</param>
     /// <returns>A list of heatmap annotations with formatted text.</returns>
@@ -130,7 +136,8 @@ public static class ChartComputationHelpers
             return Array.Empty<HeatmapAnnotation>();
 
         return returns
-            .Select(r => new HeatmapAnnotation(r.Year, r.Month, $"{r.ReturnPercent:F1}%"))
+            .Select(r => new HeatmapAnnotation(r.Year, r.Month,
+                r.ReturnPercent.HasValue ? $"{r.ReturnPercent.Value:F1}%" : "—"))
             .ToList();
     }
 
@@ -190,8 +197,8 @@ public static class ChartComputationHelpers
     };
 }
 
-/// <summary>A single monthly return entry.</summary>
-public sealed record MonthlyReturn(int Year, int Month, decimal ReturnPercent);
+/// <summary>A single monthly return entry. Null ReturnPercent indicates insufficient data.</summary>
+public sealed record MonthlyReturn(int Year, int Month, decimal? ReturnPercent);
 
 /// <summary>A single histogram bin with lower/upper bounds and count.</summary>
 public sealed record HistogramBin(decimal LowerBound, decimal UpperBound, int Count);

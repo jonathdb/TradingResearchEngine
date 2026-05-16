@@ -1,0 +1,128 @@
+@page "/strategies/{StrategyId}/journal"
+@rendermode InteractiveServer
+@using TradingResearchEngine.Application.Research
+@inject IResearchJournalRepository JournalRepo
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>Research Journal — Research Engine</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-1">Research Journal</MudText>
+<MudText Typo="Typo.body2" Class="text-muted mb-4">Trace reasoning behind parameter changes and stage transitions</MudText>
+
+@* Filters *@
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3" Spacing="2">
+    <MudSelect T="JournalAction?" @bind-Value="_actionFilter" Label="Action Type"
+               Variant="Variant.Outlined" Clearable="true" Style="min-width:160px"
+               aria-label="Filter by action type">
+        @foreach (var action in Enum.GetValues<JournalAction>())
+        {
+            <MudSelectItem Value="@((JournalAction?)action)">@action</MudSelectItem>
+        }
+    </MudSelect>
+    <MudDateRangePicker @bind-DateRange="_dateRange" Label="Date Range"
+                        Variant="Variant.Outlined" Clearable="true"
+                        aria-label="Filter by date range" />
+    <MudButton Variant="Variant.Filled" Color="Color.Primary"
+               StartIcon="@Icons.Material.Filled.NoteAdd"
+               OnClick="OpenAddNoteDialog"
+               aria-label="Add a new journal note">
+        Add Note
+    </MudButton>
+</MudStack>
+
+@if (_loading)
+{
+    <MudProgressCircular Indeterminate="true" />
+}
+else if (FilteredEntries.Count == 0)
+{
+    <MudPaper Class="pa-8 d-flex flex-column align-center justify-center" Elevation="0"
+              Style="text-align:center; border: 1px dashed var(--mud-palette-divider);">
+        <MudIcon Icon="@Icons.Material.Outlined.MenuBook" Style="font-size:3rem;" Class="text-muted mb-3" />
+        <MudText Typo="Typo.h6" Class="mb-1">No journal entries yet</MudText>
+        <MudText Typo="Typo.body2" Class="text-muted mb-4">Add notes to track your research decisions and reasoning.</MudText>
+    </MudPaper>
+}
+else
+{
+    @* Timeline view grouped by action type *@
+    <MudTimeline TimelinePosition="TimelinePosition.Start">
+        @foreach (var entry in FilteredEntries)
+        {
+            <MudTimelineItem Color="@GetActionColor(entry.Action)" Size="MudBlazor.Size.Small"
+                             aria-label="@($"Journal entry: {entry.Action} at {entry.Timestamp:g}")">
+                <ItemContent>
+                    <MudPaper Class="pa-3 mb-2" Elevation="1">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            <MudChip T="string" Size="MudBlazor.Size.Small"
+                                     Color="@GetActionColor(entry.Action)"
+                                     Variant="Variant.Outlined">
+                                @entry.Action
+                            </MudChip>
+                            <MudText Typo="Typo.caption" Class="text-muted">
+                                @entry.Timestamp.ToString("yyyy-MM-dd HH:mm")
+                            </MudText>
+                            @if (entry.FromStage is not null && entry.ToStage is not null)
+                            {
+                                <MudChip T="string" Size="MudBlazor.Size.Small" Variant="Variant.Text">
+                                    @entry.FromStage → @entry.ToStage
+                                </MudChip>
+                            }
+                        </MudStack>
+                        <MudText Typo="Typo.body2" Class="mt-2">@entry.Reason</MudText>
+                    </MudPaper>
+                </ItemContent>
+            </MudTimelineItem>
+        }
+    </MudTimeline>
+}
+
+@code {
+    [Parameter] public string StrategyId { get; set; } = "";
+
+    private List<ResearchJournalEntry> _entries = new();
+    private bool _loading = true;
+    private JournalAction? _actionFilter;
+    private DateRange? _dateRange;
+
+    private IReadOnlyList<ResearchJournalEntry> FilteredEntries => _entries
+        .Where(e => _actionFilter is null || e.Action == _actionFilter)
+        .Where(e => _dateRange?.Start is null || e.Timestamp >= new DateTimeOffset(_dateRange.Start.Value, TimeSpan.Zero))
+        .Where(e => _dateRange?.End is null || e.Timestamp <= new DateTimeOffset(_dateRange.End.Value.AddDays(1), TimeSpan.Zero))
+        .OrderByDescending(e => e.Timestamp)
+        .ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _entries = (await JournalRepo.ListByStrategyAsync(StrategyId)).ToList();
+        _loading = false;
+    }
+
+    private async Task OpenAddNoteDialog()
+    {
+        var parameters = new DialogParameters<AddJournalNoteDialog>
+        {
+            { x => x.StrategyId, StrategyId }
+        };
+        var options = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<AddJournalNoteDialog>("Add Note", parameters, options);
+        var result = await dialog.Result;
+        if (result is not null && !result.Canceled && result.Data is ResearchJournalEntry newEntry)
+        {
+            await JournalRepo.SaveAsync(newEntry);
+            _entries.Add(newEntry);
+            Snackbar.Add("Journal note added", Severity.Success);
+            StateHasChanged();
+        }
+    }
+
+    private static Color GetActionColor(JournalAction action) => action switch
+    {
+        JournalAction.Promoted => Color.Success,
+        JournalAction.Rejected => Color.Error,
+        JournalAction.Revised => Color.Warning,
+        JournalAction.Noted => Color.Info,
+        _ => Color.Default
+    };
+}

@@ -43,6 +43,12 @@ public sealed class RobustnessAdvisoryService : IRobustnessAdvisoryService
     /// <inheritdoc/>
     public IReadOnlyList<RobustnessWarning> GetStructuredWarnings(BacktestResult result)
     {
+        return GetStructuredWarnings(result, parameterDriftScore: null);
+    }
+
+    /// <inheritdoc/>
+    public IReadOnlyList<RobustnessWarning> GetStructuredWarnings(BacktestResult result, decimal? parameterDriftScore)
+    {
         var warnings = new List<RobustnessWarning>();
 
         if (result.SharpeRatio > _thresholds.MaxSharpeRatio)
@@ -91,6 +97,18 @@ public sealed class RobustnessAdvisoryService : IRobustnessAdvisoryService
                 Cause: "Excessive drawdown indicates inadequate risk controls or concentrated exposure",
                 Remediation: "Reduce position size, add stop-loss, or diversify across assets",
                 CauseCategory: "ExecutionUnrealism"));
+        }
+
+        if (parameterDriftScore is not null && parameterDriftScore > _thresholds.ParameterDriftThreshold)
+        {
+            warnings.Add(new RobustnessWarning(
+                RobustnessSeverity.High,
+                "HIGH_PARAMETER_DRIFT",
+                $"Parameter drift score ({parameterDriftScore:F2}) exceeds threshold ({_thresholds.ParameterDriftThreshold:F2})",
+                "Strategy is highly sensitive to parameter choice — walk-forward gains may not be reproducible",
+                Cause: "High drift indicates optimal parameters change significantly between windows",
+                Remediation: "Reduce parameter sensitivity or use wider parameter ranges",
+                CauseCategory: "ParameterFragility"));
         }
 
         return warnings;

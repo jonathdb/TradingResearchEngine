@@ -30,9 +30,9 @@ public sealed class MonthlyReturnCalculatorTests
         // Jan: (105000 - 100000) / 100000 * 100 = 5%
         Assert.Equal(5.0m, result[0].ReturnPercent);
         // Feb: (110000 - 105000) / 105000 * 100 ≈ 4.76%
-        Assert.InRange(result[1].ReturnPercent, 4.7m, 4.8m);
+        Assert.InRange(result[1].ReturnPercent!.Value, 4.7m, 4.8m);
         // Mar: (108000 - 110000) / 110000 * 100 ≈ -1.82%
-        Assert.InRange(result[2].ReturnPercent, -1.9m, -1.8m);
+        Assert.InRange(result[2].ReturnPercent!.Value, -1.9m, -1.8m);
     }
 
     [Fact]
@@ -48,8 +48,8 @@ public sealed class MonthlyReturnCalculatorTests
         Assert.Single(result);
         Assert.Equal(2024, result[0].Year);
         Assert.Equal(5, result[0].Month);
-        // Single point: (50000 - 50000) / 50000 * 100 = 0%
-        Assert.Equal(0m, result[0].ReturnPercent);
+        // Single point: fewer than 2 data points → null
+        Assert.Null(result[0].ReturnPercent);
     }
 
     [Fact]

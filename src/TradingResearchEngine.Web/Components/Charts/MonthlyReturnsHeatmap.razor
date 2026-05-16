@@ -37,6 +37,7 @@
         _chartHeight = ChartComputationHelpers.ComputeHeatmapHeight(years.Count);
 
         // Build Z matrix: rows = years, columns = months
+        // Null months get null in the Z matrix (rendered as grey "no data" cells)
         var z = new List<object>();
         foreach (var year in years)
         {
@@ -44,15 +45,18 @@
             for (int m = 1; m <= 12; m++)
             {
                 var entry = monthly.FirstOrDefault(r => r.Year == year && r.Month == m);
-                row.Add(entry is not null ? (object)Math.Round(entry.ReturnPercent, 2) : (object?)null!);
+                if (entry is not null && entry.ReturnPercent.HasValue)
+                    row.Add((object)Math.Round(entry.ReturnPercent.Value, 2));
+                else
+                    row.Add((object?)null!);
             }
             z.Add(row);
         }
 
-        // Compute actual data min/max for color scale normalisation
-        var allValues = monthly.Select(m => m.ReturnPercent).ToList();
-        var dataMin = allValues.Min();
-        var dataMax = allValues.Max();
+        // Compute actual data min/max for color scale normalisation (only from non-null values)
+        var allValues = monthly.Where(m => m.ReturnPercent.HasValue).Select(m => m.ReturnPercent!.Value).ToList();
+        var dataMin = allValues.Count > 0 ? allValues.Min() : 0m;
+        var dataMax = allValues.Count > 0 ? allValues.Max() : 0m;
 
         _data = new List<ITrace>
         {
@@ -85,7 +89,7 @@
             Font = new Plotly.Blazor.LayoutLib.AnnotationLib.Font
             {
                 Size = 10m,
-                Color = "rgba(255,255,255,0.9)"
+                Color = a.Text == "—" ? "rgba(150,150,150,0.9)" : "rgba(255,255,255,0.9)"
             }
         }).ToList();
 

@@ -34,6 +34,9 @@ builder.Services.AddSingleton<TradingResearchEngine.Application.Research.IJobQue
 // V8: Keyboard shortcut service
 builder.Services.AddScoped<TradingResearchEngine.Web.Services.KeyboardShortcutService>();
 
+// V9: Draft auto-save service
+builder.Services.AddScoped<TradingResearchEngine.Web.Services.DraftAutoSaveService>();
+
 // V8: Study cost estimator service
 builder.Services.AddScoped<TradingResearchEngine.Application.Research.StudyCostEstimatorService>();
 

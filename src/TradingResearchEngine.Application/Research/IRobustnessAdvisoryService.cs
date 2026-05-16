@@ -23,4 +23,12 @@ public interface IRobustnessAdvisoryService
     /// <param name="result">The backtest result to evaluate.</param>
     /// <returns>A read-only list of structured robustness warnings.</returns>
     IReadOnlyList<RobustnessWarning> GetStructuredWarnings(BacktestResult result);
+
+    /// <summary>
+    /// Returns structured warnings including parameter drift evaluation.
+    /// </summary>
+    /// <param name="result">The backtest result to evaluate.</param>
+    /// <param name="parameterDriftScore">The parameter drift score from walk-forward analysis. Null if not available.</param>
+    /// <returns>A read-only list of structured robustness warnings.</returns>
+    IReadOnlyList<RobustnessWarning> GetStructuredWarnings(BacktestResult result, decimal? parameterDriftScore);
 }

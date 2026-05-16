@@ -152,6 +152,26 @@ public sealed class KeyboardShortcutService : IAsyncDisposable
             return Task.CompletedTask;
         });
 
+        Register("r", "Re-run Scenario", "ResultDetail", () =>
+        {
+            // Context-specific: only active on ResultDetail page, inactive on Compare page
+            var uri = _navigation.Uri;
+            if (uri.Contains("/compare", StringComparison.OrdinalIgnoreCase))
+                return Task.CompletedTask;
+
+            if (uri.Contains("/backtests/", StringComparison.OrdinalIgnoreCase))
+            {
+                // Extract result ID and navigate to builder with rerun param
+                var segments = new Uri(uri).AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+                if (segments.Length >= 2 && segments[0] == "backtests")
+                {
+                    var resultId = segments[1];
+                    _navigation.NavigateTo($"/strategies/builder?rerun={resultId}");
+                }
+            }
+            return Task.CompletedTask;
+        });
+
         Register("Escape", "Close Dialog / Panel", "General", () =>
         {
             if (_commandPaletteVisible)

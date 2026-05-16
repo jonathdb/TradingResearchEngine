@@ -3,6 +3,7 @@
 @page "/strategies/new"
 @using System.Text.Json
 @using TradingResearchEngine.Web.Components.Builder
+@using TradingResearchEngine.Web.Services
 @using TradingResearchEngine.Application.AI
 @using TradingResearchEngine.Application.DataFiles
 @using TradingResearchEngine.Application.Engine
@@ -19,13 +20,23 @@
 @inject ResolvedConfigService ResolvedConfigService
 @inject JobExecutor JobExecutor
 @inject IAIStrategyAssistant AIAssistant
+@inject DraftAutoSaveService _autoSaveService
 @inject NavigationManager Nav
 @inject ISnackbar Snackbar
 @implements IAsyncDisposable
 
 <PageTitle>Strategy Builder — Research Engine</PageTitle>
 
-<MudText Typo="Typo.h4" Class="mb-2">Strategy Builder</MudText>
+<MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-2">
+    <MudText Typo="Typo.h4">Strategy Builder</MudText>
+    @if (_autoSaveService?.LastSavedAt is not null)
+    {
+        <MudText Typo="Typo.caption" Class="text-muted"
+                 aria-label="Draft saved timestamp">
+            Draft saved @_autoSaveService.LastSavedAt.Value.ToString("HH:mm:ss")
+        </MudText>
+    }
+</MudStack>
 
 @if (_aiMode)
 {
@@ -451,6 +462,7 @@
     private Task OnModelChanged()
     {
         _vm.IsDirty = true;
+        _autoSaveService.ScheduleSave(_vm.ToConfigDraft());
         StateHasChanged();
         return Task.CompletedTask;
     }

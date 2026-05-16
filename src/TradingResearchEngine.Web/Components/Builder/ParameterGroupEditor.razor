@@ -1,5 +1,18 @@
 @* Grouped parameter editor with label, input, default indicator, help text, sensitivity badge, provenance, reset *@
 @using TradingResearchEngine.Application.Strategies
+@using TradingResearchEngine.Application.Configuration
+@using Microsoft.Extensions.Options
+@inject IOptions<SweepUiOptions> SweepUiOpts
+
+@* Overfitting warning when total combinations exceed threshold AND any dimension has High sensitivity *@
+@if (ShowOverfittingWarning)
+{
+    <MudAlert Severity="Severity.Warning" Class="mb-3" Dense="true" Variant="Variant.Outlined"
+              Icon="@Icons.Material.Filled.Warning"
+              aria-label="Overfitting risk warning">
+        ⚠️ Sweeping high-sensitivity parameters increases false discovery risk. Consider reducing step count or using walk-forward validation.
+    </MudAlert>
+}
 
 <MudExpansionPanels MultiExpansion="true">
     @foreach (var group in GroupedParameters)
@@ -104,6 +117,12 @@
     [Parameter] public bool AdvancedMode { get; set; }
     [Parameter] public EventCallback<(string Key, object Value)> OnParameterChanged { get; set; }
     [Parameter] public IReadOnlyList<ValidationError>? ValidationErrors { get; set; }
+    /// <summary>Total sweep combination count for overfitting warning evaluation.</summary>
+    [Parameter] public int TotalCombinations { get; set; }
+
+    private bool ShowOverfittingWarning =>
+        TotalCombinations > SweepUiOpts.Value.CombinationWarningThreshold &&
+        Schemas.Any(s => s.SensitivityHint == SensitivityHint.High);
 
     private IEnumerable<IGrouping<string, StrategyParameterSchema>> GroupedParameters =>
         Schemas.OrderBy(s => s.DisplayOrder).GroupBy(s => s.Group);

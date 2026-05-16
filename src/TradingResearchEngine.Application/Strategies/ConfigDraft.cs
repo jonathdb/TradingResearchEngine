@@ -25,6 +25,9 @@ namespace TradingResearchEngine.Application.Strategies;
 /// <param name="PresetOverrides">Fields the user overrode after applying a preset.</param>
 /// <param name="CreatedAt">When this draft was first created.</param>
 /// <param name="UpdatedAt">When this draft was last modified.</param>
+/// <param name="StrategyId">Strategy identity when editing an existing strategy. Null for new strategies.</param>
+/// <param name="StrategyVersionId">Strategy version when editing an existing version. Null for new strategies.</param>
+/// <param name="SessionGuid">Transient session GUID for new strategy drafts. Used as draft key when StrategyId is null.</param>
 public sealed record ConfigDraft(
     string DraftId,
     int CurrentStep,
@@ -43,8 +46,19 @@ public sealed record ConfigDraft(
     string? PresetId,
     Dictionary<string, object>? PresetOverrides,
     DateTimeOffset CreatedAt,
-    DateTimeOffset UpdatedAt) : IHasId
+    DateTimeOffset UpdatedAt,
+    string? StrategyId = null,
+    string? StrategyVersionId = null,
+    string? SessionGuid = null) : IHasId
 {
     /// <inheritdoc/>
     public string Id => DraftId;
+
+    /// <summary>
+    /// Computed draft key: (StrategyId:StrategyVersionId) when editing an existing strategy version,
+    /// or the SessionGuid (falling back to DraftId) when creating a new strategy.
+    /// </summary>
+    public string DraftKey => StrategyId is not null && StrategyVersionId is not null
+        ? $"{StrategyId}:{StrategyVersionId}"
+        : SessionGuid ?? DraftId;
 }

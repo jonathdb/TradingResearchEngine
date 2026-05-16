@@ -1,0 +1,39 @@
+@using TradingResearchEngine.Application.Research
+
+<MudDialog>
+    <DialogContent>
+        <MudTextField T="string" @bind-Value="_noteText" Label="Note"
+                      Variant="Variant.Outlined" Lines="5"
+                      Placeholder="Record your reasoning, observations, or decisions..."
+                      aria-label="Journal note text" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled"
+                   OnClick="Submit" Disabled="@string.IsNullOrWhiteSpace(_noteText)">
+            Save Note
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [Parameter] public string StrategyId { get; set; } = "";
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = default!;
+
+    private string _noteText = "";
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private void Submit()
+    {
+        var entry = new ResearchJournalEntry(
+            EntryId: Guid.NewGuid().ToString(),
+            StrategyId: StrategyId,
+            StrategyVersionId: null,
+            Timestamp: DateTimeOffset.UtcNow,
+            Action: JournalAction.Noted,
+            Reason: _noteText.Trim());
+
+        MudDialog.Close(DialogResult.Ok(entry));
+    }
+}

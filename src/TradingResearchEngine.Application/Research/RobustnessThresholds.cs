@@ -30,4 +30,10 @@ public sealed class RobustnessThresholds
     /// before a warning is raised.
     /// </summary>
     public decimal MaxDrawdownPercent { get; set; } = 0.20m;
+
+    /// <summary>
+    /// Maximum acceptable parameter drift score before a warning is raised.
+    /// High drift indicates optimal parameters change significantly between walk-forward windows.
+    /// </summary>
+    public decimal ParameterDriftThreshold { get; set; } = 0.6m;
 }

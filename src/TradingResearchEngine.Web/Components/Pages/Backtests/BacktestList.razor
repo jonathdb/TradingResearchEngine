@@ -40,6 +40,32 @@ else
         </MudSelect>
     </MudStack>
 
+    @* Tag filter chips *@
+    @if (_allTags.Count > 0)
+    {
+        <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3" Spacing="1" Wrap="Wrap.Wrap">
+            <MudText Typo="Typo.body2" Class="mr-1">Tags:</MudText>
+            @foreach (var tag in _allTags)
+            {
+                <MudChip T="string" Size="MudBlazor.Size.Small"
+                         Color="@(_selectedTagFilter == tag ? Color.Primary : Color.Default)"
+                         Variant="@(_selectedTagFilter == tag ? Variant.Filled : Variant.Outlined)"
+                         OnClick="@(() => ToggleTagFilter(tag))"
+                         aria-label="@($"Filter by tag: {tag}")">
+                    @tag
+                </MudChip>
+            }
+            @if (_selectedTagFilter is not null)
+            {
+                <MudChip T="string" Size="MudBlazor.Size.Small" Color="Color.Default"
+                         Variant="Variant.Text" OnClick="@(() => _selectedTagFilter = null)"
+                         aria-label="Clear tag filter">
+                    ✕ Clear
+                </MudChip>
+            }
+        </MudStack>
+    }
+
     <MudTable Items="FilteredResults" Dense="true" Hover="true" Striped="true"
               SortLabel="Sort By" OnRowClick="OnRowClicked" T="BacktestResult"
               RowStyle="cursor:pointer;">
@@ -75,13 +101,16 @@ else
 
     private List<BacktestResult> _results = new();
     private List<string> _allStrategyTypes = new();
+    private List<string> _allTags = new();
     private string? _strategyTypeFilter;
     private string? _statusFilter;
+    private string? _selectedTagFilter;
     private bool _loading = true;
 
     private List<BacktestResult> FilteredResults => _results
         .Where(r => _strategyTypeFilter is null || r.ScenarioConfig.StrategyType == _strategyTypeFilter)
         .Where(r => _statusFilter is null || r.Status.ToString() == _statusFilter)
+        .Where(r => _selectedTagFilter is null || (r.Tags?.Contains(_selectedTagFilter) ?? false))
         .ToList();
 
     protected override async Task OnInitializedAsync()
@@ -95,12 +124,23 @@ else
                 .Distinct()
                 .OrderBy(t => t)
                 .ToList();
+            _allTags = _results
+                .Where(r => r.Tags is not null)
+                .SelectMany(r => r.Tags!)
+                .Distinct()
+                .OrderBy(t => t)
+                .ToList();
             _loading = false;
         }
         catch (OperationCanceledException)
         {
             // Component was disposed during loading — do not update state
         }
+    }
+
+    private void ToggleTagFilter(string tag)
+    {
+        _selectedTagFilter = _selectedTagFilter == tag ? null : tag;
     }
 
     public void Dispose()

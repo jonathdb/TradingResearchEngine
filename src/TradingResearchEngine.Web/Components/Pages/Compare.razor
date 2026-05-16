@@ -111,6 +111,9 @@
     [SupplyParameterFromQuery(Name = "runIds")]
     public string? RunIdsParam { get; set; }
 
+    [SupplyParameterFromQuery(Name = "ids")]
+    public string? IdsParam { get; set; }
+
     private MultiResultPicker? _picker;
     private TradingResearchEngine.Core.Results.ComparisonReport? _report;
     private IReadOnlyList<BacktestResult>? _selectedResults;
@@ -120,15 +123,16 @@
     protected override async Task OnInitializedAsync()
     {
         // Support deep-linking with run IDs from Dashboard or other pages
-        if (!string.IsNullOrWhiteSpace(RunIdsParam))
+        var idsSource = !string.IsNullOrWhiteSpace(IdsParam) ? IdsParam : RunIdsParam;
+        if (!string.IsNullOrWhiteSpace(idsSource))
         {
-            await LoadFromQueryString();
+            await LoadFromQueryString(idsSource);
         }
     }
 
-    private async Task LoadFromQueryString()
+    private async Task LoadFromQueryString(string idsString)
     {
-        var ids = RunIdsParam!.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var ids = idsString.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
         if (ids.Length < 2)
         {
@@ -143,11 +147,19 @@
         }
 
         var results = new List<BacktestResult>();
+        var invalidIds = new List<string>();
         foreach (var id in ids)
         {
             var result = await ResultRepo.GetByIdAsync(id);
             if (result is not null)
                 results.Add(result);
+            else
+                invalidIds.Add(id);
+        }
+
+        if (invalidIds.Count > 0)
+        {
+            Snackbar.Add($"Warning: {invalidIds.Count} result ID(s) not found: {string.Join(", ", invalidIds)}", Severity.Warning);
         }
 
         if (results.Count < 2)
@@ -177,12 +189,19 @@
         {
             _selectedResults = selected;
             _report = CompareUseCase.Compare(selected);
+            UpdateUrl(selected);
             Snackbar.Add($"Comparing {selected.Count} results", Severity.Success);
         }
         catch (Exception ex)
         {
             _error = ex.Message;
         }
+    }
+
+    private void UpdateUrl(IReadOnlyList<BacktestResult> results)
+    {
+        var ids = string.Join(",", results.Select(r => r.Id));
+        Nav.NavigateTo($"/compare?ids={ids}", replace: true);
     }
 
     private async Task ExportReport()

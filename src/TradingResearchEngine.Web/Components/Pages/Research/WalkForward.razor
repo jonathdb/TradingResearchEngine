@@ -53,6 +53,14 @@ else
                             OnExecute="Execute">
                 <ResultContent Context="result">
                     <MetricCard Label="Mean Efficiency Ratio" Value="@(result.MeanEfficiencyRatio?.ToString("F3") ?? "N/A")" />
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Class="mt-2 mb-2">
+                        <MetricCard Label="Parameter Drift Score" Value="@(result.Analytics?.ParameterDriftScore.ToString("F3") ?? "N/A")" />
+                        <MudTooltip Text="Parameter drift measures how much the optimal parameters change between walk-forward windows. A high score (> 0.6) suggests the strategy is highly sensitive to parameter choice and walk-forward gains may not be reproducible."
+                                    Placement="Placement.Right" Arrow="true">
+                            <MudIcon Icon="@Icons.Material.Outlined.Info" Size="MudBlazor.Size.Small" Color="Color.Info"
+                                     aria-label="Parameter drift score explanation" />
+                        </MudTooltip>
+                    </MudStack>
                     <MudTable Items="result.Windows" Dense="true" Hover="true" Class="mt-3">
                         <HeaderContent>
                             <MudTh>Window</MudTh><MudTh>IS Sharpe</MudTh><MudTh>OOS Sharpe</MudTh><MudTh>Efficiency</MudTh>
