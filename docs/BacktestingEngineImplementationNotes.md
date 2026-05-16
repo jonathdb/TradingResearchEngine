@@ -591,7 +591,8 @@ V3 adds a product domain model to the Application layer. Core remains untouched.
 
 ### Strategy Identity and Versioning
 
-- `StrategyIdentity` (`Application/Strategy/`) — a user-owned, named research concept (e.g. "my EURUSD mean reversion idea"). Implements `IHasId` via `StrategyId`. Fields: `StrategyId`, `StrategyName`, `StrategyType`, `CreatedAt`, optional `Description`, `Stage` (`DevelopmentStage`, default `Exploring`), optional `Hypothesis`, optional `RetirementNote` (V6: free-text note explaining why the strategy was retired; only meaningful when `Stage == Retired`).
+- `StrategyTypeId` (`Application/Strategies/`) — V9: a `readonly record struct` wrapping a `string Value`, providing compile-time type safety for strategy type identifiers at the Application boundary. Serialises to/from a plain JSON string via `StrategyTypeIdJsonConverter` for backward compatibility. Provides implicit conversions to/from `string`. Core layer (`ScenarioConfig.StrategyType`) retains raw `string` to avoid an upward dependency.
+- `StrategyIdentity` (`Application/Strategy/`) — a user-owned, named research concept (e.g. "my EURUSD mean reversion idea"). Implements `IHasId` via `StrategyId`. Fields: `StrategyId`, `StrategyName`, `StrategyType` (`StrategyTypeId`), `CreatedAt`, optional `Description`, `Stage` (`DevelopmentStage`, default `Exploring`), optional `Hypothesis`, optional `RetirementNote` (V6: free-text note explaining why the strategy was retired; only meaningful when `Stage == Retired`).
 - `DevelopmentStage` (`Application/Strategy/`) — V4 enum tracking the research lifecycle of a strategy. Values: `Hypothesis`, `Exploring`, `Optimizing`, `Validating`, `FinalTest`, `Retired`. Existing JSON missing this field deserializes to `Exploring` for backwards compatibility.
 - `StrategyVersion` (`Application/Strategy/`) — a specific parameter configuration of a strategy. Implements `IHasId` via `StrategyVersionId`. Fields: `StrategyVersionId`, `StrategyId` (parent), `VersionNumber`, `Parameters` dictionary, `BaseScenarioConfig` (full config snapshot), `CreatedAt`, optional `ChangeNote`, `TotalTrialsRun` (int, default 0, incremented per run or sweep), `SealedTestSet` (`DateRangeConstraint?`, default null, locked held-out date range).
 - `IStrategyRepository` (`Application/Strategy/`) — persistence interface for strategies and versions. Methods: `GetAsync`, `ListAsync`, `SaveAsync`, `DeleteAsync`, `GetVersionsAsync`, `SaveVersionAsync`, `GetLatestVersionAsync`, `GetVersionAsync` (V7: direct version lookup by ID, avoids O(n×m) full scans). `JsonStrategyRepository` (Infrastructure) implements this interface using JSON files at `strategies/{strategyId}.json` with versions at `strategies/{strategyId}/versions/{versionId}.json`. `GetVersionAsync` uses a flat-file version index (`_version_index/{versionId}.txt` → `strategyId`) for O(1) lookups; on a cache miss it falls back to a directory walk and back-fills the index for subsequent calls. `SaveVersionAsync` writes both the version JSON and the index entry.
@@ -605,7 +606,7 @@ V3 adds a product domain model to the Application layer. Core remains untouched.
 
 ### Study Records
 
-- `StudyRecord` (`Application/Research/`) — a research workflow execution linked to a strategy version. A Monte Carlo study with 1000 paths is ONE study, not 1000 runs. Implements `IHasId` via `StudyId`. Fields: `StudyId`, `StrategyVersionId`, `Type` (`StudyType` enum), `Status` (`StudyStatus` enum), `CreatedAt`, optional `SourceRunId`, optional `ErrorSummary`, `IsPartial` (bool, default false — true when cancelled before completion), `CompletedCount` (int, default 0 — completed units when partial), `TotalCount` (int, default 0 — total planned units).
+- `StudyRecord` (`Application/Research/`) — a research workflow execution linked to a strategy version. A Monte Carlo study with 1000 paths is ONE study, not 1000 runs. Implements `IHasId` via `StudyId`. Fields: `StudyId`, `StrategyVersionId`, `Type` (`StudyType` enum), `Status` (`StudyStatus` enum), `CreatedAt`, optional `SourceRunId`, optional `ErrorSummary`, `IsPartial` (bool, default false — true when cancelled before completion), `CompletedCount` (int, default 0 — completed units when partial), `TotalCount` (int, default 0 — total planned units), `StartedAt` (DateTimeOffset, V9: explicit start timestamp), `CompletedAt` (DateTimeOffset?, V9: completion timestamp), `Tags` (IReadOnlyList\<string\>?, V9), `Notes` (string?, V9), `PartialResultIds` (IReadOnlyList\<string\>?, V9: references to completed sub-results on partial failure).
 - `StudyType` enum: `MonteCarlo`, `WalkForward`, `AnchoredWalkForward` (V4), `CombinatorialPurgedCV` (V4, deferred to V4.1), `Sensitivity`, `ParameterSweep`, `Realism`, `ParameterStability`, `RegimeSegmentation` (V4), `BenchmarkComparison` (V7), `Variance` (V7), `RandomisedOos` (V7).
 - `StudyStatus` enum: `Running`, `Completed`, `Failed`, `Incomplete`, `Cancelled`.
 - `IStudyRepository` (`Application/Research/`) — persistence interface for study records. Methods: `GetAsync`, `ListByVersionAsync`, `ListAsync`, `SaveAsync`, `DeleteAsync`.
@@ -629,8 +630,12 @@ V3 adds a product domain model to the Application layer. Core remains untouched.
 | `DeflatedSharpeRatio` | decimal? | V4 | Deflated Sharpe Ratio adjusted for multiple testing bias (Bailey & López de Prado 2014) |
 | `TrialCount` | int? | V4 | Snapshot of `StrategyVersion.TotalTrialsRun` at the time this run completed |
 | `RealismAdvisories` | IReadOnlyList\<string\>? | V5 | Realism warnings collected during the run (gap fills, volume cap hits, session boundary fills) |
+| `CreatedAt` | DateTimeOffset | V9 | Explicit creation timestamp. Defaults to `default`; legacy records use `RunIdDateParser.ParseOrMin` fallback |
+| `CompletedAt` | DateTimeOffset? | V9 | Completion timestamp, populated when the run completes or fails |
+| `Tags` | IReadOnlyList\<string\>? | V9 | User-assigned tags for filtering and organisation |
+| `Notes` | string? | V9 | Free-text notes attached to the run |
 
-Legacy runs without these fields continue to deserialise unchanged.
+Legacy runs without these fields continue to deserialise unchanged. For V9 timestamp fields, `RunIdDateParser` provides a fallback that parses the `yyyyMMdd-HHmmss` prefix from the RunId when `CreatedAt` is `default`.
 
 ### Data File Registration (V4)
 
@@ -856,3 +861,59 @@ V5 introduces a typed parameter schema system so that the builder UI and validat
 When `ScenarioConfig.RandomSeed` is set, all RNG instances are seeded from it. Same config + same data = identical results.
 
 Position entry timestamps are derived from the fill event's `Timestamp` (which originates from the market data), not from wall-clock time. This ensures that `ClosedTrade.EntryTime` and holding-period calculations are fully deterministic across replays.
+
+## V9 Application Layer Changes
+
+### RunIdDateParser
+
+`RunIdDateParser` (`Application/Research/`) — static utility for parsing creation timestamps from legacy RunId prefixes. RunIds follow the format `yyyyMMdd-HHmmss-{guid}` (15-character date prefix). Used as a fallback when `BacktestResult.CreatedAt` is `default` (i.e., the record was persisted before V9 added explicit timestamps).
+
+Methods:
+- `TryParse(string? runId)` — returns `DateTimeOffset?` in UTC. Returns `null` if the RunId is null, too short, or does not match the expected format.
+- `ParseOrMin(string? runId)` — returns the parsed date or `DateTimeOffset.MinValue` on failure. Used by the repository layer to populate `CreatedAt` on legacy records during deserialization.
+
+### PagedResult\<T\>
+
+`PagedResult<T>` (`Application/Research/`) — sealed record for paginated query results. Fields: `Items` (IReadOnlyList\<T\>), `TotalCount`, `Page`, `PageSize`. Computed property: `TotalPages` = ⌈TotalCount / PageSize⌉ (returns 0 when PageSize is 0).
+
+### Paginated Repository Methods
+
+V9 extends `IBacktestResultRepository` and `IStudyRepository` with `ListPagedAsync` methods:
+
+- `IBacktestResultRepository.ListPagedAsync(int page, int pageSize, StrategyTypeId? strategyTypeFilter, BacktestStatus? statusFilter, CancellationToken)` — returns `PagedResult<BacktestResult>`.
+- `IStudyRepository.ListPagedAsync(int page, int pageSize, StudyType? typeFilter, StudyStatus? statusFilter, string? strategyVersionId, CancellationToken)` — returns `PagedResult<StudyRecord>`.
+
+The `JsonFileRepository` implementation uses in-memory filtering and pagination (acceptable for JSON file store; SQLite index provides O(log n) for large datasets).
+
+### RobustnessWarning and RobustnessSeverity
+
+`RobustnessWarning` (`Application/Research/`) — sealed record representing a structured robustness warning with severity classification, replacing the plain string warnings from `IRobustnessAdvisoryService.GetWarnings`. The existing `GetWarnings()` method is preserved for backward compatibility; the new `GetStructuredWarnings(BacktestResult)` method returns `IReadOnlyList<RobustnessWarning>`.
+
+`RobustnessSeverity` enum:
+
+| Value | Description |
+|---|---|
+| `Critical` | Critical issue requiring immediate attention |
+| `High` | High-severity issue likely indicating overfitting or unreliable results |
+| `Medium` | Medium-severity issue that warrants investigation |
+| `Low` | Low-severity advisory for awareness |
+
+`RobustnessWarning` fields:
+
+| Field | Type | Description |
+|---|---|---|
+| `Severity` | `RobustnessSeverity` | Warning severity level |
+| `Code` | `string` | Machine-readable warning code (e.g., `HIGH_SHARPE`, `LOW_TRADES`) |
+| `Explanation` | `string` | Human-readable explanation of the warning |
+| `RecommendedAction` | `string` | Suggested next step to address the warning |
+| `Cause` | `string?` | Root cause explanation for why this metric is suspicious |
+| `Remediation` | `string?` | Specific remediation steps |
+| `CauseCategory` | `string?` | Category grouping for related warnings (e.g., `Overfitting`, `InsufficientData`) |
+
+Severity classification rules in `RobustnessAdvisoryService.GetStructuredWarnings`:
+- Sharpe > `MaxSharpeRatio` threshold → severity `High`
+- TotalTrades < `MinTotalTrades` threshold → severity `Medium`
+- EquityCurveSmoothness < `MinKRatio` threshold → severity `Medium`
+- MaxDrawdown > `MaxDrawdownPercent` threshold → severity `High`
+
+The Robustness Hub page (`/robustness-hub`) consumes these structured warnings to display grouped, filterable, severity-badged warnings with clickable recommended actions.

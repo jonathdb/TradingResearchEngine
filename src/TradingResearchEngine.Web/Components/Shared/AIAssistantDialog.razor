@@ -135,6 +135,9 @@
         }
         catch (Exception ex)
         {
+            Console.WriteLine($"[AIAssistantDialog] EXCEPTION: {ex.GetType().FullName}: {ex.Message}");
+            Console.WriteLine($"[AIAssistantDialog] InnerException: {ex.InnerException?.GetType().FullName}: {ex.InnerException?.Message}");
+            Console.WriteLine($"[AIAssistantDialog] StackTrace: {ex.StackTrace}");
             _error = $"Failed to generate strategy: {ex.Message}";
         }
         finally
