@@ -14,15 +14,16 @@ public sealed record GeminiOptions
 
     /// <summary>
     /// Model name to use for generation and refinement requests.
-    /// Default: <c>gemini-2.0-flash</c>.
+    /// Default: <c>gemini-2.5-flash</c>.
     /// </summary>
-    public string ModelName { get; init; } = "gemini-2.0-flash";
+    public string ModelName { get; init; } = "gemini-2.5-flash";
 
     /// <summary>
     /// Maximum retry attempts for transient failures or invalid responses.
-    /// Default: 2.
+    /// Provides sufficient retry budget to outlast typical Gemini rate limit windows.
+    /// Default: 5 (6 total attempts including the initial request).
     /// </summary>
-    public int MaxRetries { get; init; } = 2;
+    public int MaxRetries { get; init; } = 5;
 
     /// <summary>
     /// Path to the system prompt file loaded at call time.

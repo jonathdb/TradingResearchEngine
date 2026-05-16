@@ -1,0 +1,395 @@
+# Implementation Plan: Engine Review Pass 2
+
+## Overview
+
+This plan implements 23 items from the second-pass code review of TradingResearchEngine, organised by priority (P0 critical bugs → P3 polish). Each task builds on previous tasks — P0 items establish foundational patterns (service scoping, atomic operations) that P1+ items depend on. All changes target .NET 8 / C# 12 with xUnit + FsCheck.Xunit for testing.
+
+## Tasks
+
+- [x] 1. P0 — Fix EnrichWithTrialCountAndDsrAsync full table-scan (Item 1)
+  - [x] 1.1 Add `GetVersionByIdAsync` to `IStrategyRepository` and implement in concrete repositories
+    - Read `src/TradingResearchEngine.Application/Strategies/IStrategyRepository.cs` and its implementations
+    - Add `Task<StrategyVersion?> GetVersionByIdAsync(Guid versionId, CancellationToken ct = default)` to the interface
+    - Implement direct lookup in `JsonStrategyRepository` and `SqliteStrategyRepository`
+    - Add XML doc comments to the new method
+    - _Requirements: 1.1_
+  - [x] 1.2 Replace nested foreach loop in `EnrichWithTrialCountAndDsrAsync` with direct lookup
+    - Read `src/TradingResearchEngine.Application/Engine/RunScenarioUseCase.cs`
+    - Replace `ListAsync()` + nested `GetVersionsAsync()` loop with single `GetVersionByIdAsync` call
+    - Ensure at most 2 repository calls per invocation (one read, one write)
+    - _Requirements: 1.2, 1.3, 1.4_
+  - [ ]* 1.3 Write unit tests for direct version lookup
+    - Test `GetVersionByIdAsync` returns correct version
+    - Test `EnrichWithTrialCountAndDsrAsync` performs no `ListAsync` call
+    - Test null version returns result unchanged
+    - _Requirements: 1.1, 1.2, 1.3_
+
+- [x] 2. P0 — Fix TotalTrialsRun write race in parallel sweeps (Item 2)
+  - [x] 2.1 Add `IncrementTrialCountAsync` to `IStrategyRepository` and implement atomically
+    - Add `Task IncrementTrialCountAsync(Guid versionId, CancellationToken ct = default)` to the interface
+    - In SQLite implementation: `UPDATE strategy_versions SET TotalTrialsRun = TotalTrialsRun + 1 WHERE StrategyVersionId = @id`
+    - In JSON implementation: use `SemaphoreSlim(1,1)` to serialise read-modify-write
+    - Add XML doc comments
+    - _Requirements: 2.1, 2.4_
+  - [x] 2.2 Replace read-modify-write pattern in `EnrichWithTrialCountAndDsrAsync`
+    - Remove `version with { TotalTrialsRun = version.TotalTrialsRun + 1 }` pattern
+    - Call `IncrementTrialCountAsync` then re-read the version for DSR computation
+    - _Requirements: 2.2, 2.3_
+  - [ ]* 2.3 Write property test for atomic trial count increment
+    - **Property 1: Atomic Trial Count Increment**
+    - For N concurrent `IncrementTrialCountAsync` calls, final `TotalTrialsRun` equals initial + N
+    - Use in-memory mock with `SemaphoreSlim` to verify serialisation
+    - **Validates: Requirements 2.2, 2.4**
+
+- [x] 3. P0 — Fix RandomizedOosWorkflow non-contiguous OOS bars (Item 3)
+  - [x] 3.1 Add `WarmupBars` property to `RandomizedOosOptions`
+    - Read `src/TradingResearchEngine.Application/Research/RandomizedOosWorkflow.cs`
+    - Add `public int WarmupBars { get; set; } = 200;` with XML doc comment
+    - _Requirements: 3.2_
+  - [x] 3.2 Replace scattered-index OOS selection with contiguous block algorithm
+    - Remove `HashSet<int>` scattered index approach
+    - Implement random contiguous block selection: pick `oosStart ∈ [0, allBars.Count - oosCount - warmupBuffer]`
+    - Prepend `WarmupBars` bars before OOS start as warmup context (not counted in OOS metrics)
+    - Throw `InvalidOperationException` when data is insufficient for OOS fraction + warmup
+    - _Requirements: 3.1, 3.3, 3.4, 3.5, 3.6_
+  - [ ]* 3.3 Write property test for contiguous OOS window construction
+    - **Property 2: Contiguous OOS Window Construction**
+    - For any valid bar list, OOS fraction, and warmup count, OOS bars form consecutive indices
+    - Engine configuration includes exactly `WarmupBars` preceding bars as warmup
+    - **Validates: Requirements 3.1, 3.6**
+  - [ ]* 3.4 Write unit tests for insufficient data and warmup defaults
+    - Test `InvalidOperationException` thrown when bars < oosCount + warmupBuffer
+    - Test `WarmupBars` defaults to 200
+    - Test OOS Sharpe is non-null for strategy with 50-bar indicator
+    - _Requirements: 3.2, 3.3, 3.5_
+
+- [x] 4. P0 — Fix IRiskLayer/IExecutionHandler singleton state in parallel runs (Item 4)
+  - [x] 4.1 Implement per-run `IServiceScope` in `RunScenarioUseCase.RunAsync`
+    - Read `src/TradingResearchEngine.Application/Engine/RunScenarioUseCase.cs`
+    - Wrap per-run service resolution in `using var scope = _serviceProvider.CreateScope()`
+    - Resolve `IRiskLayer` and `IExecutionHandler` from scoped provider
+    - Ensure scope is disposed on completion or exception
+    - _Requirements: 4.1, 4.5_
+  - [x] 4.2 Verify DI registrations are not Singleton for stateful services
+    - Check `Program.cs` / DI composition root for `IRiskLayer` and `IExecutionHandler` registrations
+    - Change any `Singleton` registrations to `Transient` or `Scoped`
+    - Verify `SimulatedExecutionHandler.RealismAdvisories` is an instance field (not static)
+    - _Requirements: 4.4_
+  - [ ]* 4.3 Write property test for per-run service isolation
+    - **Property 3: Per-Run Service Isolation**
+    - For any two concurrent `RunAsync` invocations, `RealismAdvisories` collections are disjoint
+    - Mock `IServiceProvider` to verify scope creation and disposal
+    - **Validates: Requirements 4.2, 4.3**
+
+- [x] 5. Checkpoint — Verify P0 fixes compile and pass
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [x] 6. P1 — Memoize CreateStrategy reflection (Item 5)
+  - [x] 6.1 Add `ConcurrentDictionary` factory-delegate cache to `RunScenarioUseCase`
+    - Add `static ConcurrentDictionary<Type, Func<Dictionary<string, object>, IStrategy>> _strategyFactoryCache`
+    - Implement `BuildFactory(Type)` that caches `ConstructorInfo` and parameter metadata
+    - Replace `CreateStrategy` body with `_strategyFactoryCache.GetOrAdd(strategyType, BuildFactory)`
+    - Preserve all existing parameter-matching behaviour including defaults and fallbacks
+    - _Requirements: 5.1, 5.2, 5.3_
+  - [ ]* 6.2 Write property tests for strategy factory caching
+    - **Property 4: Strategy Factory Reflection Caching**
+    - For N ≥ 2 invocations with same type, `GetConstructors()` called exactly once
+    - **Property 5: Cached Factory Preserves Construction Behaviour**
+    - Cached delegate produces same parameter values as direct constructor invocation
+    - **Validates: Requirements 5.1, 5.2, 5.3, 5.4**
+
+- [x] 7. P1 — Fix ConvertJsonElement silent fallback (Item 6)
+  - [x] 7.1 Extend `ConvertJsonElement` with explicit type handling
+    - Add handling for `Enum` (string case-insensitive + integer), `TimeSpan`, `Guid`, `DateTimeOffset`, `DateTime`
+    - Add `Nullable<T>` unwrapping before conversion
+    - Throw `NotSupportedException` for unhandled types with descriptive message
+    - Catch `NotSupportedException` in constructor-matching loop and surface as `PreflightSeverity.Error`
+    - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 6.7_
+  - [ ]* 7.2 Write property test for JsonElement conversion round-trip
+    - **Property 6: JsonElement Conversion Round-Trip**
+    - For any supported CLR type, serialise to `JsonElement` and convert back produces equal value
+    - Test `Nullable<T>` unwrapping behaves identically to unwrapped type
+    - **Validates: Requirements 6.1, 6.2, 6.3, 6.4, 6.5**
+  - [ ]* 7.3 Write unit test for unsupported type throwing NotSupportedException
+    - Test `NotSupportedException` thrown for custom class type
+    - Test error surfaced as `PreflightSeverity.Error`
+    - _Requirements: 6.6, 6.7_
+
+- [x] 8. P1 — Fix DSR return moments to use trade returns (Item 7)
+  - [x] 8.1 Modify `ComputeReturnMoments` to prefer trade-level returns
+    - When `result.Trades.Count >= 3` and `EntryPrice > 0`, compute from `PnL / (EntryPrice × Quantity)`
+    - Fall back to equity curve bar returns when trades are null or < 3
+    - Ensure `BacktestResult.Trades` is available at enrichment point
+    - _Requirements: 7.1, 7.2_
+  - [ ]* 8.2 Write property test for trade-level return moments
+    - **Property 7: Trade-Level Return Moments**
+    - For any `BacktestResult` with ≥ 3 trades where `EntryPrice > 0`, moments derived from trade returns
+    - **Validates: Requirements 7.1**
+
+- [x] 9. P1 — Fix shallow dictionary copy in parallel with-clones (Item 8)
+  - [x] 9.1 Create `ScenarioConfig.DeepClone()` extension method
+    - Create `src/TradingResearchEngine.Core/Configuration/ScenarioConfigExtensions.cs`
+    - Implement `DeepClone()` creating independent copies of all dictionary properties
+    - Handle null `ResearchWorkflowOptions` without throwing
+    - Add XML doc comments
+    - _Requirements: 8.1, 8.4_
+  - [x] 9.2 Replace `with`-clone patterns in parallel workflow bodies with `DeepClone()`
+    - Update `ParameterSweepWorkflow` parallel bodies to use `baseConfig.DeepClone()`
+    - Update `RandomizedOosWorkflow` parallel bodies to use `baseConfig.DeepClone()`
+    - Search for any other `config with {` patterns inside `Parallel.ForEachAsync` bodies
+    - _Requirements: 8.2, 8.3_
+  - [ ]* 9.3 Write property test for DeepClone isolation
+    - **Property 8: DeepClone Isolation**
+    - Mutating any key in clone's dictionaries does not affect original instance
+    - Test null dictionary properties handled without throwing
+    - **Validates: Requirements 8.1, 8.2**
+
+- [x] 10. P1 — Make BacktestEngine injectable via factory interface (Item 9)
+  - [x] 10.1 Define `IBacktestEngine` and `IBacktestEngineFactory` interfaces in Core
+    - Create `src/TradingResearchEngine.Core/Engine/IBacktestEngine.cs` (if not already `IBacktestEngine`)
+    - Create `src/TradingResearchEngine.Core/Engine/IBacktestEngineFactory.cs`
+    - `IBacktestEngineFactory.Create` accepts `IDataProvider`, `IStrategy`, `IRiskLayer`, `IExecutionHandler`, optional `ISessionCalendar` and `BarDataPool`
+    - Have `BacktestEngine` implement `IBacktestEngine`
+    - Add XML doc comments
+    - _Requirements: 9.1_
+  - [x] 10.2 Create `BacktestEngineFactory` implementation and register in DI
+    - Create factory class in Application layer implementing `IBacktestEngineFactory`
+    - Register as Transient in DI composition root
+    - _Requirements: 9.1_
+  - [x] 10.3 Inject `IBacktestEngineFactory` into `RunScenarioUseCase` and remove `new BacktestEngine(...)`
+    - Replace all `new BacktestEngine(...)` calls with `_engineFactory.Create(...)`
+    - Use scoped services from Item 4's `IServiceScope` pattern
+    - _Requirements: 9.2, 9.3_
+  - [ ]* 10.4 Write unit test verifying mock engine substitution
+    - Mock `IBacktestEngineFactory` to verify creation parameters
+    - Verify no `new BacktestEngine(...)` exists in `RunScenarioUseCase`
+    - _Requirements: 9.3, 9.4_
+
+- [x] 11. P1 — Fix RandomizedOosResult silent failure absorption (Item 10)
+  - [x] 11.1 Add `FailedIterationCount` and `Advisories` to `RandomizedOosResult`
+    - Add `int FailedIterationCount` property to the record
+    - Add `IReadOnlyList<string>? Advisories` property
+    - Track failed iterations with `Interlocked.Increment`
+    - Emit realism advisory when failure rate > 20%
+    - Document `MeanOosSharpe` denominator in XML doc comment
+    - _Requirements: 10.1, 10.2, 10.3_
+  - [ ]* 11.2 Write property test for failed iteration tracking
+    - **Property 9: Failed Iteration Tracking and Mean Computation**
+    - `MeanOosSharpe` equals mean of succeeded iterations only
+    - `FailedIterationCount` equals number of failed iterations
+    - Advisory present when failure rate > 20%
+    - **Validates: Requirements 10.2, 10.3**
+
+- [x] 12. P1 — Enforce explicit sort in ParameterSweepWorkflow (Item 11)
+  - [x] 12.1 Add `SweepSortMetric` enum and `SortBy` property to `SweepOptions`
+    - Define `SweepSortMetric { SharpeRatio, MaxDrawdown, ProfitFactor, WinRate, CalmarRatio }`
+    - Add `SweepSortMetric SortBy { get; set; } = SweepSortMetric.SharpeRatio` to `SweepOptions`
+    - _Requirements: 11.1, 11.2_
+  - [x] 12.2 Apply explicit sort after `ConcurrentBag` collection in `ParameterSweepWorkflow`
+    - Sort results by selected metric before constructing `SweepResult`
+    - `MaxDrawdown` sorts ascending (smallest/least negative first), all others descending
+    - _Requirements: 11.3, 11.4_
+  - [ ]* 12.3 Write property test for sweep sort correctness
+    - **Property 10: Sweep Sort Correctness**
+    - For any list of results and any `SweepSortMetric`, output is correctly ordered
+    - **Validates: Requirements 11.3, 11.4**
+
+- [x] 13. P1 — Add BarsPerYear/Interval preflight consistency check (Item 12)
+  - [x] 13.1 Add interval-to-BarsPerYear lookup and validation rule to `PreflightValidator`
+    - Read `src/TradingResearchEngine.Application/Engine/PreflightValidator.cs`
+    - Add static `BarsPerYearByInterval` dictionary with expected ranges per interval
+    - Emit `PreflightSeverity.Warning` when `BarsPerYear` falls outside expected range
+    - Skip check for unknown/custom intervals
+    - Include configured values and expected range in warning message
+    - _Requirements: 12.1, 12.2, 12.3, 12.4_
+  - [ ]* 13.2 Write property test for BarsPerYear/Interval mismatch detection
+    - **Property 11: BarsPerYear/Interval Mismatch Detection**
+    - For any interval in lookup and BarsPerYear outside range → warning emitted
+    - For any BarsPerYear within range → no warning
+    - **Validates: Requirements 12.1, 12.2**
+  - [ ]* 13.3 Write unit tests for edge cases
+    - Test unknown interval silently skipped
+    - Test warning message includes BarsPerYear, interval, and expected range
+    - _Requirements: 12.3, 12.4_
+
+- [x] 14. P1 — Add audit log to SealedTestSetGuard (Item 13)
+  - [x] 14.1 Define `ITestSetAuditLog`, `TestSetAuditEntry`, and `TestSetAuditAction` in Application layer
+    - Create interface with `RecordUnlockAsync`, `RecordResealAsync`, `GetEntriesAsync`
+    - Define `TestSetAuditEntry` record and `TestSetAuditAction` enum
+    - Add XML doc comments
+    - _Requirements: 13.1, 13.2, 13.3_
+  - [x] 14.2 Implement `JsonTestSetAuditLog` in Infrastructure layer
+    - JSON-file-backed implementation persisting audit entries
+    - Entries stored chronologically per strategy version
+    - _Requirements: 13.3_
+  - [x] 14.3 Inject `ITestSetAuditLog` into `SealedTestSetGuard` and record transitions
+    - Call `RecordUnlockAsync` on transition to `FinalTest`
+    - Call `RecordResealAsync` on transition back from `FinalTest`
+    - _Requirements: 13.1, 13.2_
+  - [ ]* 14.4 Write property test for audit log recording and chronological order
+    - **Property 12: Audit Log Recording and Chronological Order**
+    - For any sequence of unlock/re-seal events, `GetEntriesAsync` returns all in chronological order
+    - Count equals total transitions recorded
+    - **Validates: Requirements 13.1, 13.2, 13.3**
+
+- [x] 15. Checkpoint — Verify P1 fixes compile and pass
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [x] 16. P2 — Add IS/OOS efficiency ratio distribution chart (Item 14)
+  - [x] 16.1 Create `RandomizedOosResultRenderer.razor` component
+    - Render histogram of `EfficiencyRatio` values binned into 10 buckets using Plotly.Blazor
+    - Add vertical reference line at `EfficiencyRatio = 1.0`
+    - Display summary stats: mean efficiency, % iterations with ratio ≥ 0.5, `FailedIterationCount`
+    - Add colour-coded badge: green (≥ 0.7), amber (0.4–0.7), red (< 0.4)
+    - Register renderer in `StudyRendererRegistry` for `StudyType.RandomizedOos`
+    - _Requirements: 14.1, 14.2, 14.3, 14.4_
+
+- [x] 17. P2 — Add buy-and-hold benchmark overlay to equity curve (Item 15)
+  - [x] 17.1 Add `BenchmarkEquityCurve` property to `BacktestResult`
+    - Add `IReadOnlyList<EquityCurvePoint>? BenchmarkEquityCurve { get; init; }` to `BacktestResult`
+    - _Requirements: 15.2_
+  - [x] 17.2 Implement `ComputeBenchmarkAsync` in `RunScenarioUseCase`
+    - Load same bars from `IDataProvider`, normalise close prices to `InitialCash`
+    - Produce `EquityCurvePoint` list aligned to strategy's equity curve timestamps
+    - Set `BenchmarkEquityCurve = null` when data unavailable (no crash)
+    - Call after engine run and assign to result
+    - _Requirements: 15.1, 15.4_
+  - [x] 17.3 Render benchmark line on equity curve chart component
+    - Add secondary line in muted colour labelled "Buy & Hold"
+    - Render single line without error when `BenchmarkEquityCurve` is null
+    - _Requirements: 15.3, 15.4_
+  - [ ]* 17.4 Write property test for benchmark equity curve computation
+    - **Property 13: Benchmark Equity Curve Computation**
+    - For any price series with ≥ 2 bars and positive `InitialCash`, final value = `InitialCash × (lastClose / firstClose)`, first value = `InitialCash`
+    - **Validates: Requirements 15.1**
+
+- [x] 18. P2 — Add strategy comparison view (Item 16)
+  - [x] 18.1 Create `CompareRuns.razor` page
+    - Accept query param `?runIds=id1,id2,...` (up to 5 run IDs)
+    - Load each `BacktestResult` from repository
+    - Display error message when > 5 run IDs provided
+    - _Requirements: 16.1, 16.5_
+  - [x] 18.2 Render overlaid equity curve chart with distinct colours per run
+    - Use Plotly.Blazor for multi-series line chart
+    - Each run gets a distinct colour and legend label
+    - _Requirements: 16.2_
+  - [x] 18.3 Render metrics comparison table with best-value highlighting
+    - Show Sharpe, Sortino, MaxDD, WinRate, ProfitFactor, Calmar, DSR for each run
+    - Highlight best value per metric row with subtle green background
+    - _Requirements: 16.3, 16.4_
+  - [x] 18.4 Add checkboxes and "Compare Selected" button to Dashboard run table
+    - Enable button only when 2–5 rows checked
+    - Navigate to `/compare-runs?runIds=...` with selected IDs
+    - _Requirements: 16.6_
+
+- [x] 19. P2 — Add CSV/JSON export for trade log and equity curve (Item 17)
+  - [x] 19.1 Create `IResultExportService` interface and implementation in Application layer
+    - Define `ExportTradeLogAsync` and `ExportEquityCurveAsync` methods
+    - Trade CSV columns: EntryDate, ExitDate, Direction, EntryPrice, ExitPrice, Quantity, PnL, ReturnOnRisk, HoldingBars
+    - Equity CSV columns: Timestamp, TotalEquity, CashBalance, UnrealisedPnl, DrawdownPercent
+    - JSON export produces equivalent arrays
+    - _Requirements: 17.1, 17.2, 17.3, 17.4_
+  - [x] 19.2 Add export download buttons to result detail page
+    - Add "Export" dropdown with CSV/JSON options for trades and equity curve
+    - Use Blazor JS interop for browser file download
+    - Disable when result has no trades or empty equity curve
+    - _Requirements: 17.5_
+  - [ ]* 19.3 Write property test for export data round-trip
+    - **Property 14: Export Data Round-Trip**
+    - For any list of `ClosedTrade` records, CSV export and parse-back produces matching fields
+    - For any list of `EquityCurvePoint` records, JSON export and deserialize produces equivalent objects
+    - **Validates: Requirements 17.1, 17.2, 17.3, 17.4**
+
+- [x] 20. P2 — Add composite strategy tree visualiser (Item 18)
+  - [x] 20.1 Create `CompositeTreeView.razor` component
+    - Accept `CompositeStrategyConfig` as parameter
+    - Render tree using MudBlazor `MudTreeView` showing strategy name, weight, allocation method per node
+    - Support at least 3 levels of nesting
+    - Show parameter summary in detail panel when leaf node selected
+    - _Requirements: 18.1, 18.2, 18.3, 18.4_
+
+- [x] 21. Checkpoint — Verify P2 features compile and pass
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [x] 22. P3 — Add keyboard shortcut system (Item 19)
+  - [x] 22.1 Create `KeyboardShortcutService` and JS interop for global key handling
+    - Register/unregister shortcuts with descriptions
+    - Listen to `document.keydown` via JS interop
+    - Skip shortcuts when focus is inside text input
+    - Do not interfere with browser-native shortcuts (Ctrl+C, Ctrl+V, Ctrl+T)
+    - _Requirements: 19.4_
+  - [x] 22.2 Implement command palette overlay with fuzzy search
+    - Render as `MudOverlay` + `MudAutocomplete` triggered by `Ctrl+K`
+    - Support fuzzy search filtering of available commands
+    - _Requirements: 19.1, 19.5_
+  - [x] 22.3 Register default shortcuts (Ctrl+K, Ctrl+N, Ctrl+R, Esc)
+    - `Ctrl+K` → command palette
+    - `Ctrl+N` → new strategy builder
+    - `Ctrl+R` → re-run last backtest
+    - `Esc` → close open dialogs/panels
+    - _Requirements: 19.1, 19.2, 19.3_
+  - [ ]* 22.4 Write property test for fuzzy search
+    - **Property 16: Fuzzy Search Returns Relevant Commands**
+    - For any registered command name and any substring used as query, results include that command
+    - **Validates: Requirements 19.5**
+
+- [x] 23. P3 — Add pre-launch study cost estimator (Item 20)
+  - [x] 23.1 Create `StudyCostEstimatorService` in Application layer
+    - Compute `estimatedDuration = iterations × barCount × costFactorMs`
+    - Calibrate cost factor from most recent completed study, or use conservative default
+    - Return `StudyCostEstimate` record with run count, wall time, and human-readable summary
+    - _Requirements: 20.1, 20.4_
+  - [x] 23.2 Display cost estimate callout in study launcher UI
+    - Show estimated run count and duration before "Launch Study" button
+    - Display warning badge when estimated duration exceeds 5 minutes
+    - Show "Duration unknown" when no prior study data exists
+    - _Requirements: 20.1, 20.2, 20.3_
+
+- [x] 24. P3 — Fix StdDev double-arithmetic in RandomizedOosWorkflow (Item 21)
+  - [x] 24.1 Replace decimal StdDev with double-native computation
+    - Perform all intermediate variance calculation in `double`
+    - Use population standard deviation (divide by N, not N-1)
+    - Convert to `decimal` only for final return value
+    - Ensure identical values produce exactly zero
+    - _Requirements: 21.1, 21.2, 21.3_
+  - [ ]* 24.2 Write property test for population standard deviation correctness
+    - **Property 15: Population Standard Deviation Correctness**
+    - For any list of decimal values, result equals population StdDev computed in double
+    - When all values identical, result is exactly zero
+    - **Validates: Requirements 21.1, 21.2, 21.3**
+
+- [x] 25. P3 — Delete obsolete Validate method in RunScenarioUseCase (Item 22)
+  - [x] 25.1 Remove obsolete `Validate` method and update any callers
+    - Search solution for all call sites of the old `Validate` method
+    - Update any tests to use `PreflightValidator.Validate` instead
+    - Delete the `[Obsolete]` method and its XML comment block
+    - Verify solution compiles with zero new warnings
+    - _Requirements: 22.1, 22.2, 22.3_
+
+- [x] 26. P3 — Add multi-symbol data provider foundation (Item 23)
+  - [x] 26.1 Define `IMultiSymbolDataProvider` and `SymbolBar` in Core layer
+    - Create `src/TradingResearchEngine.Core/DataHandling/IMultiSymbolDataProvider.cs`
+    - Create `src/TradingResearchEngine.Core/DataHandling/SymbolBar.cs` as `readonly record struct`
+    - Method: `GetBarsAsync(IReadOnlyList<string> symbols, DateRange range, string interval, CancellationToken ct)` returning `IAsyncEnumerable<SymbolBar>`
+    - Add XML doc comments
+    - Ensure existing `IDataProvider` remains unchanged
+    - _Requirements: 23.1, 23.2, 23.4, 23.5_
+  - [ ]* 26.2 Write unit tests for interface contract
+    - Test single-symbol request behaves identically to existing `IDataProvider`
+    - Test `SymbolBar` record contains all required fields
+    - _Requirements: 23.3_
+
+- [x] 27. Final checkpoint — Verify all changes compile and all tests pass
+  - Ensure all tests pass, ask the user if questions arise.
+
+## Notes
+
+- Tasks marked with `*` are optional and can be skipped for faster MVP
+- Each task references specific requirements for traceability
+- Checkpoints at P0/P1/P2/P3 boundaries ensure incremental validation
+- Property tests validate the 16 correctness properties defined in the design document
+- P0 items (Tasks 1–4) must be implemented first as they fix data corruption and invalid measurements
+- Item 9 (Task 10) depends on Item 4's service scope pattern (Task 4)
+- All new public types require XML doc comments per project conventions
+- No new NuGet packages — use existing FsCheck.Xunit, Moq, Plotly.Blazor, MudBlazor, CsvHelper
+- UnitTests reference Core and Application only — never Infrastructure

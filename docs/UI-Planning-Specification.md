@@ -381,7 +381,7 @@ Components:
 ### Validation feedback
 - Inline field-level errors (red border + message below field)
 - Form-level validation summary at top
-- Mirrors the same validation logic as `RunScenarioUseCase.Validate`
+- Mirrors the same validation logic as `PreflightValidator.Validate`
 - Cannot submit/run until all required fields are valid
 
 ### Versioning / history

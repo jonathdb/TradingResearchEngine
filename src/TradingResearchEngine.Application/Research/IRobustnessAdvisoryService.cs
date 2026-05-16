@@ -17,10 +17,10 @@ public interface IRobustnessAdvisoryService
     IReadOnlyList<string> GetWarnings(BacktestResult result);
 
     /// <summary>
-    /// Returns structured robustness warnings with severity, cause, and recommended action.
-    /// An empty list indicates no warnings.
+    /// Returns structured warnings with severity, explanation, cause, and recommended action.
+    /// Provides richer context than <see cref="GetWarnings"/> for the Robustness Hub UI.
     /// </summary>
     /// <param name="result">The backtest result to evaluate.</param>
-    /// <returns>A read-only list of <see cref="RobustnessWarning"/> records.</returns>
+    /// <returns>A read-only list of structured robustness warnings.</returns>
     IReadOnlyList<RobustnessWarning> GetStructuredWarnings(BacktestResult result);
 }
