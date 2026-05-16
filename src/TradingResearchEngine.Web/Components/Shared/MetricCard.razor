@@ -1,10 +1,50 @@
-<MudPaper Class="@(IsPrimary ? "pa-4" : "pa-3")" Elevation="1" Style="text-align: center;">
-    <MudText Typo="Typo.caption" Style="opacity: 0.6;">@Label</MudText>
-    <MudText Typo="@(IsPrimary ? Typo.h5 : Typo.h6)">@Value</MudText>
-</MudPaper>
+<div class="kpi-tile @(Clickable ? "kpi-tile--clickable" : "")" style="@_containerStyle">
+    <MudPaper Class="@_paperClass" Elevation="@(IsPrimary ? 2 : 1)" Style="@_paperStyle">
+        @if (Icon is not null)
+        {
+            <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-1">
+                <div class="kpi-tile__label">@Label</div>
+                <MudIcon Icon="@Icon" Style="@($"font-size:1.1rem; opacity:0.35; color:{IconColor ?? "inherit"}")" />
+            </MudStack>
+        }
+        else
+        {
+            <div class="kpi-tile__label">@Label</div>
+        }
+
+        <div class="kpi-tile__value" style="@(ValueColor is not null ? $"color:{ValueColor}" : "")">@Value</div>
+
+        @if (SubLabel is not null)
+        {
+            <div class="kpi-tile__sub truncate">@SubLabel</div>
+        }
+
+        @if (Trend is not null)
+        {
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Style="margin-top:6px;">
+                <MudIcon Icon="@(Trend > 0 ? Icons.Material.Filled.TrendingUp : Trend < 0 ? Icons.Material.Filled.TrendingDown : Icons.Material.Filled.TrendingFlat)"
+                         Style="@($"font-size:0.9rem; color:{(Trend > 0 ? "var(--mud-palette-success)" : Trend < 0 ? "var(--mud-palette-error)" : "inherit")}")" />
+                <span style="font-size:0.68rem; opacity:0.55; color:@(Trend > 0 ? "var(--mud-palette-success)" : Trend < 0 ? "var(--mud-palette-error)" : "inherit")">
+                    @TrendLabel
+                </span>
+            </MudStack>
+        }
+    </MudPaper>
+</div>
 
 @code {
-    [Parameter] public string Label { get; set; } = "";
-    [Parameter] public string Value { get; set; } = "";
-    [Parameter] public bool IsPrimary { get; set; } = false;
+    [Parameter] public string Label     { get; set; } = "";
+    [Parameter] public string Value     { get; set; } = "";
+    [Parameter] public string? SubLabel { get; set; }
+    [Parameter] public bool   IsPrimary { get; set; }
+    [Parameter] public bool   Clickable { get; set; }
+    [Parameter] public string? Icon     { get; set; }
+    [Parameter] public string? IconColor { get; set; }
+    [Parameter] public string? ValueColor { get; set; }
+    [Parameter] public int?    Trend    { get; set; }
+    [Parameter] public string? TrendLabel { get; set; }
+
+    private string _containerStyle => Clickable ? "cursor:pointer; display:block;" : "display:block;";
+    private string _paperClass     => IsPrimary ? "pa-4" : "pa-3";
+    private string _paperStyle     => "border-radius: var(--tre-radius); height: 100%;";
 }

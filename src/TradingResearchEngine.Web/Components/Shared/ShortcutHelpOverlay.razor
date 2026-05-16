@@ -31,7 +31,8 @@
                               Style="cursor: pointer; border: 1px solid var(--mud-palette-lines-default);"
                               @onclick="() => ExecuteShortcut(shortcut)">
                         <MudText>@shortcut.Description</MudText>
-                        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">@shortcut.Key</MudChip>
+
+                        <MudChip T="string" Size="MudBlazor.Size.Small" Variant="Variant.Outlined">@shortcut.Key</MudChip>
                     </MudPaper>
                 }
             }

@@ -1,4 +1,4 @@
-﻿@inherits LayoutComponentBase
+@inherits LayoutComponentBase
 
 <MudThemeProvider Theme="_theme" IsDarkMode="true" />
 <MudPopoverProvider />
@@ -6,50 +6,129 @@
 <MudSnackbarProvider />
 
 <MudLayout>
-    <MudAppBar Elevation="1" Dense="true">
+    <MudAppBar Elevation="0" Dense="true" Style="border-bottom: 1px solid var(--mud-palette-divider); backdrop-filter: blur(8px);">
         <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit"
-                       Edge="Edge.Start" OnClick="ToggleDrawer" />
-        <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center" Class="ml-2">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <rect x="4" y="8" width="3" height="12" rx="1" fill="currentColor" opacity="0.6"/>
-                <rect x="10" y="3" width="3" height="17" rx="1" fill="currentColor"/>
-                <rect x="16" y="6" width="3" height="14" rx="1" fill="currentColor" opacity="0.6"/>
-            </svg>
-            <MudText Typo="Typo.subtitle1" Style="font-weight:600">Research Engine</MudText>
-        </MudStack>
+                       Edge="Edge.Start" OnClick="ToggleDrawer" Class="mr-1" />
+
+        <a href="/" class="app-logo ml-1">
+            <span class="app-logo__icon">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <rect x="3" y="9"  width="3" height="12" rx="1.5" fill="currentColor" opacity="0.5"/>
+                    <rect x="9" y="4"  width="3" height="17" rx="1.5" fill="currentColor"/>
+                    <rect x="15" y="7" width="3" height="14" rx="1.5" fill="currentColor" opacity="0.7"/>
+                    <rect x="21" y="11" width="1.5" height="10" rx="0.75" fill="currentColor" opacity="0.35"/>
+                </svg>
+            </span>
+            <MudText Typo="Typo.subtitle1" Style="font-weight:700; letter-spacing:-0.01em; color: var(--mud-palette-text-primary);">
+                Research Engine
+            </MudText>
+        </a>
+
         <MudSpacer />
-        <MudText Typo="Typo.caption" Class="text-faint mr-4">v4.0</MudText>
+
+        <GlobalSearch />
+
+        <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center" Class="mr-2">
+            <MudTooltip Text="Keyboard Shortcuts (?)">
+                <MudIconButton Icon="@Icons.Material.Outlined.Keyboard" Color="Color.Inherit" Size="MudBlazor.Size.Small"
+                               OnClick="ToggleShortcuts" />
+            </MudTooltip>
+            <MudChip T="string" Size="MudBlazor.Size.Small" Variant="Variant.Outlined"
+                     Style="height:22px; font-size:0.65rem; opacity:0.5; pointer-events:none;">v4.0</MudChip>
+        </MudStack>
     </MudAppBar>
 
-    <MudDrawer @bind-Open="_drawerOpen" ClipMode="DrawerClipMode.Always" Elevation="2">
-        <NavMenu />
+    <MudDrawer @bind-Open="_drawerOpen" ClipMode="DrawerClipMode.Always" Elevation="0"
+               Style="border-right: 1px solid var(--mud-palette-divider);">
+        <MudDrawerContainer Style="display:flex; flex-direction:column; height:100%;">
+            <div style="flex:1; overflow-y:auto; padding-top: 8px;">
+                <NavMenu />
+            </div>
+            <div class="drawer-footer">
+                <MudText Typo="Typo.caption" Class="text-faint" Style="font-size:0.62rem;">
+                    Trading Research Engine
+                </MudText>
+                <MudTooltip Text="Settings">
+                    <MudIconButton Icon="@Icons.Material.Outlined.Settings" Size="MudBlazor.Size.Small"
+                                   Color="Color.Inherit" Style="opacity:0.45;" Href="/settings" />
+                </MudTooltip>
+            </div>
+        </MudDrawerContainer>
     </MudDrawer>
 
-    <MudMainContent Style="padding-top: 64px; padding-left: 16px; padding-right: 16px; padding-bottom: 48px;">
-        @Body
+    <MudMainContent Style="padding-top: 64px; padding-left: 20px; padding-right: 20px; padding-bottom: 56px;">
+        <div class="fade-in">
+            @Body
+        </div>
     </MudMainContent>
 
-    @* V4: Execution status bar — visible during active background studies *@
     <ExecutionStatusBar />
+
+    @if (_showShortcuts)
+    {
+        <KeyboardShortcutOverlay OnClose="ToggleShortcuts" />
+    }
 </MudLayout>
 
 @code {
     private bool _drawerOpen = true;
+    private bool _showShortcuts;
+
     private void ToggleDrawer() => _drawerOpen = !_drawerOpen;
+    private void ToggleShortcuts() => _showShortcuts = !_showShortcuts;
 
     private readonly MudTheme _theme = new()
     {
         PaletteDark = new PaletteDark
         {
-            Primary = "#4F98A3",
-            Secondary = "#2C7873",
-            AppbarBackground = "#0F0F0F",
-            Background = "#131313",
-            Surface = "#1C1C1C",
-            DrawerBackground = "#1C1C1C",
-            AppbarText = "#E0E0E0",
-            TextPrimary = "#E0E0E0",
-            TextSecondary = "#A0A0A0",
+            Primary         = "#4F98A3",
+            PrimaryDarken   = "#3A7A85",
+            PrimaryLighten  = "#6ABAC6",
+            Secondary       = "#2C7873",
+            SecondaryDarken = "#1E5552",
+            Info            = "#5BA4CF",
+            Success         = "#4CAF74",
+            Warning         = "#E8A838",
+            Error           = "#E05C5C",
+            AppbarBackground = "#0C0C0C",
+            AppbarText      = "#E4E4E4",
+            Background      = "#111111",
+            BackgroundGray  = "#161616",
+            Surface         = "#1A1A1A",
+            DrawerBackground = "#161616",
+            DrawerText      = "#D0D0D0",
+            DrawerIcon      = "#909090",
+            Divider         = "rgba(255,255,255,0.08)",
+            DividerLight    = "rgba(255,255,255,0.05)",
+            TextPrimary     = "#E4E4E4",
+            TextSecondary   = "#909090",
+            TextDisabled    = "rgba(255,255,255,0.28)",
+            ActionDefault   = "#909090",
+            LinesDefault    = "rgba(255,255,255,0.06)",
+            LinesInputs     = "rgba(255,255,255,0.18)",
+            TableLines      = "rgba(255,255,255,0.06)",
+            TableHover      = "rgba(79,152,163,0.06)",
+            TableStriped    = "rgba(255,255,255,0.02)",
+            OverlayLight    = "rgba(0,0,0,0.5)",
+            OverlayDark     = "rgba(0,0,0,0.75)",
+        },
+        Typography = new Typography
+        {
+            Default = new DefaultTypography { FontFamily = new[] { "Inter", "Roboto", "sans-serif" } },
+            H4 = new H4Typography { FontWeight = "700", LetterSpacing = "-0.02em" },
+            H5 = new H5Typography { FontWeight = "700", LetterSpacing = "-0.015em" },
+            H6 = new H6Typography { FontWeight = "600", LetterSpacing = "-0.01em" },
+            Subtitle1 = new Subtitle1Typography { FontWeight = "600" },
+            Subtitle2 = new Subtitle2Typography { FontWeight = "600", LetterSpacing = "0.01em" },
+            Body1 = new Body1Typography { FontSize = "0.875rem" },
+            Body2 = new Body2Typography { FontSize = "0.8125rem" },
+            Caption = new CaptionTypography { FontSize = "0.72rem", LetterSpacing = "0.01em" },
+        },
+        LayoutProperties = new LayoutProperties
+        {
+            DrawerWidthLeft   = "220px",
+            AppbarHeight      = "52px",
+            DefaultBorderRadius = "6px",
         }
     };
 }

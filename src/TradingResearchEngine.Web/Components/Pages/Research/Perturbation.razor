@@ -4,12 +4,14 @@
 @inject IStrategyRepository StrategyRepo
 @inject ISnackbar Snackbar
 
-<PageTitle>Parameter Perturbation — TradingResearchEngine</PageTitle>
+<PageTitle>Parameter Perturbation — Research Engine</PageTitle>
 
-<MudText Typo="Typo.h4" Class="mb-4">Parameter Perturbation</MudText>
-<MudText Typo="Typo.body2" Class="mb-4">
-    Jitters each parameter by ±N% to detect curve-fitting. Stable results = robust strategy.
-</MudText>
+<div class="page-header">
+    <div class="page-header__title">
+        <MudText Typo="Typo.h5">Parameter Perturbation</MudText>
+        <MudText Typo="Typo.caption" Class="text-muted">Nudge parameters slightly to measure sensitivity and stability of results</MudText>
+    </div>
+</div>
 
 <MudGrid>
     <MudItem xs="12" md="6">

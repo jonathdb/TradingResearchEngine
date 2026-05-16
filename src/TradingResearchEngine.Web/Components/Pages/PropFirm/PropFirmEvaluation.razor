@@ -5,15 +5,19 @@
 @inject IPropFirmPackLoader PropFirmPackLoader
 @inject ISnackbar Snackbar
 
-<PageTitle>Prop Firm Evaluation — TradingResearchEngine</PageTitle>
+<PageTitle>Prop Firm Lab — Research Engine</PageTitle>
 
-<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-4">
-    <MudText Typo="Typo.h4">Prop Firm Lab</MudText>
-    <MudSpacer />
-    <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="MudBlazor.Size.Small"
-               StartIcon="@Icons.Material.Filled.Add"
-               Href="/propfirm/rulepack/new">+ Custom Rule Pack</MudButton>
-</MudStack>
+<div class="page-header">
+    <div class="page-header__title">
+        <MudText Typo="Typo.h5">Prop Firm Lab</MudText>
+        <MudText Typo="Typo.caption" Class="text-muted">Check if a backtest passes the rules of a funded-account challenge</MudText>
+    </div>
+    <div class="page-header__actions">
+        <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="MudBlazor.Size.Small"
+                   StartIcon="@Icons.Material.Outlined.Add"
+                   Href="/propfirm/rulepack/new">Custom Rule Pack</MudButton>
+    </div>
+</div>
 
 <MudGrid>
     <MudItem xs="12" md="5">

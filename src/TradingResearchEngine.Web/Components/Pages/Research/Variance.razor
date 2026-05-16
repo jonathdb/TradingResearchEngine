@@ -4,12 +4,14 @@
 @inject IStrategyRepository StrategyRepo
 @inject ISnackbar Snackbar
 
-<PageTitle>Variance Testing — TradingResearchEngine</PageTitle>
+<PageTitle>Variance Testing — Research Engine</PageTitle>
 
-<MudText Typo="Typo.h4" Class="mb-4">Variance Testing</MudText>
-<MudText Typo="Typo.body2" Class="mb-4">
-    Runs Conservative, Base, and Strong presets to stress-test assumptions.
-</MudText>
+<div class="page-header">
+    <div class="page-header__title">
+        <MudText Typo="Typo.h5">Variance Testing</MudText>
+        <MudText Typo="Typo.caption" Class="text-muted">Quantify how much performance varies across different time windows and seeds</MudText>
+    </div>
+</div>
 
 <MudGrid>
     <MudItem xs="12" md="6">

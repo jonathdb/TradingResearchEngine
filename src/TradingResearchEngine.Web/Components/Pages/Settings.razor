@@ -8,151 +8,255 @@
 @inject TradingResearchEngine.Infrastructure.Settings.SettingsService SettingsService
 @inject StrategyRegistry Registry
 
-<PageTitle>Settings — TradingResearchEngine</PageTitle>
+<PageTitle>Settings — Research Engine</PageTitle>
 
-<MudText Typo="Typo.h4" Class="mb-4">Settings</MudText>
-<MudText Typo="Typo.body2" Class="mb-4 text-muted">
-    Current configuration values. Edit appsettings.json to change defaults.
-</MudText>
+<div class="page-header">
+    <div class="page-header__title">
+        <MudText Typo="Typo.h5">Settings</MudText>
+        <MudText Typo="Typo.caption" Class="text-muted">
+            Read-only configuration values — edit <code style="font-size:0.75em; opacity:0.8;">appsettings.json</code> to change defaults
+        </MudText>
+    </div>
+</div>
 
-<MudGrid>
+<MudGrid Spacing="3">
+
+    @* ── Left Column ── *@
     <MudItem xs="12" md="6">
-        <MudPaper Class="pa-4" Elevation="2">
-            <MudText Typo="Typo.h6" Class="mb-3">Risk Defaults</MudText>
-            <MudSimpleTable Dense="true">
-                <tbody>
-                    <tr><td>Max Exposure %</td><td>@RiskOpts.Value.MaxExposurePercent%</td></tr>
-                </tbody>
-            </MudSimpleTable>
 
-            <MudText Typo="Typo.h6" Class="mt-4 mb-3">Monte Carlo Defaults</MudText>
-            <MudSimpleTable Dense="true">
-                <tbody>
-                    <tr><td>Simulation Count</td><td>@McOpts.Value.SimulationCount</td></tr>
-                    <tr><td>Ruin Threshold</td><td>@McOpts.Value.RuinThresholdPercent.ToString("P0")</td></tr>
-                    <tr><td>Seed</td><td>@(McOpts.Value.Seed?.ToString() ?? "Random")</td></tr>
-                </tbody>
-            </MudSimpleTable>
-
-            <MudText Typo="Typo.h6" Class="mt-4 mb-3">Sweep Options</MudText>
-            <MudSimpleTable Dense="true">
-                <tbody>
-                    <tr><td>Max Parallelism</td><td>@SweepOpts.Value.MaxDegreeOfParallelism</td></tr>
-                </tbody>
-            </MudSimpleTable>
+        @* Risk Defaults *@
+        <MudPaper Class="pa-4 mb-3" Elevation="1" Style="border-radius:var(--tre-radius);">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-3">
+                <MudIcon Icon="@Icons.Material.Outlined.Shield" Style="color:var(--mud-palette-warning); font-size:1.1rem;" />
+                <MudText Typo="Typo.subtitle2">Risk Defaults</MudText>
+            </MudStack>
+            <div class="settings-table">
+                <div class="settings-row">
+                    <span class="settings-key">Max Exposure</span>
+                    <span class="settings-val">@RiskOpts.Value.MaxExposurePercent%</span>
+                </div>
+            </div>
         </MudPaper>
+
+        @* Monte Carlo *@
+        <MudPaper Class="pa-4 mb-3" Elevation="1" Style="border-radius:var(--tre-radius);">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-3">
+                <MudIcon Icon="@Icons.Material.Outlined.Casino" Style="color:var(--mud-palette-primary); font-size:1.1rem;" />
+                <MudText Typo="Typo.subtitle2">Monte Carlo Defaults</MudText>
+            </MudStack>
+            <div class="settings-table">
+                <div class="settings-row">
+                    <span class="settings-key">Simulation Count</span>
+                    <span class="settings-val monospace">@McOpts.Value.SimulationCount.ToString("N0")</span>
+                </div>
+                <div class="settings-row">
+                    <span class="settings-key">Ruin Threshold</span>
+                    <span class="settings-val monospace">@McOpts.Value.RuinThresholdPercent.ToString("P0")</span>
+                </div>
+                <div class="settings-row">
+                    <span class="settings-key">Random Seed</span>
+                    <span class="settings-val monospace">@(McOpts.Value.Seed?.ToString() ?? "Random")</span>
+                </div>
+            </div>
+        </MudPaper>
+
+        @* Sweep *@
+        <MudPaper Class="pa-4" Elevation="1" Style="border-radius:var(--tre-radius);">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-3">
+                <MudIcon Icon="@Icons.Material.Outlined.GridOn" Style="color:var(--mud-palette-secondary); font-size:1.1rem;" />
+                <MudText Typo="Typo.subtitle2">Parameter Sweep</MudText>
+            </MudStack>
+            <div class="settings-table">
+                <div class="settings-row">
+                    <span class="settings-key">Max Parallelism</span>
+                    <span class="settings-val monospace">@SweepOpts.Value.MaxDegreeOfParallelism</span>
+                </div>
+            </div>
+        </MudPaper>
+
     </MudItem>
 
+    @* ── Right Column ── *@
     <MudItem xs="12" md="6">
-        <MudPaper Class="pa-4" Elevation="2">
-            <MudText Typo="Typo.h6" Class="mb-3">Reporting</MudText>
-            <MudSimpleTable Dense="true">
-                <tbody>
-                    <tr><td>Decimal Places</td><td>@ReportOpts.Value.DecimalPlaces</td></tr>
-                </tbody>
-            </MudSimpleTable>
 
-            <MudText Typo="Typo.h6" Class="mt-4 mb-3">Storage Paths</MudText>
-            <MudSimpleTable Dense="true">
-                <tbody>
-                    <tr><td>Repository</td><td style="word-break:break-all">@(string.IsNullOrEmpty(RepoOpts.Value.BaseDirectory) ? "(default: LocalAppData)" : RepoOpts.Value.BaseDirectory)</td></tr>
-                    <tr><td>Data Directory</td><td style="word-break:break-all">@DataService.DataDirectory</td></tr>
-                    <tr>
-                        <td>QDM Watch Directory</td>
-                        <td style="word-break:break-all">
-                            @if (_editingQdmPath)
-                            {
-                                <MudTextField @bind-Value="_qdmWatchDirectory"
-                                              HelperText="Optional — path to QDM export folder"
-                                              Placeholder="(not configured)"
-                                              Variant="Variant.Outlined"
-                                              Margin="Margin.Dense" />
-                                <MudButton Variant="Variant.Filled"
-                                           Color="Color.Primary"
-                                           Size="Size.Small"
-                                           Class="mt-2 mr-2"
-                                           OnClick="SaveQdmWatchDirectory">Save</MudButton>
-                                <MudButton Variant="Variant.Text"
-                                           Size="Size.Small"
-                                           Class="mt-2"
-                                           OnClick="CancelEditQdmPath">Cancel</MudButton>
-                            }
-                            else
-                            {
-                                <span>@(string.IsNullOrEmpty(_qdmWatchDirectory) ? "(not configured)" : _qdmWatchDirectory)</span>
-                                <MudIconButton Icon="@Icons.Material.Filled.Edit"
-                                               Size="Size.Small"
-                                               Class="ml-2"
-                                               OnClick="EditQdmPath" />
-                            }
-                        </td>
-                    </tr>
-                    <tr>
-                        <td>QDM Timezone</td>
-                        <td>
-                            @if (_editingQdmTimezone)
-                            {
-                                <MudSelect T="string" @bind-Value="_qdmTimezoneId"
-                                        Variant="Variant.Outlined" Margin="Margin.Dense">
-                                    <MudSelectItem Value="@("UTC")">UTC (recommended)</MudSelectItem>
-                                    <MudSelectItem Value="@("Europe/London")">Europe/London (GMT/BST)</MudSelectItem>
-                                    <MudSelectItem Value="@("America/New_York")">America/New_York (EST/EDT)</MudSelectItem>
-                                    <MudSelectItem Value="@("America/Chicago")">America/Chicago (CST/CDT)</MudSelectItem>
-                                    <MudSelectItem Value="@("Asia/Tokyo")">Asia/Tokyo (JST)</MudSelectItem>
-                                    <MudSelectItem Value="@("Asia/Singapore")">Asia/Singapore (SGT)</MudSelectItem>
-                                    <MudSelectItem Value="@("Europe/Berlin")">Europe/Berlin (CET/CEST)</MudSelectItem>
-                                </MudSelect>
+        @* Reporting *@
+        <MudPaper Class="pa-4 mb-3" Elevation="1" Style="border-radius:var(--tre-radius);">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-3">
+                <MudIcon Icon="@Icons.Material.Outlined.Assessment" Style="color:var(--mud-palette-info); font-size:1.1rem;" />
+                <MudText Typo="Typo.subtitle2">Reporting</MudText>
+            </MudStack>
+            <div class="settings-table">
+                <div class="settings-row">
+                    <span class="settings-key">Decimal Places</span>
+                    <span class="settings-val monospace">@ReportOpts.Value.DecimalPlaces</span>
+                </div>
+            </div>
+        </MudPaper>
+
+        @* Storage *@
+        <MudPaper Class="pa-4 mb-3" Elevation="1" Style="border-radius:var(--tre-radius);">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-3">
+                <MudIcon Icon="@Icons.Material.Outlined.Storage" Style="color:var(--mud-palette-primary); font-size:1.1rem;" />
+                <MudText Typo="Typo.subtitle2">Storage Paths</MudText>
+            </MudStack>
+            <div class="settings-table">
+                <div class="settings-row settings-row--wrap">
+                    <span class="settings-key">Repository</span>
+                    <span class="settings-val monospace" style="word-break:break-all; font-size:0.75rem;">
+                        @(string.IsNullOrEmpty(RepoOpts.Value.BaseDirectory) ? "(default: LocalAppData)" : RepoOpts.Value.BaseDirectory)
+                    </span>
+                </div>
+                <div class="settings-row settings-row--wrap">
+                    <span class="settings-key">Data Directory</span>
+                    <span class="settings-val monospace" style="word-break:break-all; font-size:0.75rem;">@DataService.DataDirectory</span>
+                </div>
+
+                @* QDM Watch Path — editable *@
+                <div class="settings-row settings-row--wrap settings-row--editable">
+                    <span class="settings-key">QDM Watch Dir</span>
+                    @if (_editingQdmPath)
+                    {
+                        <div style="flex:1; display:flex; flex-direction:column; gap:6px;">
+                            <MudTextField @bind-Value="_qdmWatchDirectory"
+                                          Placeholder="(not configured)"
+                                          Variant="Variant.Outlined" Margin="Margin.Dense"
+                                          Style="font-size:0.8rem;" />
+                            <MudStack Row="true" Spacing="1">
                                 <MudButton Variant="Variant.Filled" Color="Color.Primary"
-                                        Size="Size.Small" Class="mt-2 mr-2"
-                                        OnClick="SaveQdmTimezone">Save</MudButton>
-                                <MudButton Variant="Variant.Text" Size="Size.Small"
-                                        Class="mt-2" OnClick="CancelEditQdmTimezone">Cancel</MudButton>
-                            }
-                            else
-                            {
-                                <span>@(_qdmTimezoneId ?? "UTC")</span>
-                                <MudIconButton Icon="@Icons.Material.Filled.Edit"
-                                            Size="Size.Small" Class="ml-2"
-                                            OnClick="@(() => _editingQdmTimezone = true)" />
-                            }
-                        </td>
-                    </tr>
-                </tbody>
-            </MudSimpleTable>
+                                           Size="MudBlazor.Size.Small" OnClick="SaveQdmWatchDirectory">Save</MudButton>
+                                <MudButton Variant="Variant.Text" Size="MudBlazor.Size.Small"
+                                           OnClick="CancelEditQdmPath">Cancel</MudButton>
+                            </MudStack>
+                        </div>
+                    }
+                    else
+                    {
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Style="flex:1;">
+                            <span class="settings-val monospace" style="flex:1; font-size:0.75rem; word-break:break-all;">
+                                @(string.IsNullOrEmpty(_qdmWatchDirectory) ? "(not configured)" : _qdmWatchDirectory)
+                            </span>
+                            <MudIconButton Icon="@Icons.Material.Outlined.Edit" Size="MudBlazor.Size.Small"
+                                           Style="opacity:0.4; padding:2px;" OnClick="EditQdmPath" />
+                        </MudStack>
+                    }
+                </div>
 
-            <MudText Typo="Typo.h6" Class="mt-4 mb-3">Registered Strategies</MudText>
-            <MudList T="string" Dense="true">
+                @* QDM Timezone — editable *@
+                <div class="settings-row settings-row--wrap settings-row--editable">
+                    <span class="settings-key">QDM Timezone</span>
+                    @if (_editingQdmTimezone)
+                    {
+                        <div style="flex:1; display:flex; flex-direction:column; gap:6px;">
+                            <MudSelect T="string" @bind-Value="_qdmTimezoneId"
+                                       Variant="Variant.Outlined" Margin="Margin.Dense">
+                                <MudSelectItem Value="@("UTC")">UTC (recommended)</MudSelectItem>
+                                <MudSelectItem Value="@("Europe/London")">Europe/London (GMT/BST)</MudSelectItem>
+                                <MudSelectItem Value="@("America/New_York")">America/New_York (EST/EDT)</MudSelectItem>
+                                <MudSelectItem Value="@("America/Chicago")">America/Chicago (CST/CDT)</MudSelectItem>
+                                <MudSelectItem Value="@("Asia/Tokyo")">Asia/Tokyo (JST)</MudSelectItem>
+                                <MudSelectItem Value="@("Asia/Singapore")">Asia/Singapore (SGT)</MudSelectItem>
+                                <MudSelectItem Value="@("Europe/Berlin")">Europe/Berlin (CET/CEST)</MudSelectItem>
+                            </MudSelect>
+                            <MudStack Row="true" Spacing="1">
+                                <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                                           Size="MudBlazor.Size.Small" OnClick="SaveQdmTimezone">Save</MudButton>
+                                <MudButton Variant="Variant.Text" Size="MudBlazor.Size.Small"
+                                           OnClick="CancelEditQdmTimezone">Cancel</MudButton>
+                            </MudStack>
+                        </div>
+                    }
+                    else
+                    {
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Style="flex:1;">
+                            <span class="settings-val monospace" style="flex:1;">@(_qdmTimezoneId ?? "UTC")</span>
+                            <MudIconButton Icon="@Icons.Material.Outlined.Edit" Size="MudBlazor.Size.Small"
+                                           Style="opacity:0.4; padding:2px;"
+                                           OnClick="@(() => _editingQdmTimezone = true)" />
+                        </MudStack>
+                    }
+                </div>
+            </div>
+        </MudPaper>
+
+        @* Registered Strategies *@
+        <MudPaper Class="pa-4" Elevation="1" Style="border-radius:var(--tre-radius);">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-3">
+                <MudIcon Icon="@Icons.Material.Outlined.Psychology" Style="color:var(--mud-palette-success); font-size:1.1rem;" />
+                <MudText Typo="Typo.subtitle2">Registered Strategies</MudText>
+                <MudChip T="string" Size="MudBlazor.Size.Small" Variant="Variant.Outlined"
+                         Style="height:18px; font-size:0.65rem;">@Registry.KnownNames.Count()</MudChip>
+            </MudStack>
+            <div style="display:flex; flex-wrap:wrap; gap:6px;">
                 @foreach (var name in Registry.KnownNames)
                 {
-                    <MudListItem T="string" Icon="@Icons.Material.Filled.Code">@name</MudListItem>
+                    <MudChip T="string" Size="MudBlazor.Size.Small" Variant="Variant.Outlined"
+                             Icon="@Icons.Material.Outlined.Code">@name</MudChip>
                 }
-            </MudList>
+            </div>
         </MudPaper>
-    </MudItem>
-</MudGrid>
 
-@* V4: About section *@
-<MudGrid Class="mt-4">
+    </MudItem>
+
+    @* ── About ── *@
     <MudItem xs="12">
-        <MudPaper Class="pa-4" Elevation="2">
-            <MudText Typo="Typo.h6" Class="mb-3">About</MudText>
-            <MudSimpleTable Dense="true">
-                <tbody>
-                    <tr><td>Version</td><td>4.0.0</td></tr>
-                    <tr><td>Build</td><td>@DateTime.Now.ToString("yyyy-MM-dd")</td></tr>
-                    <tr><td>Runtime</td><td>.NET @Environment.Version</td></tr>
-                </tbody>
-            </MudSimpleTable>
+        <MudPaper Class="pa-4" Elevation="1" Style="border-radius:var(--tre-radius);">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-3">
+                <MudIcon Icon="@Icons.Material.Outlined.Info" Style="font-size:1.1rem; opacity:0.5;" />
+                <MudText Typo="Typo.subtitle2">About</MudText>
+            </MudStack>
+            <MudStack Row="true" Spacing="4" Wrap="Wrap.Wrap">
+                <MudStack Spacing="0">
+                    <MudText Typo="Typo.caption" Class="text-faint">Version</MudText>
+                    <MudText Typo="Typo.body2" Class="monospace">4.0.0</MudText>
+                </MudStack>
+                <MudStack Spacing="0">
+                    <MudText Typo="Typo.caption" Class="text-faint">Build Date</MudText>
+                    <MudText Typo="Typo.body2" Class="monospace">@DateTime.Now.ToString("yyyy-MM-dd")</MudText>
+                </MudStack>
+                <MudStack Spacing="0">
+                    <MudText Typo="Typo.caption" Class="text-faint">Runtime</MudText>
+                    <MudText Typo="Typo.body2" Class="monospace">.NET @Environment.Version</MudText>
+                </MudStack>
+            </MudStack>
         </MudPaper>
     </MudItem>
+
 </MudGrid>
 
+<style>
+    .settings-table { display: flex; flex-direction: column; gap: 2px; }
+
+    .settings-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 7px 10px;
+        border-radius: 4px;
+        background: rgba(255,255,255,0.03);
+        gap: 12px;
+    }
+
+    .settings-row--wrap { align-items: flex-start; }
+    .settings-row--editable { flex-direction: column; align-items: stretch; }
+
+    .settings-key {
+        font-size: 0.78rem;
+        opacity: 0.55;
+        flex-shrink: 0;
+        min-width: 130px;
+    }
+
+    .settings-val {
+        font-size: 0.82rem;
+        font-weight: 500;
+        text-align: right;
+    }
+</style>
 
 @code {
 #nullable enable
     private string? _qdmWatchDirectory;
     private bool _editingQdmPath;
-
     private string _qdmTimezoneId = "UTC";
     private bool _editingQdmTimezone;
 
@@ -160,25 +264,20 @@
     {
         var settings = SettingsService.Load();
         _qdmWatchDirectory = settings.QdmWatchDirectory;
-        _qdmTimezoneId = settings.QdmTimezoneId ?? "UTC"; 
+        _qdmTimezoneId     = settings.QdmTimezoneId ?? "UTC";
     }
 
-    private void EditQdmPath()
-    {
-        _editingQdmPath = true;
-    }
+    private void EditQdmPath() => _editingQdmPath = true;
 
     private void CancelEditQdmPath()
     {
-        var settings = SettingsService.Load();
-        _qdmWatchDirectory = settings.QdmWatchDirectory;
+        _qdmWatchDirectory = SettingsService.Load().QdmWatchDirectory;
         _editingQdmPath = false;
     }
 
     private void SaveQdmWatchDirectory()
     {
-        var settings = SettingsService.Load();
-        var updated = settings with
+        var updated = SettingsService.Load() with
         {
             QdmWatchDirectory = string.IsNullOrWhiteSpace(_qdmWatchDirectory) ? null : _qdmWatchDirectory.Trim()
         };
@@ -186,17 +285,16 @@
         _qdmWatchDirectory = updated.QdmWatchDirectory;
         _editingQdmPath = false;
     }
+
     private void CancelEditQdmTimezone()
     {
-        var settings = SettingsService.Load();
-        _qdmTimezoneId = settings.QdmTimezoneId ?? "UTC";
+        _qdmTimezoneId = SettingsService.Load().QdmTimezoneId ?? "UTC";
         _editingQdmTimezone = false;
     }
 
     private void SaveQdmTimezone()
     {
-        var settings = SettingsService.Load();
-        var updated = settings with { QdmTimezoneId = _qdmTimezoneId };
+        var updated = SettingsService.Load() with { QdmTimezoneId = _qdmTimezoneId };
         SettingsService.Save(updated);
         _editingQdmTimezone = false;
     }

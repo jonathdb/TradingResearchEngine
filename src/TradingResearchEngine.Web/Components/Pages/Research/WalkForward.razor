@@ -3,9 +3,14 @@
 @inject IStrategyRepository StrategyRepo
 @inject ISnackbar Snackbar
 
-<PageTitle>Walk-Forward — TradingResearchEngine</PageTitle>
+<PageTitle>Walk-Forward — Research Engine</PageTitle>
 
-<MudText Typo="Typo.h4" Class="mb-4">Walk-Forward Analysis</MudText>
+<div class="page-header">
+    <div class="page-header__title">
+        <MudText Typo="Typo.h5">Walk-Forward Analysis</MudText>
+        <MudText Typo="Typo.caption" Class="text-muted">Test in-sample / out-of-sample periods to detect overfitting</MudText>
+    </div>
+</div>
 
 <MudGrid>
     <MudItem xs="12" md="6">
