@@ -40,6 +40,7 @@ public static class ServiceCollectionExtensions
         services.Configure<SweepOptions>(configuration.GetSection("Sweep"));
         services.Configure<WalkForwardOptions>(configuration.GetSection("WalkForward"));
         services.Configure<ConcurrencyOptions>(configuration.GetSection("Concurrency"));
+        services.Configure<SweepGuardrailOptions>(configuration.GetSection("SweepGuardrails"));
 
         // Typed data provider configuration — bound from appsettings.json:DataProviders:{Provider}
         services.Configure<CsvDataProviderOptions>(configuration.GetSection("DataProviders:Csv"));

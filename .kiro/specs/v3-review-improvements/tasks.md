@@ -6,27 +6,27 @@ This plan implements 23 requirements from the v3 review improvements specificati
 
 ## Tasks
 
-- [ ] 1. Core Engine/Quant: Composite Parameter Sweep Foundation (Requirements 1, 21, 23)
-  - [ ] 1.1 Create CompositeParameterGrid and CompositeParameterRange records
+- [x] 1. Core Engine/Quant: Composite Parameter Sweep Foundation (Requirements 1, 21, 23)
+  - [x] 1.1 Create CompositeParameterGrid and CompositeParameterRange records
     - Create `Application/Research/CompositeParameterGrid.cs` with the two sealed records
     - Add XML doc comments for all public members
     - Ensure `Ranges` is `IReadOnlyList<CompositeParameterRange>`
     - _Requirements: 1.1, 21.3_
 
-  - [ ] 1.2 Create SweepGuardrailOptions configuration class
+  - [x] 1.2 Create SweepGuardrailOptions configuration class
     - Create `Application/Configuration/SweepGuardrailOptions.cs` with `MaxCombinations` property (default 10000)
     - Create `SweepGuardrailDefaults` static class with named constant
     - Register in DI via `IOptions<SweepGuardrailOptions>`
     - _Requirements: 23.3_
 
-  - [ ] 1.3 Implement GridOptimizer.ValidateCompositeGrid static method
+  - [x] 1.3 Implement GridOptimizer.ValidateCompositeGrid static method
     - Validate each `IndicatorId` exists in the `CompositeStrategyConfig` — return error if not found
     - Validate at least one range produces values — return error if zero dimensions
     - Compute total combination count — return error if exceeds `SweepGuardrailOptions.MaxCombinations`
     - Error messages must state the computed combination count and the configured maximum
     - _Requirements: 1.4, 1.6, 23.1, 23.2_
 
-  - [ ] 1.4 Extend GridOptimizer with CompositeParameterGrid overload and TimeWeightedReturn objective
+  - [x] 1.4 Extend GridOptimizer with CompositeParameterGrid overload and TimeWeightedReturn objective
     - Add `Optimize` overload accepting optional `CompositeParameterGrid?`
     - Add `TimeWeightedReturn` value to `OptimizationObjective` enum
     - Implement `ComputeTimeWeightedReturn` using `EquityCurve.Count` as deterministic `windowBars`
@@ -34,13 +34,13 @@ This plan implements 23 requirements from the v3 review improvements specificati
     - Preserve existing `TotalReturn` objective for backward compatibility
     - _Requirements: 1.2, 1.3, 5.1, 5.2, 5.3, 5.4_
 
-  - [ ] 1.5 Extend WalkForwardWorkflow with CompositeParameterGrid support
+  - [x] 1.5 Extend WalkForwardWorkflow with CompositeParameterGrid support
     - Add optional `CompositeParameterGrid?` parameter to `RunAsync`
     - Implement `GenerateCombinations` that clones `CompositeStrategyConfig` per combination, injecting parameter overrides into matching `IndicatorConfig`
     - Use same parallel execution and concurrency budget as standard parameter sweeps
     - _Requirements: 1.5, 1.2, 1.3_
 
-  - [ ] 1.6 Ensure CompositeParameterGrid persistence backward compatibility
+  - [x] 1.6 Ensure CompositeParameterGrid persistence backward compatibility
     - Add `CompositeParameterGrid?` as optional nullable property on `WalkForwardOptions` and `SweepOptions`
     - Verify System.Text.Json default behaviour ignores unknown properties on deserialisation (older versions skip the field)
     - Verify loading options without the field deserialises as null
@@ -70,7 +70,7 @@ This plan implements 23 requirements from the v3 review improvements specificati
     - For a fixed growth ratio, TimeWeightedReturn increases as windowBars decreases
     - **Validates: Requirements 5.2, 5.3**
 
-- [ ] 2. Checkpoint - Ensure all tests pass
+- [x] 2. Checkpoint - Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
 - [ ] 3. Engine/Quant: TradeExcursionTracker OHLC Bar Support and Property Tests (Requirements 4, 19)

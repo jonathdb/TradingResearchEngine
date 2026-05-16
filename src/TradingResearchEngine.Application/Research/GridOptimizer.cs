@@ -1,3 +1,6 @@
+using Microsoft.Extensions.Options;
+using TradingResearchEngine.Application.Configuration;
+using TradingResearchEngine.Application.Strategies.Composite;
 using TradingResearchEngine.Core.Results;
 
 namespace TradingResearchEngine.Application.Research;
@@ -15,7 +18,7 @@ public sealed class GridOptimizer
     /// metrics are excluded — the optimizer never falls through to a different objective.
     /// </summary>
     /// <param name="candidates">The backtest results to evaluate.</param>
-    /// <param name="objective">The metric used to rank candidates (Sharpe, TotalReturn, or MAR).</param>
+    /// <param name="objective">The metric used to rank candidates (Sharpe, TotalReturn, MAR, or TimeWeightedReturn).</param>
     /// <returns>
     /// A <see cref="GridOptimizationResult"/> containing the best parameters, objective value,
     /// and any excluded candidates with explanations.
@@ -65,6 +68,115 @@ public sealed class GridOptimizer
     }
 
     /// <summary>
+    /// Selects the best parameter combination from <paramref name="candidates"/> based on
+    /// the configured <paramref name="objective"/>, with an optional <see cref="CompositeParameterGrid"/>
+    /// for composite strategy sweep support.
+    /// </summary>
+    /// <param name="candidates">The backtest results to evaluate.</param>
+    /// <param name="objective">The metric used to rank candidates (Sharpe, TotalReturn, MAR, or TimeWeightedReturn).</param>
+    /// <param name="compositeGrid">
+    /// Optional composite parameter grid for composite strategy sweeps.
+    /// When provided, the grid is accepted for validation purposes; actual combination generation
+    /// is handled by the WalkForwardWorkflow.
+    /// </param>
+    /// <returns>
+    /// A <see cref="GridOptimizationResult"/> containing the best parameters, objective value,
+    /// and any excluded candidates with explanations.
+    /// </returns>
+    public GridOptimizationResult Optimize(
+        IReadOnlyList<BacktestResult> candidates,
+        OptimizationObjective objective,
+        CompositeParameterGrid? compositeGrid)
+    {
+        // The compositeGrid parameter is accepted for API completeness and validation purposes.
+        // Actual combination generation from the grid is handled by WalkForwardWorkflow (task 1.5).
+        return Optimize(candidates, objective);
+    }
+
+    /// <summary>
+    /// Validates a <see cref="CompositeParameterGrid"/> against a <see cref="CompositeStrategyConfig"/>,
+    /// ensuring all referenced indicator IDs exist, at least one range produces values,
+    /// and the total combination count does not exceed the configured maximum.
+    /// </summary>
+    /// <param name="grid">The composite parameter grid to validate.</param>
+    /// <param name="config">The composite strategy configuration containing indicator definitions.</param>
+    /// <param name="options">Sweep guardrail options providing the maximum combination count.</param>
+    /// <returns>A <see cref="GridValidationResult"/> indicating success or containing error messages.</returns>
+    public static GridValidationResult ValidateCompositeGrid(
+        CompositeParameterGrid grid,
+        CompositeStrategyConfig config,
+        IOptions<SweepGuardrailOptions> options)
+    {
+        ArgumentNullException.ThrowIfNull(grid);
+        ArgumentNullException.ThrowIfNull(config);
+        ArgumentNullException.ThrowIfNull(options);
+
+        var errors = new List<string>();
+        var knownIndicatorIds = new HashSet<string>(
+            config.Indicators.Select(i => i.Id),
+            StringComparer.Ordinal);
+
+        // Validate each IndicatorId exists in the CompositeStrategyConfig
+        foreach (var range in grid.Ranges)
+        {
+            if (!knownIndicatorIds.Contains(range.IndicatorId))
+            {
+                errors.Add(
+                    $"Indicator ID '{range.IndicatorId}' not found in CompositeStrategyConfig. " +
+                    $"Known indicator IDs: [{string.Join(", ", knownIndicatorIds)}].");
+            }
+        }
+
+        if (errors.Count > 0)
+        {
+            return GridValidationResult.Failure(errors);
+        }
+
+        // Validate at least one range produces values (non-zero dimensions)
+        long totalCombinations = 1;
+        int validDimensions = 0;
+
+        foreach (var range in grid.Ranges)
+        {
+            long count = ComputeRangeValueCount(range);
+            if (count > 0)
+            {
+                validDimensions++;
+                totalCombinations *= count;
+            }
+        }
+
+        if (validDimensions == 0)
+        {
+            return GridValidationResult.Failure(
+                "No sweep dimensions produce values. At least one parameter range must produce at least one value.");
+        }
+
+        // Validate total combination count does not exceed maximum
+        var maxCombinations = options.Value.MaxCombinations;
+        if (totalCombinations > maxCombinations)
+        {
+            return GridValidationResult.Failure(
+                $"Total parameter combinations ({totalCombinations}) exceeds the configured maximum ({maxCombinations}).");
+        }
+
+        return GridValidationResult.Success();
+    }
+
+    /// <summary>
+    /// Computes the number of values produced by a parameter range using inclusive-inclusive enumeration:
+    /// floor((End - Start) / Step) + 1.
+    /// Returns zero when the range is degenerate (Step &lt;= 0 or End &lt; Start).
+    /// </summary>
+    private static long ComputeRangeValueCount(CompositeParameterRange range)
+    {
+        if (range.Step <= 0m || range.End < range.Start)
+            return 0;
+
+        return (long)Math.Floor((range.End - range.Start) / range.Step) + 1;
+    }
+
+    /// <summary>
     /// Extracts the objective metric value from a candidate result.
     /// Returns <c>null</c> when the metric is undefined for the candidate.
     /// Never falls through to a different objective.
@@ -76,6 +188,7 @@ public sealed class GridOptimizer
             OptimizationObjective.Sharpe => candidate.SharpeRatio,
             OptimizationObjective.TotalReturn => ComputeTotalReturn(candidate),
             OptimizationObjective.MAR => candidate.CalmarRatio,
+            OptimizationObjective.TimeWeightedReturn => ComputeTimeWeightedReturn(candidate),
             _ => null
         };
     }
@@ -93,6 +206,27 @@ public sealed class GridOptimizer
     }
 
     /// <summary>
+    /// Computes time-weighted (annualised) return as (EndEquity / StartEquity)^(BarsPerYear / windowBars) − 1.
+    /// Uses <see cref="BacktestResult.EquityCurve"/> count as the deterministic <c>windowBars</c> value.
+    /// Returns <c>null</c> when StartEquity is zero or negative, or when EquityCurve is empty.
+    /// </summary>
+    private static decimal? ComputeTimeWeightedReturn(BacktestResult candidate)
+    {
+        if (candidate.StartEquity <= 0m)
+            return null;
+
+        int windowBars = candidate.EquityCurve.Count;
+        if (windowBars <= 0)
+            return null;
+
+        int barsPerYear = candidate.ScenarioConfig.BarsPerYear;
+        double growthRatio = (double)(candidate.EndEquity / candidate.StartEquity);
+        double exponent = (double)barsPerYear / windowBars;
+        double annualised = Math.Pow(growthRatio, exponent) - 1.0;
+        return (decimal)annualised;
+    }
+
+    /// <summary>
     /// Builds a human-readable exclusion reason for a candidate whose objective metric is undefined.
     /// </summary>
     private static string BuildExclusionReason(OptimizationObjective objective, BacktestResult candidate)
@@ -107,6 +241,9 @@ public sealed class GridOptimizer
                 "Candidate excluded from ranking without fallthrough to alternative objective.",
             OptimizationObjective.MAR =>
                 $"MAR ratio (CalmarRatio) is undefined (null) for candidate with MaxDrawdown={candidate.MaxDrawdown}. " +
+                "Candidate excluded from ranking without fallthrough to alternative objective.",
+            OptimizationObjective.TimeWeightedReturn =>
+                $"TimeWeightedReturn is undefined — StartEquity is {candidate.StartEquity}, EquityCurve.Count is {candidate.EquityCurve.Count}. " +
                 "Candidate excluded from ranking without fallthrough to alternative objective.",
             _ =>
                 $"Unknown objective '{objective}' is undefined. " +

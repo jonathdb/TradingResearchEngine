@@ -101,6 +101,13 @@ public sealed class SweepOptions
 
     /// <summary>Metric used to sort sweep results. Defaults to Sharpe ratio descending.</summary>
     public SweepSortMetric SortBy { get; set; } = SweepSortMetric.SharpeRatio;
+
+    /// <summary>
+    /// Optional composite parameter grid for composite strategy parameter sweeps.
+    /// When provided, indicator parameters within a CompositeStrategyConfig are swept.
+    /// Older versions that do not recognise this field will ignore it on deserialisation.
+    /// </summary>
+    public TradingResearchEngine.Application.Research.CompositeParameterGrid? CompositeGrid { get; set; }
 }
 
 /// <summary>Options for walk-forward analysis windowing.</summary>
@@ -133,4 +140,10 @@ public sealed class WalkForwardOptions
     /// <summary>Objective metric used to rank parameter combinations during in-sample optimization. Defaults to Sharpe.</summary>
     public TradingResearchEngine.Application.Research.OptimizationObjective Objective { get; set; } =
         TradingResearchEngine.Application.Research.OptimizationObjective.Sharpe;
+
+    /// <summary>
+    /// Optional composite parameter grid for walk-forward optimisation of composite strategies.
+    /// When provided, indicator parameters within a CompositeStrategyConfig are swept per IS window.
+    /// </summary>
+    public TradingResearchEngine.Application.Research.CompositeParameterGrid? CompositeGrid { get; set; }
 }

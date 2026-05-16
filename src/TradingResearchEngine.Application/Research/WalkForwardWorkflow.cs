@@ -1,8 +1,10 @@
 using System.Collections.Concurrent;
+using System.Text.Json;
 using TradingResearchEngine.Application.Configuration;
 using TradingResearchEngine.Application.Engine;
 using TradingResearchEngine.Application.Research.Results;
 using TradingResearchEngine.Application.Strategies;
+using TradingResearchEngine.Application.Strategies.Composite;
 using TradingResearchEngine.Core.Configuration;
 using TradingResearchEngine.Core.Engine;
 using TradingResearchEngine.Core.Results;
@@ -163,6 +165,18 @@ public sealed class WalkForwardWorkflow : IResearchWorkflow<WalkForwardOptions, 
             bestParams = new Dictionary<string, object>(result.ScenarioConfig.StrategyParameters);
             optimizationMetricValue = metricValue;
         }
+        else if (options.CompositeGrid is not null && options.CompositeGrid.Ranges.Count > 0)
+        {
+            // Composite grid optimization path: sweep indicator parameters within CompositeStrategyConfig
+            var (result, metricValue) = await RunCompositeGridOptimizationAsync(
+                isConfig, options.CompositeGrid, options.Objective, factory, ct);
+
+            if (result is null) return null;
+
+            bestIsResult = result;
+            bestParams = new Dictionary<string, object>(result.ScenarioConfig.StrategyParameters);
+            optimizationMetricValue = metricValue;
+        }
         else
         {
             // Legacy path: use parameter sweep workflow
@@ -287,6 +301,46 @@ public sealed class WalkForwardWorkflow : IResearchWorkflow<WalkForwardOptions, 
     }
 
     /// <summary>
+    /// Generates all parameter combinations from a <see cref="CompositeParameterGrid"/> by computing
+    /// the Cartesian product of all ranges. Each combination is a list of (IndicatorId, ParameterName, Value)
+    /// tuples that will be injected into the matching IndicatorConfig.
+    /// </summary>
+    internal static List<List<(string IndicatorId, string ParameterName, object Value)>> GenerateCompositeCombinations(
+        CompositeParameterGrid grid)
+    {
+        if (grid.Ranges.Count == 0)
+            return new List<List<(string IndicatorId, string ParameterName, object Value)>>();
+
+        var result = new List<List<(string IndicatorId, string ParameterName, object Value)>> { new() };
+
+        foreach (var range in grid.Ranges)
+        {
+            if (range.Step <= 0m)
+                throw new ArgumentException(
+                    $"Parameter '{range.IndicatorId}.{range.ParameterName}' has non-positive Step ({range.Step}). Step must be > 0.");
+
+            var values = GenerateCompositeRangeValues(range);
+            if (values.Count == 0) continue;
+
+            var next = new List<List<(string IndicatorId, string ParameterName, object Value)>>();
+            foreach (var existing in result)
+            {
+                foreach (var value in values)
+                {
+                    var copy = new List<(string IndicatorId, string ParameterName, object Value)>(existing)
+                    {
+                        (range.IndicatorId, range.ParameterName, value)
+                    };
+                    next.Add(copy);
+                }
+            }
+            result = next;
+        }
+
+        return result;
+    }
+
+    /// <summary>
     /// Generates all values for a single parameter range: [Start, End] inclusive with Step increment.
     /// </summary>
     private static List<object> GenerateRangeValues(ParameterRange range)
@@ -297,6 +351,167 @@ public sealed class WalkForwardWorkflow : IResearchWorkflow<WalkForwardOptions, 
             values.Add(v);
         }
         return values;
+    }
+
+    /// <summary>
+    /// Generates all values for a single composite parameter range: [Start, End] inclusive with Step increment.
+    /// </summary>
+    private static List<object> GenerateCompositeRangeValues(CompositeParameterRange range)
+    {
+        var values = new List<object>();
+        for (var v = range.Start; v <= range.End; v += range.Step)
+        {
+            values.Add(v);
+        }
+        return values;
+    }
+
+    /// <summary>
+    /// Runs composite grid optimization for a single in-sample window: generates all parameter combinations
+    /// from the composite grid, clones the CompositeStrategyConfig for each combination with overrides
+    /// injected into matching IndicatorConfigs, runs a backtest for each, and selects the best via <see cref="GridOptimizer"/>.
+    /// Uses the same parallel execution and concurrency budget as standard parameter sweeps.
+    /// </summary>
+    private async Task<(BacktestResult? Best, decimal? MetricValue)> RunCompositeGridOptimizationAsync(
+        ScenarioConfig isConfig, CompositeParameterGrid compositeGrid, OptimizationObjective objective,
+        IStrategyFactory factory, CancellationToken ct)
+    {
+        var combinations = GenerateCompositeCombinations(compositeGrid);
+        if (combinations.Count == 0) return (null, null);
+
+        // Run a backtest for each parameter combination using only the IS data
+        var candidates = new ConcurrentBag<BacktestResult>();
+
+        await Parallel.ForEachAsync(
+            combinations,
+            new ParallelOptions { CancellationToken = ct, MaxDegreeOfParallelism = Math.Max(1, Environment.ProcessorCount - 1) },
+            async (combo, token) =>
+            {
+                var merged = MergeCompositeParameters(isConfig, combo);
+                var iterationStrategyConfig = merged.EffectiveStrategyConfig;
+                var isolatedStrategy = factory.Create(iterationStrategyConfig);
+                var runResult = await _runScenario.RunAsync(merged, token, autoSave: false, strategy: isolatedStrategy);
+                if (runResult.IsSuccess && runResult.Result is not null)
+                {
+                    candidates.Add(runResult.Result);
+                }
+            });
+
+        if (candidates.IsEmpty) return (null, null);
+
+        // Use GridOptimizer to select the best combination based on the configured objective
+        var optimizationResult = _gridOptimizer.Optimize(candidates.ToList(), objective);
+
+        if (optimizationResult.BestParameters.Count == 0) return (null, null);
+
+        // Find the candidate that matches the best parameters
+        var bestCandidate = candidates.FirstOrDefault(c =>
+            ParametersMatch(c.ScenarioConfig.StrategyParameters, optimizationResult.BestParameters));
+
+        return (bestCandidate, optimizationResult.ObjectiveValue);
+    }
+
+    /// <summary>
+    /// Merges composite parameter overrides into a base config by cloning the CompositeStrategyConfig
+    /// and injecting parameter values into matching IndicatorConfigs, then serialising the modified
+    /// config back into StrategyParameters.
+    /// </summary>
+    private static ScenarioConfig MergeCompositeParameters(
+        ScenarioConfig baseConfig,
+        List<(string IndicatorId, string ParameterName, object Value)> overrides)
+    {
+        var cloned = baseConfig.DeepClone();
+        var strategyParams = new Dictionary<string, object>(cloned.StrategyParameters);
+
+        // Extract the CompositeStrategyConfig from StrategyParameters
+        var compositeConfig = ExtractCompositeStrategyConfig(strategyParams);
+        if (compositeConfig is null)
+        {
+            // If we can't extract the composite config, return the cloned config as-is
+            return cloned with { StrategyParameters = strategyParams };
+        }
+
+        // Clone the CompositeStrategyConfig with overrides applied to matching indicators
+        var modifiedConfig = CloneCompositeConfigWithOverrides(compositeConfig, overrides);
+
+        // Serialize the modified CompositeStrategyConfig back into StrategyParameters
+        var jsonOptions = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+        var configJson = JsonSerializer.Serialize(modifiedConfig, jsonOptions);
+        var configElement = JsonSerializer.Deserialize<JsonElement>(configJson);
+        strategyParams["compositeConfig"] = configElement;
+
+        return cloned with { StrategyParameters = strategyParams };
+    }
+
+    /// <summary>
+    /// Extracts a <see cref="CompositeStrategyConfig"/> from the StrategyParameters dictionary.
+    /// Returns null if extraction fails.
+    /// </summary>
+    private static CompositeStrategyConfig? ExtractCompositeStrategyConfig(Dictionary<string, object> parameters)
+    {
+        var configKey = parameters.Keys
+            .FirstOrDefault(k => string.Equals(k, "compositeConfig", StringComparison.OrdinalIgnoreCase));
+
+        if (configKey is null) return null;
+
+        var rawValue = parameters[configKey];
+        var jsonOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+
+        try
+        {
+            if (rawValue is JsonElement je)
+            {
+                return JsonSerializer.Deserialize<CompositeStrategyConfig>(je.GetRawText(), jsonOptions);
+            }
+
+            var json = JsonSerializer.Serialize(rawValue, jsonOptions);
+            return JsonSerializer.Deserialize<CompositeStrategyConfig>(json, jsonOptions);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Clones a <see cref="CompositeStrategyConfig"/> and injects parameter overrides into matching
+    /// <see cref="IndicatorConfig"/> entries. Each override targets a specific indicator by ID and
+    /// sets a named parameter value.
+    /// </summary>
+    internal static CompositeStrategyConfig CloneCompositeConfigWithOverrides(
+        CompositeStrategyConfig config,
+        List<(string IndicatorId, string ParameterName, object Value)> overrides)
+    {
+        // Build a lookup of overrides grouped by indicator ID
+        var overridesByIndicator = overrides
+            .GroupBy(o => o.IndicatorId, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.Ordinal);
+
+        // Clone each indicator, applying overrides where matched
+        var newIndicators = new List<IndicatorConfig>(config.Indicators.Count);
+        foreach (var indicator in config.Indicators)
+        {
+            if (overridesByIndicator.TryGetValue(indicator.Id, out var indicatorOverrides))
+            {
+                // Clone the parameters dictionary and apply overrides
+                var newParams = indicator.Parameters is not null
+                    ? new Dictionary<string, object>(indicator.Parameters)
+                    : new Dictionary<string, object>();
+
+                foreach (var (_, paramName, value) in indicatorOverrides)
+                {
+                    newParams[paramName] = value;
+                }
+
+                newIndicators.Add(indicator with { Parameters = newParams });
+            }
+            else
+            {
+                newIndicators.Add(indicator);
+            }
+        }
+
+        return config with { Indicators = newIndicators };
     }
 
     /// <summary>

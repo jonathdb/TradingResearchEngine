@@ -13,5 +13,8 @@ public enum OptimizationObjective
     TotalReturn,
 
     /// <summary>Rank by MAR ratio — annualised return divided by max drawdown (highest wins).</summary>
-    MAR
+    MAR,
+
+    /// <summary>Rank by annualised return normalised by window duration: (EndEquity / StartEquity)^(BarsPerYear / windowBars) − 1 (highest wins).</summary>
+    TimeWeightedReturn
 }
