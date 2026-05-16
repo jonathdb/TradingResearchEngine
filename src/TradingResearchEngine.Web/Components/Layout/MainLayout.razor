@@ -7,7 +7,8 @@
 <MudSnackbarProvider />
 
 <MudLayout>
-    <MudAppBar Elevation="0" Dense="true" Style="border-bottom: 1px solid var(--mud-palette-divider); backdrop-filter: blur(8px);">
+    <MudAppBar Elevation="0" Dense="true"
+               Style="@($"background:{(_isDarkMode ? "#0D1117" : "#FFFFFF")} !important;color:{(_isDarkMode ? "#F0F6FC" : "#0F172A")};border-bottom:1px solid var(--mud-palette-divider);backdrop-filter:blur(8px);transition:background 200ms ease,color 200ms ease;")">
         <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit"
                        Edge="Edge.Start" OnClick="ToggleDrawer" Class="mr-1" />
 
@@ -45,7 +46,7 @@
     </MudAppBar>
 
     <MudDrawer @bind-Open="_drawerOpen" ClipMode="DrawerClipMode.Always" Elevation="0"
-               Style="border-right: 1px solid var(--mud-palette-divider);">
+               Style="@($"background:{(_isDarkMode ? "#161B22" : "#F8FAFC")} !important;border-right:1px solid var(--mud-palette-divider);transition:background 200ms ease;")">
         <MudDrawerContainer Style="display:flex; flex-direction:column; height:100%;">
             <div style="flex:1; overflow-y:auto; padding-top: 8px;">
                 <NavMenu />
