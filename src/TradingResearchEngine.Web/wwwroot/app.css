@@ -31,8 +31,12 @@
     --tre-glow-primary: 0 0 16px rgba(96,165,250,0.2);
     --tre-glow-success: 0 0 10px rgba(52,211,153,0.25);
 
-    /* strip fade colour — kept in sync with background via js attribute */
-    --tre-bg: #0D1117;
+    /* structural backgrounds — driven by data-theme for instant response */
+    --tre-bg:          #0D1117;   /* page canvas */
+    --tre-appbar-bg:   #0D1117;   /* top bar */
+    --tre-appbar-text: #F0F6FC;
+    --tre-drawer-bg:   #161B22;   /* sidebar */
+
     --tre-nav-active-color: #60A5FA;
     --tre-nav-active-bg:    rgba(96,165,250,0.12);
     --tre-nav-active-glow:  rgba(96,165,250,1);
@@ -48,7 +52,11 @@ html[data-theme="light"] {
     --tre-glow-primary: 0 0 16px rgba(37,99,235,0.15);
     --tre-glow-success: 0 0 10px rgba(5,150,105,0.2);
 
-    --tre-bg: #F1F5F9;
+    --tre-bg:          #F1F5F9;
+    --tre-appbar-bg:   #FFFFFF;
+    --tre-appbar-text: #0F172A;
+    --tre-drawer-bg:   #F8FAFC;
+
     --tre-nav-active-color: #2563EB;
     --tre-nav-active-bg:    rgba(37,99,235,0.09);
     --tre-nav-active-glow:  rgba(37,99,235,1);
@@ -74,12 +82,16 @@ body {
 }
 
 /* ═══════════════════════════════════════════════════════
-   APPBAR  — colour handled by MudBlazor palette
+   APPBAR  — background driven by --tre-appbar-bg so it
+   responds instantly to data-theme changes via JS
 ═══════════════════════════════════════════════════════ */
 .mud-appbar {
+    background:    var(--tre-appbar-bg)   !important;
+    color:         var(--tre-appbar-text) !important;
     border-bottom: 1px solid var(--mud-palette-divider) !important;
     backdrop-filter: blur(12px) !important;
     -webkit-backdrop-filter: blur(12px) !important;
+    transition: background 200ms ease, color 200ms ease !important;
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -181,7 +193,11 @@ body {
 .mud-nav-link.active .mud-icon-root { color: var(--tre-nav-active-color) !important; }
 
 /* Drawer */
-.mud-drawer { border-right: 1px solid var(--mud-palette-divider) !important; }
+.mud-drawer {
+    background: var(--tre-drawer-bg) !important;
+    border-right: 1px solid var(--mud-palette-divider) !important;
+    transition: background 200ms ease !important;
+}
 
 /* ═══════════════════════════════════════════════════════
    CARDS & PAPERS
