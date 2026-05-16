@@ -89,14 +89,15 @@
         if (!firstRender) return;
         try
         {
-            var saved = await JS.InvokeAsync<string?>("localStorage.getItem", "tre-theme");
+            var saved = await JS.InvokeAsync<string>("treTheme.load");
             var isDark = saved != "light";
             if (isDark != _isDarkMode)
             {
                 _isDarkMode = isDark;
                 StateHasChanged();
             }
-            await JS.InvokeVoidAsync("document.documentElement.setAttribute", "data-theme", _isDarkMode ? "dark" : "light");
+            // sync the data-theme attribute with current state
+            await JS.InvokeVoidAsync("treTheme.apply", _isDarkMode);
         }
         catch { }
     }
@@ -104,11 +105,10 @@
     private async Task ToggleTheme()
     {
         _isDarkMode = !_isDarkMode;
-        var label = _isDarkMode ? "dark" : "light";
         try
         {
-            await JS.InvokeVoidAsync("localStorage.setItem", "tre-theme", label);
-            await JS.InvokeVoidAsync("document.documentElement.setAttribute", "data-theme", label);
+            // treTheme.apply sets localStorage + data-theme attribute in one call
+            await JS.InvokeVoidAsync("treTheme.apply", _isDarkMode);
         }
         catch { }
     }
