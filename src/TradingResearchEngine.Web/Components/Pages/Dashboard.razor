@@ -25,14 +25,19 @@ else if (_loading)
 }
 else
 {
+    <MudText Typo="Typo.h4" Class="mb-4">Dashboard</MudText>
+
     @* Zone 1 — Strategy Status Strip *@
     <MudText Typo="Typo.subtitle2" Class="text-muted mb-2">YOUR STRATEGIES</MudText>
     @if (_strategies.Count == 0)
     {
-        <MudAlert Severity="Severity.Info" Class="mb-4">
-            No strategies yet.
-            <MudLink Href="/strategies/builder">Create your first strategy</MudLink> to get started.
-        </MudAlert>
+        <MudPaper Class="pa-8 mb-4 d-flex flex-column align-center justify-center" Elevation="0" Style="text-align:center; border: 1px dashed var(--mud-palette-divider);">
+            <MudIcon Icon="@Icons.Material.Outlined.AutoGraph" Style="font-size:3rem;" Class="text-muted mb-3" />
+            <MudText Typo="Typo.h6" Class="mb-1">No strategies yet</MudText>
+            <MudText Typo="Typo.body2" Class="text-muted mb-4">Create your first strategy to start backtesting and building your research pipeline.</MudText>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="/strategies/builder"
+                       StartIcon="@Icons.Material.Filled.Add">New Strategy</MudButton>
+        </MudPaper>
     }
     else
     {
@@ -95,7 +100,10 @@ else
         <MudItem xs="6" sm="3">
             <MudPaper Class="pa-3 kpi-card" Elevation="1"
                       @onclick="@(() => Nav.NavigateTo("/strategies/library"))">
-                <MudText Typo="Typo.caption" Class="text-muted">Strategies</MudText>
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Class="mb-1">
+                    <MudIcon Icon="@Icons.Material.Filled.AccountTree" Size="MudBlazor.Size.Small" Class="text-muted" />
+                    <MudText Typo="Typo.caption" Class="text-muted">Strategies</MudText>
+                </MudStack>
                 <MudText Typo="Typo.h5">@_strategies.Count</MudText>
             </MudPaper>
         </MudItem>
@@ -104,7 +112,10 @@ else
                       @onclick="@(() => { if (GetLastSharpeNavigationTarget() is { } t) Nav.NavigateTo(t); })">
                 <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
                     <MudStack Spacing="0">
-                        <MudText Typo="Typo.caption" Class="text-muted">Last Sharpe</MudText>
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Class="mb-1">
+                            <MudIcon Icon="@Icons.Material.Filled.ShowChart" Size="MudBlazor.Size.Small" Class="text-muted" />
+                            <MudText Typo="Typo.caption" Class="text-muted">Last Sharpe</MudText>
+                        </MudStack>
                         <MudText Typo="Typo.h5">@(_latestRun?.SharpeRatio?.ToString("F2") ?? "—")</MudText>
                     </MudStack>
                     <KpiSparkline Values="@_recentSharpes" Width="60" Height="24" />
@@ -117,14 +128,22 @@ else
         </MudItem>
         <MudItem xs="6" sm="3">
             <MudPaper Class="pa-3 kpi-card" Elevation="1">
-                <MudText Typo="Typo.caption" Class="text-muted">Active Studies</MudText>
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Class="mb-1">
+                    <MudIcon Icon="@Icons.Material.Filled.Science" Size="MudBlazor.Size.Small" Class="text-muted" />
+                    <MudText Typo="Typo.caption" Class="text-muted">Active Studies</MudText>
+                </MudStack>
                 <MudText Typo="Typo.h5">@_activeStudies</MudText>
             </MudPaper>
         </MudItem>
         <MudItem xs="6" sm="3">
             <MudPaper Class="pa-3 kpi-card" Elevation="1"
                       @onclick="@(() => Nav.NavigateTo("/robustness-hub"))">
-                <MudText Typo="Typo.caption" Class="text-muted">⚠ Flags</MudText>
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Class="mb-1">
+                    <MudIcon Icon="@Icons.Material.Filled.Flag"
+                             Size="MudBlazor.Size.Small"
+                             Color="@(_warningRuns.Count > 0 ? Color.Warning : Color.Default)" />
+                    <MudText Typo="Typo.caption" Class="@(_warningRuns.Count > 0 ? "mud-warning-text" : "text-muted")">Flags</MudText>
+                </MudStack>
                 <MudText Typo="Typo.h5" Color="@(_warningRuns.Count > 0 ? Color.Warning : Color.Default)">@_warningRuns.Count</MudText>
             </MudPaper>
         </MudItem>
