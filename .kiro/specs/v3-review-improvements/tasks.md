@@ -184,19 +184,19 @@ This plan implements 23 requirements from the v3 review improvements specificati
 - [x] 9. Checkpoint - Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 10. Product UX: Live Data Feed and Polling Provider (Requirements 2, 22)
-  - [ ] 10.1 Create DataFeedMode enum and extend PaperTradingOptions
+- [x] 10. Product UX: Live Data Feed and Polling Provider (Requirements 2, 22)
+  - [x] 10.1 Create DataFeedMode enum and extend PaperTradingOptions
     - Add `DataFeedMode` enum with values `Replay` and `Live` to Application layer
     - Add `DataFeedMode` property to `PaperTradingOptions`
     - _Requirements: 2.1_
 
-  - [ ] 10.2 Create PollingProviderOptions configuration class
+  - [x] 10.2 Create PollingProviderOptions configuration class
     - Create `Application/Configuration/PollingProviderOptions.cs`
     - Properties: `PollingInterval` (default 1 min), `ConsecutiveFailureWarningThreshold` (default 5), `EndpointUrl`
     - Register via `IOptions<PollingProviderOptions>`
     - _Requirements: 2.5, 22.4_
 
-  - [ ] 10.3 Implement PollingRestStreamingDataProvider
+  - [x] 10.3 Implement PollingRestStreamingDataProvider
     - Create `Infrastructure/DataProviders/PollingRestStreamingDataProvider.cs` implementing `IStreamingDataProvider`
     - Poll configured REST endpoint at configured interval, emit bars through interface
     - On error response: log error, retry on next interval, do not terminate session
@@ -205,7 +205,7 @@ This plan implements 23 requirements from the v3 review improvements specificati
     - Expose an `IObservableDataProvider` interface with the metrics properties so the Blazor page can inject it without holding a typed reference to the concrete provider. Alternatively, register the concrete provider as both `IStreamingDataProvider` and a typed singleton so `SessionSetup` can inject it directly. Choose one approach and document the decision.
     - _Requirements: 2.4, 2.5, 2.6, 22.1, 22.3_
 
-  - [ ] 10.4 Update SessionSetup page for feed mode display and observability
+  - [x] 10.4 Update SessionSetup page for feed mode display and observability
     - Display visible indicator when DataFeedMode is Replay ("simulated playback data")
     - Display warning when DataFeedMode is Live but no real feed provider is configured (fallback to Replay)
     - Display active feed mode and last successful poll time when live session is running

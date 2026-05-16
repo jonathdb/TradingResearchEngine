@@ -2,21 +2,49 @@
 @page "/paper-trading/setup"
 @rendermode InteractiveServer
 @using TradingResearchEngine.Core.Configuration
+@using TradingResearchEngine.Application.Configuration
+@using TradingResearchEngine.Application.PaperTrading
+@using Microsoft.Extensions.Options
 @inject StrategyRegistry Registry
 @inject NavigationManager Nav
 @inject ISnackbar Snackbar
+@inject IOptions<PaperTradingOptions> PaperTradingOpts
+@inject IOptions<PollingProviderOptions> PollingOpts
+@inject IDataFeedMetrics DataFeedMetrics
+@implements IDisposable
 
 <PageTitle>Paper Trading — Session Setup</PageTitle>
 
 <MudText Typo="Typo.h4" Class="mb-1">
     Paper Trading
-    <MudChip T="string" Size="MudBlazor.Size.Small" Color="Color.Info">🧪 Simulated</MudChip>
+    @if (_feedMode == DataFeedMode.Replay)
+    {
+        <MudChip T="string" Size="MudBlazor.Size.Small" Color="Color.Info">🧪 Simulated</MudChip>
+    }
+    else
+    {
+        <MudChip T="string" Size="MudBlazor.Size.Small" Color="Color.Success">📡 Live</MudChip>
+    }
 </MudText>
 <MudText Typo="Typo.subtitle1" Class="mb-4 text-muted">
     Set up a simulated live trading session using the same execution pipeline as backtesting.
 </MudText>
 
 <MudBreadcrumbs Items="@_breadcrumbs" Class="pa-0 mb-3" />
+
+@* Feed Mode Indicators *@
+@if (_feedMode == DataFeedMode.Replay)
+{
+    <MudAlert Severity="Severity.Info" Class="mb-3" Dense="true" Icon="@Icons.Material.Filled.Info">
+        Data feed mode: <strong>Replay</strong> — paper trading uses simulated playback data.
+    </MudAlert>
+}
+else if (_feedMode == DataFeedMode.Live && !_isLiveFeedConfigured)
+{
+    <MudAlert Severity="Severity.Warning" Class="mb-3" Dense="true" Icon="@Icons.Material.Filled.Warning">
+        Live mode is unavailable — no real feed provider is configured. Falling back to Replay.
+    </MudAlert>
+}
 
 <MudGrid>
     <MudItem xs="12" md="8">
@@ -100,6 +128,44 @@
             }
         </MudPaper>
 
+        @* Live Feed Status Panel *@
+        @if (_isSessionRunning)
+        {
+            <MudPaper Class="pa-4 mt-4" Elevation="2">
+                <MudText Typo="Typo.caption" Class="text-muted mb-2">LIVE FEED STATUS</MudText>
+                <MudSimpleTable Dense="true" Hover="false" Bordered="false">
+                    <tbody>
+                        <tr>
+                            <td><MudText Typo="Typo.body2">Active Mode</MudText></td>
+                            <td>
+                                <MudChip T="string" Size="MudBlazor.Size.Small"
+                                         Color="@(DataFeedMetrics.CurrentMode == DataFeedMode.Live ? Color.Success : Color.Info)">
+                                    @DataFeedMetrics.CurrentMode
+                                </MudChip>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><MudText Typo="Typo.body2">Last Successful Poll</MudText></td>
+                            <td>
+                                <MudText Typo="Typo.body2">
+                                    @(DataFeedMetrics.LastSuccessfulPoll?.ToString("HH:mm:ss") ?? "—")
+                                </MudText>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><MudText Typo="Typo.body2">Consecutive Failures</MudText></td>
+                            <td>
+                                <MudText Typo="Typo.body2"
+                                         Color="@(DataFeedMetrics.ConsecutiveFailureCount > 0 ? Color.Warning : Color.Default)">
+                                    @DataFeedMetrics.ConsecutiveFailureCount
+                                </MudText>
+                            </td>
+                        </tr>
+                    </tbody>
+                </MudSimpleTable>
+            </MudPaper>
+        }
+
         <MudPaper Class="pa-4 mt-4" Elevation="1">
             <MudText Typo="Typo.caption" Class="text-muted mb-2">ABOUT PAPER TRADING</MudText>
             <MudText Typo="Typo.body2" Class="text-muted">
@@ -120,6 +186,11 @@
     private double _speedRatio = 10.0;
     private string? _validationError;
 
+    private DataFeedMode _feedMode;
+    private bool _isLiveFeedConfigured;
+    private bool _isSessionRunning;
+    private Timer? _refreshTimer;
+
     private List<BreadcrumbItem> _breadcrumbs = new()
     {
         new("Dashboard", href: "/"),
@@ -127,6 +198,21 @@
     };
 
     private bool CanStart => !string.IsNullOrEmpty(_strategyType) && !string.IsNullOrEmpty(_symbol);
+
+    protected override void OnInitialized()
+    {
+        _feedMode = PaperTradingOpts.Value.DataFeedMode;
+        _isLiveFeedConfigured = !string.IsNullOrWhiteSpace(PollingOpts.Value.EndpointUrl);
+
+        // Start a timer to refresh feed metrics every 5 seconds when session is running
+        _refreshTimer = new Timer(async _ =>
+        {
+            if (_isSessionRunning)
+            {
+                await InvokeAsync(StateHasChanged);
+            }
+        }, null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
+    }
 
     private void StartSession()
     {
@@ -137,10 +223,17 @@
         }
 
         _validationError = null;
+        _isSessionRunning = true;
+
         // Navigate to the live dashboard with session parameters
         var queryParams = $"?strategy={_strategyType}&symbol={_symbol}&timeframe={_timeframe}" +
                           $"&cash={_initialCash}&profile={_realismProfile}" +
                           $"&interval={_pollingIntervalSeconds}&speed={_speedRatio}";
         Nav.NavigateTo($"/paper-trading/live{queryParams}");
+    }
+
+    public void Dispose()
+    {
+        _refreshTimer?.Dispose();
     }
 }

@@ -13,6 +13,14 @@ public sealed class PaperTradingOptions
     public const string SectionName = "PaperTrading";
 
     /// <summary>
+    /// The data feed mode for the paper trading session.
+    /// <see cref="DataFeedMode.Replay"/> uses simulated playback of historical data.
+    /// <see cref="DataFeedMode.Live"/> uses a real polling data provider.
+    /// Default: <see cref="DataFeedMode.Replay"/>.
+    /// </summary>
+    public DataFeedMode DataFeedMode { get; set; } = DataFeedMode.Replay;
+
+    /// <summary>
     /// The polling interval between emitted bars during paper-trading playback.
     /// Must be between <see cref="MinInterval"/> and <see cref="MaxInterval"/>.
     /// Default: 5 seconds.

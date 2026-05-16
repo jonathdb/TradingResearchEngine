@@ -254,6 +254,18 @@ public static class ServiceCollectionExtensions
 
         // V8: Streaming data provider (wraps the default IDataProvider)
         services.Configure<PaperTradingOptions>(configuration.GetSection(PaperTradingOptions.SectionName));
+        services.Configure<PollingProviderOptions>(configuration.GetSection(PollingProviderOptions.SectionName));
+
+        // Register the polling REST streaming data provider as a singleton for metrics access
+        services.AddSingleton<PollingRestStreamingDataProvider>(sp =>
+        {
+            var httpFactory = sp.GetRequiredService<IHttpClientFactory>();
+            var pollingOptions = sp.GetRequiredService<IOptions<PollingProviderOptions>>();
+            var logger = sp.GetRequiredService<ILogger<PollingRestStreamingDataProvider>>();
+            return new PollingRestStreamingDataProvider(httpFactory.CreateClient("PollingDataFeed"), pollingOptions, logger);
+        });
+        services.AddSingleton<IDataFeedMetrics>(sp => sp.GetRequiredService<PollingRestStreamingDataProvider>());
+
         services.AddSingleton<IStreamingDataProvider>(sp =>
         {
             var inner = sp.GetRequiredService<IDataProvider>();
