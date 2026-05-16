@@ -37,6 +37,10 @@
                         <MudText Typo="Typo.caption" Class="text-muted">Trades</MudText>
                         <MudText Typo="Typo.body1">@Result.TotalTrades</MudText>
                     </MudStack>
+                    <MudStack Spacing="0">
+                        <MudText Typo="Typo.caption" Class="text-muted">K-Ratio</MudText>
+                        <MudText Typo="Typo.body1">@(Result.EquityCurveSmoothness?.ToString("F2") ?? "—")</MudText>
+                    </MudStack>
                 </MudStack>
             </MudPaper>
         }

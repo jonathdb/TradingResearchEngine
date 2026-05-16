@@ -8,7 +8,7 @@
 
 ## Project Boundaries
 
-- UnitTests references Core and Application only — never Infrastructure, Cli, or Api.
+- UnitTests references Core and Application only — never Infrastructure or Web.
 - IntegrationTests may reference all projects.
 - All external dependencies in UnitTests are replaced with in-memory fakes or Moq mocks.
 
@@ -51,7 +51,7 @@ The eight required properties are:
 
 - `CsvDataProvider` fixture test — fixture CSV in `src/TradingResearchEngine.IntegrationTests/fixtures/`
 - Full end-to-end engine test with CSV data and a simple moving-average strategy
-- API endpoint tests via `WebApplicationFactory`
+- Web host endpoint tests via `WebApplicationFactory`
 - `JsonFileRepository<T>` CRUD against a temp directory
 
 ## Naming Convention

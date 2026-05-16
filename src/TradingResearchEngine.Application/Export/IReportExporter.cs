@@ -19,4 +19,12 @@ public interface IReportExporter
 
     /// <summary>Exports the full BacktestResult as JSON (round-trips without data loss).</summary>
     Task<string> ExportJsonAsync(BacktestResult result, CancellationToken ct = default);
+
+    /// <summary>
+    /// Exports a <see cref="ComparisonReport"/> as a Markdown file and returns the file path.
+    /// </summary>
+    /// <param name="report">The comparison report to export.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The file path of the exported Markdown file.</returns>
+    Task<string> ExportComparisonMarkdownAsync(ComparisonReport report, CancellationToken ct = default);
 }

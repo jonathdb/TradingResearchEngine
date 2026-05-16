@@ -10,8 +10,8 @@ src/
   TradingResearchEngine.Core/
   TradingResearchEngine.Application/
   TradingResearchEngine.Infrastructure/
-  TradingResearchEngine.Cli/
-  TradingResearchEngine.Api/
+  TradingResearchEngine.Web/
+  TradingResearchEngine.Benchmarks/
   TradingResearchEngine.UnitTests/
   TradingResearchEngine.IntegrationTests/
 docs/
@@ -21,13 +21,13 @@ docs/
 ## Dependency Rule
 
 ```
-Core ← Application ← Infrastructure ← { Cli, Api }
+Core ← Application ← Infrastructure ← Web
 ```
 
 - Core has zero references to any other project in this solution.
 - Application references Core only.
 - Infrastructure references Application and Core.
-- Cli and Api reference Infrastructure and Application (never Core directly for orchestration).
+- Web references Infrastructure and Application (sole application entry point).
 - UnitTests references Core and Application only — never Infrastructure.
 - IntegrationTests may reference all projects.
 

@@ -8,6 +8,8 @@ namespace TradingResearchEngine.Application.Strategies;
 /// <summary>
 /// Generic <see cref="IStrategyFactory"/> implementation that creates strategy instances
 /// via constructor reflection, matching parameters from <see cref="StrategyConfig.Parameters"/>.
+/// Delegates type resolution to <see cref="StrategyRegistry.Resolve"/> to ensure all
+/// construction flows through the unified registry regardless of entry point.
 /// Thread-safe: may be called concurrently from multiple threads.
 /// </summary>
 public sealed class ReflectionStrategyFactory : IStrategyFactory
@@ -19,8 +21,23 @@ public sealed class ReflectionStrategyFactory : IStrategyFactory
     /// <inheritdoc/>
     public string StrategyType { get; }
 
+    /// <summary>
+    /// Creates a factory by resolving the strategy type from the <see cref="StrategyRegistry"/>.
+    /// This ensures all strategy construction flows through the registry.
+    /// </summary>
+    /// <param name="strategyType">The strategy name to resolve.</param>
+    /// <param name="registry">The registry to resolve the strategy type from.</param>
+    /// <param name="services">Service provider for DI-based fallback construction.</param>
+    public ReflectionStrategyFactory(string strategyType, StrategyRegistry registry, IServiceProvider services)
+        : this(strategyType, registry.Resolve(strategyType), services)
+    {
+    }
+
     /// <summary>Creates a factory for the given strategy type and name.</summary>
-    public ReflectionStrategyFactory(string strategyType, Type strategyClrType, IServiceProvider services)
+    /// <param name="strategyType">The strategy name.</param>
+    /// <param name="strategyClrType">The resolved CLR type (must have been resolved via <see cref="StrategyRegistry"/>).</param>
+    /// <param name="services">Service provider for DI-based fallback construction.</param>
+    internal ReflectionStrategyFactory(string strategyType, Type strategyClrType, IServiceProvider services)
     {
         StrategyType = strategyType;
         _strategyType = strategyClrType;

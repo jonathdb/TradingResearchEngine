@@ -1,6 +1,7 @@
 @page "/research/walkforward"
 @inject TradingResearchEngine.Application.Research.WalkForwardWorkflow WfWorkflow
 @inject IStrategyRepository StrategyRepo
+@inject TradingResearchEngine.Application.Research.IBacktestResultRepository BacktestResultRepo
 @inject ISnackbar Snackbar
 
 <PageTitle>Walk-Forward — Research Engine</PageTitle>
@@ -12,6 +13,18 @@
     </div>
 </div>
 
+@if (!_hasResults)
+{
+    <MudPaper Class="pa-8 d-flex flex-column align-center justify-center" Elevation="0" Style="text-align:center; border: 1px dashed var(--mud-palette-divider);">
+        <MudIcon Icon="@Icons.Material.Outlined.QueryStats" Style="font-size:3rem;" Class="text-muted mb-3" />
+        <MudText Typo="Typo.h6" Class="mb-1">No backtest results available</MudText>
+        <MudText Typo="Typo.body2" Class="text-muted mb-4">Run a backtest first before using Walk-Forward Analysis.</MudText>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="/strategies/builder"
+                   StartIcon="@Icons.Material.Filled.PlayArrow">Run a Backtest First</MudButton>
+    </MudPaper>
+}
+else
+{
 <MudGrid>
     <MudItem xs="12" md="6">
         <MudPaper Class="pa-4" Elevation="2">
@@ -67,6 +80,7 @@
         }
     </MudItem>
 </MudGrid>
+}
 
 @code {
     [SupplyParameterFromQuery] public string? StrategyId { get; set; }
@@ -75,7 +89,14 @@
     private ScenarioConfigEditor? _configEditor;
     private int _isDays = 60, _oosDays = 20, _stepDays = 20;
     private bool _anchored;
+    private bool _hasResults = true;
     private TradingResearchEngine.Application.Research.Results.WalkForwardResult? _wfResult;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var results = await BacktestResultRepo.ListAsync(CancellationToken.None);
+        _hasResults = results.Any(r => r.Status == BacktestStatus.Completed);
+    }
 
     private void OnVersionSelected((StrategyIdentity Strategy, StrategyVersion Version, BacktestResult? LatestRun) selection)
     {

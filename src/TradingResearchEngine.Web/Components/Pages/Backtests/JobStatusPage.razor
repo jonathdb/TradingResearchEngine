@@ -25,7 +25,7 @@
                     </MudChip>
                 }
 
-                @if (_status is JobStatus.Running or JobStatus.Queued)
+                @if (_status is JobStatus.Running or JobStatus.Queued or JobStatus.Retrying)
                 {
                     <MudProgressLinear Indeterminate="true" Color="Color.Primary" Rounded="true" Size="MudBlazor.Size.Large" />
                 }
@@ -121,6 +121,7 @@
     {
         JobStatus.Queued => Color.Default,
         JobStatus.Running => Color.Info,
+        JobStatus.Retrying => Color.Warning,
         JobStatus.Completed => Color.Success,
         JobStatus.Failed => Color.Error,
         JobStatus.Cancelled => Color.Warning,

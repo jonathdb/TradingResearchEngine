@@ -111,8 +111,9 @@ else
 
     private void CompareToBacktest(PaperSessionRecord session)
     {
-        // Navigate to comparison view with the paper session and its linked backtest
+        // Navigate to the canonical comparison page — paper session comparison
+        // uses the same route with session-specific query parameters
         Nav.NavigateTo($"/compare?paperSessionId={session.Id}&strategyVersionId={session.StrategyVersionId}");
-        Snackbar.Add("Navigating to comparison view...", Severity.Info);
+        Snackbar.Add("Navigating to strategy comparison...", Severity.Info);
     }
 }

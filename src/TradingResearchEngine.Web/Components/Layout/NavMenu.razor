@@ -25,16 +25,21 @@
         <MudNavLink Href="/research/explorer"    Icon="@Icons.Material.Outlined.Explore">Explorer</MudNavLink>
         <MudNavLink Href="/research/sweep"       Icon="@Icons.Material.Outlined.GridOn">Parameter Sweep</MudNavLink>
         <MudNavLink Href="/research/montecarlo"  Icon="@Icons.Material.Outlined.Casino">Monte Carlo</MudNavLink>
+        <div class="nav-inner-label">Analysis Tools</div>
         <MudNavLink Href="/research/walkforward" Icon="@Icons.Material.Outlined.Timeline">Walk-Forward</MudNavLink>
         <MudNavLink Href="/research/perturbation" Icon="@Icons.Material.Outlined.Tune">Perturbation</MudNavLink>
         <MudNavLink Href="/research/variance"    Icon="@Icons.Material.Outlined.BarChart">Variance</MudNavLink>
-        <MudNavLink Href="/research/benchmark"   Icon="@Icons.Material.Outlined.CompareArrows">Benchmark</MudNavLink>
-        <MudNavLink Href="/robustness-hub"        Icon="@Icons.Material.Outlined.Security">Robustness Hub</MudNavLink>
+        <MudNavLink Href="/research/benchmark"   Icon="@Icons.Material.Outlined.Leaderboard">Benchmark</MudNavLink>
     </MudNavGroup>
 
     @* ── Backtests ── *@
     <div class="nav-section-label">Backtests</div>
     <MudNavLink Href="/backtests" Icon="@Icons.Material.Outlined.History">Backtest History</MudNavLink>
+    <MudNavLink Href="/compare" Icon="@Icons.Material.Outlined.CompareArrows">Strategy Comparison</MudNavLink>
+
+    @* ── Robustness ── *@
+    <div class="nav-section-label">Robustness</div>
+    <MudNavLink Href="/robustness-hub" Icon="@Icons.Material.Outlined.Security">Robustness Hub</MudNavLink>
 
     @* ── Prop Firm Lab ── *@
     <div class="nav-section-label">Prop Firm</div>
@@ -60,8 +65,8 @@
 
 @code {
     private bool _strategiesExpanded = true;
-    private bool _researchExpanded = true;
-    private bool _dataExpanded = true;
+    private bool _researchExpanded = false;
+    private bool _dataExpanded = false;
     private bool _initialized;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)

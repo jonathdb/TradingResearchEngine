@@ -61,4 +61,8 @@ public sealed class InMemoryDataProvider : IDataProvider
         }
         await Task.CompletedTask;
     }
+
+    /// <inheritdoc/>
+    public ValueTask<int?> EstimateBarCountAsync(CancellationToken ct = default)
+        => new(_bars.Count > 0 ? _bars.Count : _ticks.Count > 0 ? _ticks.Count : null);
 }

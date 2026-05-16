@@ -5,7 +5,8 @@
 
 <PageTitle>Backtests — Research Engine</PageTitle>
 
-<MudText Typo="Typo.h4" Class="mb-4">Backtests</MudText>
+<MudText Typo="Typo.h4" Class="mb-1">Backtests</MudText>
+<MudText Typo="Typo.body2" Class="text-muted mb-4">View and filter all your historical backtest runs</MudText>
 
 @if (_loading)
 {
@@ -13,9 +14,13 @@
 }
 else if (_results.Count == 0)
 {
-    <MudAlert Severity="Severity.Info">
-        No backtest results found. <MudLink Href="/strategies/builder">Create a strategy</MudLink> and run a backtest to see results here.
-    </MudAlert>
+    <MudPaper Class="pa-8 d-flex flex-column align-center justify-center" Elevation="0" Style="text-align:center; border: 1px dashed var(--mud-palette-divider);">
+        <MudIcon Icon="@Icons.Material.Outlined.BarChart" Style="font-size:3rem;" Class="text-muted mb-3" />
+        <MudText Typo="Typo.h6" Class="mb-1">No backtest results yet</MudText>
+        <MudText Typo="Typo.body2" Class="text-muted mb-4">Create a strategy and run your first backtest to see results here.</MudText>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="/strategies/builder"
+                   StartIcon="@Icons.Material.Filled.Add">Create a Strategy</MudButton>
+    </MudPaper>
 }
 else
 {

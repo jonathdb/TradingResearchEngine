@@ -59,14 +59,14 @@
 
     protected override void OnInitialized()
     {
-        _categories = SkenderIndicatorCatalog.All
+        _categories = SkenderIndicatorCatalog.FunctionalEntries
             .Select(e => e.Category)
             .Distinct()
             .OrderBy(c => c)
             .ToList();
     }
 
-    private List<SkenderCatalogEntry> FilteredEntries => SkenderIndicatorCatalog.All
+    private List<SkenderCatalogEntry> FilteredEntries => SkenderIndicatorCatalog.FunctionalEntries
         .Where(e => string.IsNullOrWhiteSpace(_search) ||
                     e.DisplayName.Contains(_search, StringComparison.OrdinalIgnoreCase) ||
                     e.Key.Contains(_search, StringComparison.OrdinalIgnoreCase) ||

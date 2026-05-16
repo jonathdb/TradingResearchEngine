@@ -1,4 +1,6 @@
+using Moq;
 using TradingResearchEngine.Application.Configuration;
+using TradingResearchEngine.Application.Export;
 using TradingResearchEngine.Application.Research;
 using TradingResearchEngine.Core.Configuration;
 using TradingResearchEngine.Core.Engine;
@@ -24,7 +26,7 @@ public class ResearchWorkflowTests
     [Fact]
     public void ScenarioComparison_FewerThanTwoResults_ThrowsArgumentException()
     {
-        var useCase = new ScenarioComparisonUseCase();
+        var useCase = new ScenarioComparisonUseCase(Mock.Of<IReportExporter>());
         var single = new List<BacktestResult> { MakeBacktestResult() };
 
         Assert.Throws<ArgumentException>(() => useCase.Compare(single));
@@ -33,7 +35,7 @@ public class ResearchWorkflowTests
     [Fact]
     public void ScenarioComparison_TwoResults_ReturnsBestBySharpeAndDrawdown()
     {
-        var useCase = new ScenarioComparisonUseCase();
+        var useCase = new ScenarioComparisonUseCase(Mock.Of<IReportExporter>());
         var r1 = MakeBacktestResult("scenario-a", sharpe: 1.5m, maxDd: 0.10m);
         var r2 = MakeBacktestResult("scenario-b", sharpe: 2.0m, maxDd: 0.20m);
 
@@ -75,7 +77,7 @@ public class ResearchWorkflowTests
             BacktestStatus.Completed,
             new List<EquityCurvePoint> { new(T0, 100_000m) },
             trades ?? new List<ClosedTrade>(),
-            100_000m, 105_000m, maxDd, sharpe, sharpe, null, null, 10, 0.6m, 1.5m, 200m, -100m, 10m, null, null, 3, 5, 50);
+            100_000m, 105_000m, maxDd, sharpe, sharpe, null, null, null, null, null, null, 10, 0.6m, 1.5m, 200m, -100m, 10m, null, null, 3, 5, 50);
 
     private static ClosedTrade MakeTrade(decimal netPnl) =>
         new("TEST", T0, T0.AddHours(1), 100m, 100m + netPnl, 1m,

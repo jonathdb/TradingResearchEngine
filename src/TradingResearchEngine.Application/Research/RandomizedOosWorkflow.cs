@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using TradingResearchEngine.Application.Configuration;
 using TradingResearchEngine.Application.Engine;
 using TradingResearchEngine.Application.Research.Results;
 using TradingResearchEngine.Core.Configuration;
@@ -74,12 +75,12 @@ public sealed class RandomizedOosWorkflow
         if (options.Iterations < 1)
             throw new ArgumentException("Iterations must be >= 1.", nameof(options));
 
-        // Load all bars into memory for partitioning
+        // Load all bars into memory for partitioning using typed property access
         var dataOpts = baseConfig.DataProviderOptions;
-        string symbol = dataOpts.TryGetValue("Symbol", out var s) ? s?.ToString() ?? "" : "";
-        string interval = dataOpts.TryGetValue("Interval", out var iv) ? iv?.ToString() ?? "1D" : "1D";
-        var from = dataOpts.TryGetValue("From", out var f) && f is DateTimeOffset df ? df : DateTimeOffset.MinValue;
-        var to = dataOpts.TryGetValue("To", out var t) && t is DateTimeOffset dt ? dt : DateTimeOffset.MaxValue;
+        string symbol = dataOpts.GetSymbol();
+        string interval = dataOpts.GetInterval();
+        var from = dataOpts.GetFrom();
+        var to = dataOpts.GetTo();
 
         var allBars = new List<BarRecord>();
         await foreach (var bar in _dataProvider.GetBars(symbol, interval, from, to, ct))

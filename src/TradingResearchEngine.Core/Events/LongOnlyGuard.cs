@@ -1,12 +1,12 @@
 namespace TradingResearchEngine.Core.Events;
 
 /// <summary>
-/// Runtime safety net for long-only V5 scope. Called explicitly at all known
-/// <see cref="Direction"/> consumption points. Complements (but does not replace)
-/// exhaustive switch expression handling — if/else chains and default cases require
-/// this guard. Removal is a V6 task when short-selling is implemented.
+/// Obsolete V5 guard that blocked <see cref="Direction.Short"/> at runtime.
+/// V6+ supports full bidirectional execution (long and short) via
+/// <see cref="Direction"/> enum handling in <c>SimulatedExecutionHandler</c>
+/// and <c>DefaultRiskLayer</c>. Retained for backward compatibility only.
 /// </summary>
-[Obsolete("V6: Short selling is now supported. This guard is no longer needed.")]
+[Obsolete("V6+ supports bidirectional execution. Use Direction enum with exhaustive switch handling. See SimulatedExecutionHandler for short fill logic.")]
 public static class LongOnlyGuard
 {
     /// <summary>

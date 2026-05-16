@@ -20,7 +20,13 @@ public sealed record StrategyTemplate(
     /// <summary>V5: Named preset overrides keyed by preset name (e.g. "Conservative" → param dict).</summary>
     Dictionary<string, Dictionary<string, object>>? FamilyPresets = null,
     /// <summary>V5: Difficulty classification for builder UX.</summary>
-    DifficultyLevel DifficultyLevel = DifficultyLevel.Beginner) : IHasId
+    DifficultyLevel DifficultyLevel = DifficultyLevel.Beginner,
+    /// <summary>
+    /// The default realism profile applied when a beginner creates a strategy from this template.
+    /// Defaults to <see cref="ExecutionRealismProfile.StandardBacktest"/> to ensure initial results
+    /// are not misleadingly optimistic. Advanced users may override this in the builder.
+    /// </summary>
+    ExecutionRealismProfile DefaultRealismProfile = ExecutionRealismProfile.StandardBacktest) : IHasId
 {
     /// <inheritdoc/>
     public string Id => TemplateId;

@@ -1,12 +1,14 @@
 @inherits LayoutComponentBase
+@inject IJSRuntime JS
 
-<MudThemeProvider Theme="_theme" IsDarkMode="true" />
+<MudThemeProvider Theme="_theme" IsDarkMode="@_isDarkMode" />
 <MudPopoverProvider />
 <MudDialogProvider />
 <MudSnackbarProvider />
 
 <MudLayout>
-    <MudAppBar Elevation="0" Dense="true" Style="border-bottom: 1px solid var(--mud-palette-divider); backdrop-filter: blur(8px);">
+    <MudAppBar Elevation="0" Dense="true"
+               Style="@($"background:{(_isDarkMode ? "#0D1117" : "#FFFFFF")} !important;color:{(_isDarkMode ? "#F0F6FC" : "#0F172A")};border-bottom:1px solid var(--mud-palette-divider);backdrop-filter:blur(8px);transition:background 200ms ease,color 200ms ease;")">
         <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit"
                        Edge="Edge.Start" OnClick="ToggleDrawer" Class="mr-1" />
 
@@ -29,17 +31,20 @@
         <GlobalSearch />
 
         <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center" Class="mr-2">
+            <MudTooltip Text="@(_isDarkMode ? "Switch to Light Mode" : "Switch to Dark Mode")">
+                <MudIconButton Icon="@(_isDarkMode ? Icons.Material.Outlined.LightMode : Icons.Material.Outlined.DarkMode)"
+                               Color="Color.Inherit" Size="MudBlazor.Size.Small"
+                               OnClick="ToggleTheme" />
+            </MudTooltip>
             <MudTooltip Text="Keyboard Shortcuts (?)">
                 <MudIconButton Icon="@Icons.Material.Outlined.Keyboard" Color="Color.Inherit" Size="MudBlazor.Size.Small"
                                OnClick="ToggleShortcuts" />
             </MudTooltip>
-            <MudChip T="string" Size="MudBlazor.Size.Small" Variant="Variant.Outlined"
-                     Style="height:22px; font-size:0.65rem; opacity:0.5; pointer-events:none;">v4.0</MudChip>
         </MudStack>
     </MudAppBar>
 
     <MudDrawer @bind-Open="_drawerOpen" ClipMode="DrawerClipMode.Always" Elevation="0"
-               Style="border-right: 1px solid var(--mud-palette-divider);">
+               Style="@($"background:{(_isDarkMode ? "#161B22" : "#F8FAFC")} !important;border-right:1px solid var(--mud-palette-divider);transition:background 200ms ease;")">
         <MudDrawerContainer Style="display:flex; flex-direction:column; height:100%;">
             <div style="flex:1; overflow-y:auto; padding-top: 8px;">
                 <NavMenu />
@@ -73,62 +78,149 @@
 @code {
     private bool _drawerOpen = true;
     private bool _showShortcuts;
+    private bool _isDarkMode = true;
 
     private void ToggleDrawer() => _drawerOpen = !_drawerOpen;
     private void ToggleShortcuts() => _showShortcuts = !_showShortcuts;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try
+        {
+            var saved = await JS.InvokeAsync<string>("treTheme.load");
+            var isDark = saved != "light";
+            if (isDark != _isDarkMode)
+            {
+                _isDarkMode = isDark;
+                StateHasChanged();
+            }
+            // sync the data-theme attribute with current state
+            await JS.InvokeVoidAsync("treTheme.apply", _isDarkMode);
+        }
+        catch { }
+    }
+
+    private async Task ToggleTheme()
+    {
+        _isDarkMode = !_isDarkMode;
+        try
+        {
+            // treTheme.apply sets localStorage + data-theme attribute in one call
+            await JS.InvokeVoidAsync("treTheme.apply", _isDarkMode);
+        }
+        catch { }
+    }
 
     private readonly MudTheme _theme = new()
     {
         PaletteDark = new PaletteDark
         {
-            Primary         = "#4F98A3",
-            PrimaryDarken   = "#3A7A85",
-            PrimaryLighten  = "#6ABAC6",
-            Secondary       = "#2C7873",
-            SecondaryDarken = "#1E5552",
-            Info            = "#5BA4CF",
-            Success         = "#4CAF74",
-            Warning         = "#E8A838",
-            Error           = "#E05C5C",
-            AppbarBackground = "#0C0C0C",
-            AppbarText      = "#E4E4E4",
-            Background      = "#111111",
-            BackgroundGray  = "#161616",
-            Surface         = "#1A1A1A",
-            DrawerBackground = "#161616",
-            DrawerText      = "#D0D0D0",
-            DrawerIcon      = "#909090",
-            Divider         = "rgba(255,255,255,0.08)",
-            DividerLight    = "rgba(255,255,255,0.05)",
-            TextPrimary     = "#E4E4E4",
-            TextSecondary   = "#909090",
-            TextDisabled    = "rgba(255,255,255,0.28)",
-            ActionDefault   = "#909090",
-            LinesDefault    = "rgba(255,255,255,0.06)",
-            LinesInputs     = "rgba(255,255,255,0.18)",
-            TableLines      = "rgba(255,255,255,0.06)",
-            TableHover      = "rgba(79,152,163,0.06)",
-            TableStriped    = "rgba(255,255,255,0.02)",
-            OverlayLight    = "rgba(0,0,0,0.5)",
-            OverlayDark     = "rgba(0,0,0,0.75)",
+            // ── Accent ──────────────────────────────────────────────
+            Primary         = "#60A5FA",
+            PrimaryDarken   = "#3B82F6",
+            PrimaryLighten  = "#93C5FD",
+            Secondary       = "#818CF8",
+            SecondaryDarken = "#6366F1",
+            Info            = "#38BDF8",
+            Success         = "#34D399",
+            Warning         = "#FBBF24",
+            Error           = "#F87171",
+
+            // ── Chrome ──────────────────────────────────────────────
+            AppbarBackground = "#0D1117",
+            AppbarText       = "#F0F6FC",
+
+            // ── Backgrounds (4 depth levels) ────────────────────────
+            Background       = "#0D1117",
+            BackgroundGray   = "#161B22",
+            Surface          = "#1C2330",
+            DrawerBackground = "#161B22",
+            DrawerText       = "#CDD9E5",
+            DrawerIcon       = "#768390",
+
+            // ── Borders & Lines ─────────────────────────────────────
+            Divider          = "rgba(99,130,162,0.15)",
+            DividerLight     = "rgba(99,130,162,0.08)",
+            LinesDefault     = "rgba(99,130,162,0.10)",
+            LinesInputs      = "rgba(99,130,162,0.30)",
+            TableLines       = "rgba(99,130,162,0.10)",
+            TableHover       = "rgba(96,165,250,0.07)",
+            TableStriped     = "rgba(255,255,255,0.02)",
+
+            // ── Text ────────────────────────────────────────────────
+            TextPrimary      = "#F0F6FC",
+            TextSecondary    = "#8B949E",
+            TextDisabled     = "rgba(139,148,158,0.45)",
+            ActionDefault    = "#8B949E",
+
+            // ── Overlays ────────────────────────────────────────────
+            OverlayLight     = "rgba(13,17,23,0.6)",
+            OverlayDark      = "rgba(13,17,23,0.85)",
         },
+
+        PaletteLight = new PaletteLight
+        {
+            // ── Accent ──────────────────────────────────────────────
+            Primary         = "#2563EB",   // blue-600 — strong on white
+            PrimaryDarken   = "#1D4ED8",
+            PrimaryLighten  = "#3B82F6",
+            Secondary       = "#7C3AED",   // violet-600
+            SecondaryDarken = "#6D28D9",
+            Info            = "#0284C7",   // sky-600
+            Success         = "#059669",   // emerald-600
+            Warning         = "#D97706",   // amber-600
+            Error           = "#DC2626",   // red-600
+
+            // ── Chrome ──────────────────────────────────────────────
+            AppbarBackground = "#FFFFFF",
+            AppbarText       = "#0F172A",
+
+            // ── Backgrounds ─────────────────────────────────────────
+            Background       = "#F1F5F9",  // slate-100 — slightly off-white page
+            BackgroundGray   = "#E2E8F0",  // slate-200
+            Surface          = "#FFFFFF",  // crisp white cards
+            DrawerBackground = "#F8FAFC",  // slate-50
+            DrawerText       = "#1E293B",  // slate-800
+            DrawerIcon       = "#64748B",  // slate-500
+
+            // ── Borders & Lines ─────────────────────────────────────
+            Divider          = "rgba(15,23,42,0.09)",
+            DividerLight     = "rgba(15,23,42,0.05)",
+            LinesDefault     = "rgba(15,23,42,0.07)",
+            LinesInputs      = "rgba(15,23,42,0.22)",
+            TableLines       = "rgba(15,23,42,0.07)",
+            TableHover       = "rgba(37,99,235,0.05)",
+            TableStriped     = "rgba(15,23,42,0.02)",
+
+            // ── Text ────────────────────────────────────────────────
+            TextPrimary      = "#0F172A",  // slate-900
+            TextSecondary    = "#475569",  // slate-600
+            TextDisabled     = "rgba(15,23,42,0.35)",
+            ActionDefault    = "#64748B",
+
+            // ── Overlays ────────────────────────────────────────────
+            OverlayLight     = "rgba(248,250,252,0.85)",
+            OverlayDark      = "rgba(15,23,42,0.55)",
+        },
+
         Typography = new Typography
         {
-            Default = new DefaultTypography { FontFamily = new[] { "Inter", "Roboto", "sans-serif" } },
-            H4 = new H4Typography { FontWeight = "700", LetterSpacing = "-0.02em" },
-            H5 = new H5Typography { FontWeight = "700", LetterSpacing = "-0.015em" },
-            H6 = new H6Typography { FontWeight = "600", LetterSpacing = "-0.01em" },
+            Default   = new DefaultTypography { FontFamily = new[] { "Inter", "system-ui", "sans-serif" } },
+            H4        = new H4Typography     { FontWeight = "700", LetterSpacing = "-0.025em" },
+            H5        = new H5Typography     { FontWeight = "700", LetterSpacing = "-0.02em" },
+            H6        = new H6Typography     { FontWeight = "600", LetterSpacing = "-0.01em" },
             Subtitle1 = new Subtitle1Typography { FontWeight = "600" },
-            Subtitle2 = new Subtitle2Typography { FontWeight = "600", LetterSpacing = "0.01em" },
-            Body1 = new Body1Typography { FontSize = "0.875rem" },
-            Body2 = new Body2Typography { FontSize = "0.8125rem" },
-            Caption = new CaptionTypography { FontSize = "0.72rem", LetterSpacing = "0.01em" },
+            Subtitle2 = new Subtitle2Typography { FontWeight = "600", LetterSpacing = "0.005em" },
+            Body1     = new Body1Typography  { FontSize = "0.875rem", LineHeight = "1.6" },
+            Body2     = new Body2Typography  { FontSize = "0.8125rem", LineHeight = "1.55" },
+            Caption   = new CaptionTypography { FontSize = "0.72rem", LetterSpacing = "0.01em" },
         },
         LayoutProperties = new LayoutProperties
         {
-            DrawerWidthLeft   = "220px",
-            AppbarHeight      = "52px",
-            DefaultBorderRadius = "6px",
+            DrawerWidthLeft     = "224px",
+            AppbarHeight        = "52px",
+            DefaultBorderRadius = "8px",
         }
     };
 }

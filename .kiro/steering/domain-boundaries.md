@@ -3,7 +3,7 @@
 ## Dependency Rule (enforced)
 
 ```
-Core ← Application ← Infrastructure ← { Cli, Api }
+Core ← Application ← Infrastructure ← Web
 ```
 
 No upward references. No circular references. Violations are caught by the `architecture-check` hook.
@@ -20,7 +20,7 @@ No upward references. No circular references. Violations are caught by the `arch
   `EquityCurvePoint` (enriched: CashBalance, UnrealisedPnl, RealisedPnl, OpenPositionCount),
   `ClosedTrade` (with `ReturnOnRisk` computed property),
   `ISessionCalendar`, `TradingSession`, `IPositionSizingPolicy`
-- `Direction` enum: `{ Long, Short, Flat }` — `Short` re-added in V5 for exhaustive switch coverage; runtime short-selling guarded by `LongOnlyGuard` (V6 task)
+- `Direction` enum: `{ Long, Short, Flat }` — all three directions fully supported with bidirectional execution in V6+
 - `BarsPerYear` on `ScenarioConfig` is the canonical source of truth for annualisation
 - Must not reference Application, Infrastructure, Cli, or Api
 - Must not contain concrete I/O, HTTP, file system, or DI registration code
@@ -45,12 +45,15 @@ No upward references. No circular references. Violations are caught by the `arch
 - `HttpRestDataProvider` is designed for subclassing; URL construction and response
   mapping are `protected virtual` methods
 
-## Cli and Api (Composition Roots)
+## Cli and Api (Removed — Historical)
 
-- Wire DI via `AddTradingResearchEngine` + `AddTradingResearchEngineInfrastructure`
-- Parse input and invoke Application use cases
-- Render output via `IReporter`
-- Contain zero business logic, zero domain types defined locally
+The CLI and API projects were removed during the Web-Only UX Overhaul. The Web project is now the sole composition root.
+
+## Web (Composition Root)
+
+- Wires DI via `AddTradingResearchEngine` + `AddTradingResearchEngineInfrastructure`
+- Hosts Blazor Server UI
+- Contains zero business logic, zero domain types defined locally
 
 ## PropFirmModule Bounded Context
 

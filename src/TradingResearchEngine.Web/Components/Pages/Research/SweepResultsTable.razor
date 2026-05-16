@@ -1,0 +1,122 @@
+@using Microsoft.AspNetCore.Components.Web.Virtualization
+@using TradingResearchEngine.Application.Research
+@using TradingResearchEngine.Application.Configuration
+@using TradingResearchEngine.Core.Results
+
+<MudText Typo="Typo.subtitle2" Class="mt-3 mb-2">Results</MudText>
+
+@* Filtering and sorting controls *@
+<MudStack Row="true" Spacing="2" Class="mb-2" AlignItems="AlignItems.End">
+    <MudTextField T="string" Value="_filterText" Label="Filter" Variant="Variant.Outlined"
+                  Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                  Immediate="true" DebounceInterval="300" TextChanged="OnFilterChanged"
+                  Margin="Margin.Dense" Style="max-width:220px" />
+    <MudSelect T="SweepSortMetric" Value="_sortMetric" Label="Sort by" Variant="Variant.Outlined"
+               Margin="Margin.Dense" Style="max-width:160px" ValueChanged="OnSortChanged">
+        <MudSelectItem Value="SweepSortMetric.SharpeRatio">Sharpe</MudSelectItem>
+        <MudSelectItem Value="SweepSortMetric.MaxDrawdown">Max DD</MudSelectItem>
+        <MudSelectItem Value="SweepSortMetric.ProfitFactor">Profit Factor</MudSelectItem>
+        <MudSelectItem Value="SweepSortMetric.WinRate">Win Rate</MudSelectItem>
+        <MudSelectItem Value="SweepSortMetric.CalmarRatio">Calmar</MudSelectItem>
+    </MudSelect>
+    <MudIconButton Icon="@(_sortDescending ? Icons.Material.Filled.ArrowDownward : Icons.Material.Filled.ArrowUpward)"
+                   OnClick="ToggleSortDirection" aria-label="@(_sortDescending ? "Descending" : "Ascending")" />
+    <MudText Typo="Typo.caption" Class="align-self-center">@_filteredCount items</MudText>
+</MudStack>
+
+@* Virtualized table — only renders visible rows *@
+<div style="max-height:400px; overflow-y:auto;" tabindex="0">
+    <table class="mud-table-root mud-table-dense">
+        <thead class="mud-table-head" style="position:sticky; top:0; z-index:1; background:var(--mud-palette-surface);">
+            <tr>
+                <th class="mud-table-cell">Scenario</th>
+                <th class="mud-table-cell">Sharpe</th>
+                <th class="mud-table-cell">Max DD</th>
+                <th class="mud-table-cell">Trades</th>
+                <th class="mud-table-cell">End Equity</th>
+            </tr>
+        </thead>
+        <tbody class="mud-table-body">
+            <Virtualize @ref="_virtualizeRef" ItemsProvider="LoadItems" ItemSize="36" Context="item">
+                <ItemContent>
+                    <tr class="mud-table-row">
+                        <td class="mud-table-cell">@item.ScenarioConfig.ScenarioId</td>
+                        <td class="mud-table-cell">@(item.SharpeRatio?.ToString("F2") ?? "N/A")</td>
+                        <td class="mud-table-cell">@item.MaxDrawdown.ToString("P2")</td>
+                        <td class="mud-table-cell">@item.TotalTrades</td>
+                        <td class="mud-table-cell">$@item.EndEquity.ToString("F2")</td>
+                    </tr>
+                </ItemContent>
+                <Placeholder>
+                    <tr class="mud-table-row">
+                        <td class="mud-table-cell" colspan="5">
+                            <MudSkeleton Width="100%" Height="24px" />
+                        </td>
+                    </tr>
+                </Placeholder>
+            </Virtualize>
+        </tbody>
+    </table>
+</div>
+
+@code {
+    /// <summary>The full list of sweep results to display with virtualization.</summary>
+    [Parameter, EditorRequired] public IReadOnlyList<BacktestResult> Results { get; set; } = Array.Empty<BacktestResult>();
+
+    private Virtualize<BacktestResult>? _virtualizeRef;
+    private SweepResultPager? _pager;
+    private string _filterText = "";
+    private SweepSortMetric _sortMetric = SweepSortMetric.SharpeRatio;
+    private bool _sortDescending = true;
+    private int _filteredCount;
+
+    protected override void OnParametersSet()
+    {
+        _pager = new SweepResultPager(Results);
+        _filteredCount = Results.Count;
+    }
+
+    private ValueTask<ItemsProviderResult<BacktestResult>> LoadItems(
+        ItemsProviderRequest request)
+    {
+        if (_pager is null)
+            return ValueTask.FromResult(new ItemsProviderResult<BacktestResult>(
+                Array.Empty<BacktestResult>(), 0));
+
+        var (items, totalCount) = _pager.GetRange(
+            _filterText,
+            _sortMetric,
+            _sortDescending,
+            request.StartIndex,
+            request.Count);
+
+        _filteredCount = totalCount;
+
+        return ValueTask.FromResult(new ItemsProviderResult<BacktestResult>(
+            items, totalCount));
+    }
+
+    private async Task OnFilterChanged(string newFilter)
+    {
+        _filterText = newFilter;
+        if (_virtualizeRef is not null)
+            await _virtualizeRef.RefreshDataAsync();
+        StateHasChanged();
+    }
+
+    private async Task OnSortChanged(SweepSortMetric newMetric)
+    {
+        _sortMetric = newMetric;
+        if (_virtualizeRef is not null)
+            await _virtualizeRef.RefreshDataAsync();
+        StateHasChanged();
+    }
+
+    private async Task ToggleSortDirection()
+    {
+        _sortDescending = !_sortDescending;
+        if (_virtualizeRef is not null)
+            await _virtualizeRef.RefreshDataAsync();
+        StateHasChanged();
+    }
+}

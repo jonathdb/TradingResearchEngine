@@ -267,3 +267,209 @@ public class MetricsCalculatorAdvancedTests
         Assert.Null(MetricsCalculator.ComputeEquityCurveSmoothness(curve));
     }
 }
+
+public class MetricsCalculatorRiskMetricsTests
+{
+    private static readonly DateTimeOffset T0 = new(2024, 1, 1, 0, 0, 0, TimeSpan.Zero);
+
+    // --- VaR95 Tests ---
+
+    [Fact]
+    public void ComputeHistoricalVaR_InsufficientData_ReturnsNull()
+    {
+        // Fewer than 30 period returns → null
+        var curve = Enumerable.Range(0, 10)
+            .Select(i => new EquityCurvePoint(T0.AddDays(i), 100_000m + i * 100m))
+            .ToList();
+
+        Assert.Null(MetricsCalculator.ComputeHistoricalVaR(curve, 0.95m));
+    }
+
+    [Fact]
+    public void ComputeHistoricalVaR_EmptyCurve_ReturnsNull()
+    {
+        Assert.Null(MetricsCalculator.ComputeHistoricalVaR(new List<EquityCurvePoint>(), 0.95m));
+    }
+
+    [Fact]
+    public void ComputeHistoricalVaR_SufficientData_ReturnsPositiveValue()
+    {
+        // 50 points with some volatility — VaR should be a positive number (loss magnitude)
+        var rng = new Random(42);
+        var curve = new List<EquityCurvePoint>();
+        decimal equity = 100_000m;
+        for (int i = 0; i < 50; i++)
+        {
+            equity += (decimal)(rng.NextDouble() * 2000 - 800); // biased upward but volatile
+            curve.Add(new EquityCurvePoint(T0.AddDays(i), equity));
+        }
+
+        var var95 = MetricsCalculator.ComputeHistoricalVaR(curve, 0.95m);
+        Assert.NotNull(var95);
+        // VaR is expressed as a positive loss magnitude
+        Assert.True(var95 > 0m || var95 == 0m, "VaR95 should be non-negative for volatile curves");
+    }
+
+    [Fact]
+    public void ComputeHistoricalVaR_PurelyRisingCurve_ReturnsZeroOrNegative()
+    {
+        // Monotonically rising curve — all returns are positive, so VaR at 5th percentile
+        // should be negative (i.e., the worst return is still a gain)
+        var curve = Enumerable.Range(0, 50)
+            .Select(i => new EquityCurvePoint(T0.AddDays(i), 100_000m + i * 100m))
+            .ToList();
+
+        var var95 = MetricsCalculator.ComputeHistoricalVaR(curve, 0.95m);
+        Assert.NotNull(var95);
+        // For a purely rising curve, the "loss" at 5th percentile is negative (it's actually a gain)
+        // The method returns -returns[idx], so for positive returns this will be negative
+        Assert.True(var95 <= 0m, "VaR95 for purely rising curve should be ≤ 0 (no losses)");
+    }
+
+    // --- CVaR95 Tests ---
+
+    [Fact]
+    public void ComputeHistoricalCVaR_InsufficientData_ReturnsNull()
+    {
+        var curve = Enumerable.Range(0, 10)
+            .Select(i => new EquityCurvePoint(T0.AddDays(i), 100_000m + i * 100m))
+            .ToList();
+
+        Assert.Null(MetricsCalculator.ComputeHistoricalCVaR(curve, 0.95m));
+    }
+
+    [Fact]
+    public void ComputeHistoricalCVaR_SufficientData_GreaterThanOrEqualToVaR()
+    {
+        // CVaR (Expected Shortfall) should always be ≥ VaR because it's the mean of the tail
+        var rng = new Random(123);
+        var curve = new List<EquityCurvePoint>();
+        decimal equity = 100_000m;
+        for (int i = 0; i < 100; i++)
+        {
+            equity += (decimal)(rng.NextDouble() * 2000 - 1000);
+            curve.Add(new EquityCurvePoint(T0.AddDays(i), equity));
+        }
+
+        var var95 = MetricsCalculator.ComputeHistoricalVaR(curve, 0.95m);
+        var cvar95 = MetricsCalculator.ComputeHistoricalCVaR(curve, 0.95m);
+
+        Assert.NotNull(var95);
+        Assert.NotNull(cvar95);
+        Assert.True(cvar95 >= var95, $"CVaR ({cvar95}) should be ≥ VaR ({var95})");
+    }
+
+    // --- OmegaRatio Tests ---
+
+    [Fact]
+    public void ComputeOmegaRatio_EmptyCurve_ReturnsNull()
+    {
+        Assert.Null(MetricsCalculator.ComputeOmegaRatio(new List<EquityCurvePoint>()));
+    }
+
+    [Fact]
+    public void ComputeOmegaRatio_PurelyRisingCurve_ReturnsNull()
+    {
+        // All returns > 0, so losses = 0 → null (division by zero)
+        var curve = Enumerable.Range(0, 10)
+            .Select(i => new EquityCurvePoint(T0.AddDays(i), 100_000m + i * 100m))
+            .ToList();
+
+        Assert.Null(MetricsCalculator.ComputeOmegaRatio(curve));
+    }
+
+    [Fact]
+    public void ComputeOmegaRatio_MixedReturns_ReturnsPositiveValue()
+    {
+        // Curve with both gains and losses
+        var curve = new List<EquityCurvePoint>
+        {
+            new(T0, 100_000m),
+            new(T0.AddDays(1), 101_000m),  // +1%
+            new(T0.AddDays(2), 100_500m),  // -0.5%
+            new(T0.AddDays(3), 102_000m),  // +1.5%
+            new(T0.AddDays(4), 101_000m),  // -0.98%
+            new(T0.AddDays(5), 103_000m),  // +1.98%
+        };
+
+        var omega = MetricsCalculator.ComputeOmegaRatio(curve);
+        Assert.NotNull(omega);
+        Assert.True(omega > 0m, "Omega ratio should be positive for mixed returns");
+    }
+
+    [Fact]
+    public void ComputeOmegaRatio_MoreGainsThanLosses_GreaterThanOne()
+    {
+        // Curve biased toward gains — Omega should be > 1
+        var curve = new List<EquityCurvePoint>
+        {
+            new(T0, 100_000m),
+            new(T0.AddDays(1), 101_000m),  // +1%
+            new(T0.AddDays(2), 102_000m),  // +0.99%
+            new(T0.AddDays(3), 101_500m),  // -0.49%
+            new(T0.AddDays(4), 103_000m),  // +1.48%
+            new(T0.AddDays(5), 104_000m),  // +0.97%
+        };
+
+        var omega = MetricsCalculator.ComputeOmegaRatio(curve);
+        Assert.NotNull(omega);
+        Assert.True(omega > 1m, $"Omega ratio should be > 1 for gain-biased curve, got {omega}");
+    }
+
+    // --- UlcerIndex Tests ---
+
+    [Fact]
+    public void ComputeUlcerIndex_EmptyCurve_ReturnsNull()
+    {
+        Assert.Null(MetricsCalculator.ComputeUlcerIndex(new List<EquityCurvePoint>()));
+    }
+
+    [Fact]
+    public void ComputeUlcerIndex_SinglePoint_ReturnsNull()
+    {
+        var curve = new List<EquityCurvePoint> { new(T0, 100_000m) };
+        Assert.Null(MetricsCalculator.ComputeUlcerIndex(curve));
+    }
+
+    [Fact]
+    public void ComputeUlcerIndex_PurelyRisingCurve_ReturnsZero()
+    {
+        // No drawdowns → Ulcer Index = 0
+        var curve = Enumerable.Range(0, 10)
+            .Select(i => new EquityCurvePoint(T0.AddDays(i), 100_000m + i * 1000m))
+            .ToList();
+
+        var ulcer = MetricsCalculator.ComputeUlcerIndex(curve);
+        Assert.NotNull(ulcer);
+        Assert.Equal(0m, ulcer);
+    }
+
+    [Fact]
+    public void ComputeUlcerIndex_WithDrawdowns_ReturnsPositiveValue()
+    {
+        var curve = new List<EquityCurvePoint>
+        {
+            new(T0, 100_000m),
+            new(T0.AddDays(1), 110_000m),
+            new(T0.AddDays(2), 100_000m),  // 9.09% drawdown from peak
+            new(T0.AddDays(3), 105_000m),  // 4.55% drawdown from peak
+            new(T0.AddDays(4), 112_000m),  // new peak
+        };
+
+        var ulcer = MetricsCalculator.ComputeUlcerIndex(curve);
+        Assert.NotNull(ulcer);
+        Assert.True(ulcer > 0m, "Ulcer Index should be positive when drawdowns exist");
+    }
+
+    [Fact]
+    public void ComputeUlcerIndex_FlatCurve_ReturnsZero()
+    {
+        var curve = Enumerable.Range(0, 10)
+            .Select(i => new EquityCurvePoint(T0.AddDays(i), 100_000m))
+            .ToList();
+
+        var ulcer = MetricsCalculator.ComputeUlcerIndex(curve);
+        Assert.NotNull(ulcer);
+        Assert.Equal(0m, ulcer);
+    }
+}

@@ -40,6 +40,15 @@ public sealed class MonteCarloOptions
     /// holding period in trades.
     /// </summary>
     public int BlockSize { get; set; } = 1;
+
+    /// <summary>
+    /// Simulation mode controlling the statistical approach.
+    /// <see cref="TradingResearchEngine.Application.Research.MonteCarloSimulationMode.TradeResample"/> resamples individual trades (IID bootstrap).
+    /// <see cref="TradingResearchEngine.Application.Research.MonteCarloSimulationMode.BlockBootstrap"/> resamples contiguous trade blocks.
+    /// <see cref="TradingResearchEngine.Application.Research.MonteCarloSimulationMode.ReturnSeries"/> resamples equity curve period returns directly.
+    /// Defaults to <see cref="TradingResearchEngine.Application.Research.MonteCarloSimulationMode.TradeResample"/>.
+    /// </summary>
+    public TradingResearchEngine.Application.Research.MonteCarloSimulationMode SimulationMode { get; set; } = TradingResearchEngine.Application.Research.MonteCarloSimulationMode.TradeResample;
 }
 
 /// <summary>Options for the risk layer.</summary>
@@ -61,6 +70,12 @@ public sealed class RepositoryOptions
 {
     /// <summary>Base directory where JSON entity files are stored.</summary>
     public string BaseDirectory { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Path to the SQLite index database file. When empty, defaults to
+    /// <c>{LocalApplicationData}/TradingResearchEngine/index.db</c>.
+    /// </summary>
+    public string IndexDbPath { get; set; } = string.Empty;
 }
 
 /// <summary>Metric used to rank parameter sweep results.</summary>
@@ -111,4 +126,11 @@ public sealed class WalkForwardOptions
         Mode ?? (AnchoredWindow
             ? TradingResearchEngine.Application.Research.WalkForwardMode.Anchored
             : TradingResearchEngine.Application.Research.WalkForwardMode.Rolling);
+
+    /// <summary>Optional parameter grid for in-sample optimization. When null, walk-forward uses the base config parameters without optimization.</summary>
+    public TradingResearchEngine.Application.Research.ParameterGrid? Grid { get; set; }
+
+    /// <summary>Objective metric used to rank parameter combinations during in-sample optimization. Defaults to Sharpe.</summary>
+    public TradingResearchEngine.Application.Research.OptimizationObjective Objective { get; set; } =
+        TradingResearchEngine.Application.Research.OptimizationObjective.Sharpe;
 }

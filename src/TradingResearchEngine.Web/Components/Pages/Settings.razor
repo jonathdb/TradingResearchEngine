@@ -1,12 +1,7 @@
 @page "/settings"
-@inject Microsoft.Extensions.Options.IOptions<TradingResearchEngine.Application.Configuration.RiskOptions> RiskOpts
-@inject Microsoft.Extensions.Options.IOptions<TradingResearchEngine.Application.Configuration.MonteCarloOptions> McOpts
-@inject Microsoft.Extensions.Options.IOptions<TradingResearchEngine.Application.Configuration.ReportingOptions> ReportOpts
-@inject Microsoft.Extensions.Options.IOptions<TradingResearchEngine.Application.Configuration.SweepOptions> SweepOpts
-@inject Microsoft.Extensions.Options.IOptions<TradingResearchEngine.Application.Configuration.RepositoryOptions> RepoOpts
-@inject TradingResearchEngine.Infrastructure.DataProviders.DataFileService DataService
+@using TradingResearchEngine.Core.Configuration
 @inject TradingResearchEngine.Infrastructure.Settings.SettingsService SettingsService
-@inject StrategyRegistry Registry
+@inject ISnackbar Snackbar
 
 <PageTitle>Settings — Research Engine</PageTitle>
 
@@ -14,7 +9,7 @@
     <div class="page-header__title">
         <MudText Typo="Typo.h5">Settings</MudText>
         <MudText Typo="Typo.caption" Class="text-muted">
-            Read-only configuration values — edit <code style="font-size:0.75em; opacity:0.8;">appsettings.json</code> to change defaults
+            Configure your research engine defaults — changes are saved immediately to disk
         </MudText>
     </div>
 </div>
@@ -31,10 +26,19 @@
                 <MudText Typo="Typo.subtitle2">Risk Defaults</MudText>
             </MudStack>
             <div class="settings-table">
-                <div class="settings-row">
-                    <span class="settings-key">Max Exposure</span>
-                    <span class="settings-val">@RiskOpts.Value.MaxExposurePercent%</span>
+                <div class="settings-row settings-row--field">
+                    <span class="settings-key">Max Exposure %</span>
+                    <MudNumericField T="decimal" @bind-Value="_maxExposurePercent"
+                                     Min="0.1m" Max="100m" Step="0.5m"
+                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                     Class="settings-input" HideSpinButtons="false"
+                                     Adornment="Adornment.End" AdornmentText="%" />
                 </div>
+            </div>
+            <div class="settings-actions">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                           Size="MudBlazor.Size.Small" StartIcon="@Icons.Material.Outlined.Save"
+                           OnClick="SaveRisk">Save</MudButton>
             </div>
         </MudPaper>
 
@@ -45,32 +49,88 @@
                 <MudText Typo="Typo.subtitle2">Monte Carlo Defaults</MudText>
             </MudStack>
             <div class="settings-table">
-                <div class="settings-row">
+                <div class="settings-row settings-row--field">
                     <span class="settings-key">Simulation Count</span>
-                    <span class="settings-val monospace">@McOpts.Value.SimulationCount.ToString("N0")</span>
+                    <MudNumericField T="int" @bind-Value="_mcSimCount"
+                                     Min="100" Max="100000" Step="100"
+                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                     Class="settings-input" HideSpinButtons="false" />
                 </div>
-                <div class="settings-row">
+                <div class="settings-row settings-row--field">
                     <span class="settings-key">Ruin Threshold</span>
-                    <span class="settings-val monospace">@McOpts.Value.RuinThresholdPercent.ToString("P0")</span>
+                    <MudNumericField T="decimal" @bind-Value="_mcRuinThreshold"
+                                     Min="0.01m" Max="1m" Step="0.05m"
+                                     Format="P0"
+                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                     Class="settings-input" HideSpinButtons="false"
+                                     Adornment="Adornment.End" AdornmentText="%" />
                 </div>
-                <div class="settings-row">
+                <div class="settings-row settings-row--field">
+                    <span class="settings-key">Block Size</span>
+                    <MudNumericField T="int" @bind-Value="_mcBlockSize"
+                                     Min="1" Max="500" Step="1"
+                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                     Class="settings-input" HideSpinButtons="false"
+                                     HelperText="1 = IID bootstrap" />
+                </div>
+                <div class="settings-row settings-row--field">
                     <span class="settings-key">Random Seed</span>
-                    <span class="settings-val monospace">@(McOpts.Value.Seed?.ToString() ?? "Random")</span>
+                    <MudTextField @bind-Value="_mcSeedText"
+                                  Placeholder="(random)"
+                                  Variant="Variant.Outlined" Margin="Margin.Dense"
+                                  Class="settings-input"
+                                  HelperText="Leave blank for random" />
                 </div>
+            </div>
+            <div class="settings-actions">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                           Size="MudBlazor.Size.Small" StartIcon="@Icons.Material.Outlined.Save"
+                           OnClick="SaveMonteCarlo">Save</MudButton>
             </div>
         </MudPaper>
 
-        @* Sweep *@
-        <MudPaper Class="pa-4" Elevation="1" Style="border-radius:var(--tre-radius);">
+        @* Parameter Sweep *@
+        <MudPaper Class="pa-4 mb-3" Elevation="1" Style="border-radius:var(--tre-radius);">
             <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-3">
                 <MudIcon Icon="@Icons.Material.Outlined.GridOn" Style="color:var(--mud-palette-secondary); font-size:1.1rem;" />
                 <MudText Typo="Typo.subtitle2">Parameter Sweep</MudText>
             </MudStack>
             <div class="settings-table">
-                <div class="settings-row">
+                <div class="settings-row settings-row--field">
                     <span class="settings-key">Max Parallelism</span>
-                    <span class="settings-val monospace">@SweepOpts.Value.MaxDegreeOfParallelism</span>
+                    <MudNumericField T="int" @bind-Value="_sweepParallelism"
+                                     Min="0" Max="64" Step="1"
+                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                     Class="settings-input" HideSpinButtons="false"
+                                     HelperText="@($"0 = auto ({Environment.ProcessorCount} cores)")" />
                 </div>
+            </div>
+            <div class="settings-actions">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                           Size="MudBlazor.Size.Small" StartIcon="@Icons.Material.Outlined.Save"
+                           OnClick="SaveSweep">Save</MudButton>
+            </div>
+        </MudPaper>
+
+        @* Reporting *@
+        <MudPaper Class="pa-4" Elevation="1" Style="border-radius:var(--tre-radius);">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-3">
+                <MudIcon Icon="@Icons.Material.Outlined.Assessment" Style="color:var(--mud-palette-info); font-size:1.1rem;" />
+                <MudText Typo="Typo.subtitle2">Reporting</MudText>
+            </MudStack>
+            <div class="settings-table">
+                <div class="settings-row settings-row--field">
+                    <span class="settings-key">Decimal Places</span>
+                    <MudNumericField T="int" @bind-Value="_reportingDecimals"
+                                     Min="0" Max="8" Step="1"
+                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                     Class="settings-input" HideSpinButtons="false" />
+                </div>
+            </div>
+            <div class="settings-actions">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                           Size="MudBlazor.Size.Small" StartIcon="@Icons.Material.Outlined.Save"
+                           OnClick="SaveReporting">Save</MudButton>
             </div>
         </MudPaper>
 
@@ -79,126 +139,111 @@
     @* ── Right Column ── *@
     <MudItem xs="12" md="6">
 
-        @* Reporting *@
+        @* Backtest Defaults *@
         <MudPaper Class="pa-4 mb-3" Elevation="1" Style="border-radius:var(--tre-radius);">
             <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-3">
-                <MudIcon Icon="@Icons.Material.Outlined.Assessment" Style="color:var(--mud-palette-info); font-size:1.1rem;" />
-                <MudText Typo="Typo.subtitle2">Reporting</MudText>
+                <MudIcon Icon="@Icons.Material.Outlined.PlayCircleOutline" Style="color:var(--mud-palette-success); font-size:1.1rem;" />
+                <MudText Typo="Typo.subtitle2">Backtest Defaults</MudText>
             </MudStack>
             <div class="settings-table">
-                <div class="settings-row">
-                    <span class="settings-key">Decimal Places</span>
-                    <span class="settings-val monospace">@ReportOpts.Value.DecimalPlaces</span>
+                <div class="settings-row settings-row--field">
+                    <span class="settings-key">Initial Cash</span>
+                    <MudNumericField T="decimal" @bind-Value="_initialCash"
+                                     Min="1000m" Max="100_000_000m" Step="10000m"
+                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                     Class="settings-input" HideSpinButtons="false"
+                                     Adornment="Adornment.Start" AdornmentText="$" />
                 </div>
+                <div class="settings-row settings-row--field">
+                    <span class="settings-key">Risk-Free Rate</span>
+                    <MudNumericField T="decimal" @bind-Value="_riskFreeRatePct"
+                                     Min="0m" Max="20m" Step="0.1m"
+                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                     Class="settings-input" HideSpinButtons="false"
+                                     Adornment="Adornment.End" AdornmentText="%" />
+                </div>
+                <div class="settings-row settings-row--field">
+                    <span class="settings-key">Realism Profile</span>
+                    <MudSelect T="ExecutionRealismProfile" @bind-Value="_realismProfile"
+                               Variant="Variant.Outlined" Margin="Margin.Dense"
+                               Class="settings-input">
+                        <MudSelectItem Value="ExecutionRealismProfile.FastResearch">Fast Research</MudSelectItem>
+                        <MudSelectItem Value="ExecutionRealismProfile.StandardBacktest">Standard Backtest</MudSelectItem>
+                        <MudSelectItem Value="ExecutionRealismProfile.BrokerConservative">Broker Conservative</MudSelectItem>
+                    </MudSelect>
+                </div>
+                <div class="settings-row settings-row--field">
+                    <span class="settings-key">Sizing Policy</span>
+                    <MudSelect T="string" @bind-Value="_sizingPolicy"
+                               Variant="Variant.Outlined" Margin="Margin.Dense"
+                               Class="settings-input">
+                        <MudSelectItem Value="@("PercentEquity")">Percent of Equity</MudSelectItem>
+                        <MudSelectItem Value="@("FixedFractional")">Fixed Fractional</MudSelectItem>
+                        <MudSelectItem Value="@("FixedSize")">Fixed Size</MudSelectItem>
+                    </MudSelect>
+                </div>
+            </div>
+            <div class="settings-actions">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                           Size="MudBlazor.Size.Small" StartIcon="@Icons.Material.Outlined.Save"
+                           OnClick="SaveBacktestDefaults">Save</MudButton>
             </div>
         </MudPaper>
 
-        @* Storage *@
+        @* Storage & Paths *@
         <MudPaper Class="pa-4 mb-3" Elevation="1" Style="border-radius:var(--tre-radius);">
             <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-3">
                 <MudIcon Icon="@Icons.Material.Outlined.Storage" Style="color:var(--mud-palette-primary); font-size:1.1rem;" />
-                <MudText Typo="Typo.subtitle2">Storage Paths</MudText>
+                <MudText Typo="Typo.subtitle2">Storage &amp; Paths</MudText>
             </MudStack>
             <div class="settings-table">
-                <div class="settings-row settings-row--wrap">
-                    <span class="settings-key">Repository</span>
-                    <span class="settings-val monospace" style="word-break:break-all; font-size:0.75rem;">
-                        @(string.IsNullOrEmpty(RepoOpts.Value.BaseDirectory) ? "(default: LocalAppData)" : RepoOpts.Value.BaseDirectory)
-                    </span>
-                </div>
-                <div class="settings-row settings-row--wrap">
+                <div class="settings-row settings-row--field">
                     <span class="settings-key">Data Directory</span>
-                    <span class="settings-val monospace" style="word-break:break-all; font-size:0.75rem;">@DataService.DataDirectory</span>
+                    <MudTextField @bind-Value="_dataDirectory"
+                                  Placeholder="data"
+                                  Variant="Variant.Outlined" Margin="Margin.Dense"
+                                  Class="settings-input monospace"
+                                  HelperText="Relative to app root" />
                 </div>
-
-                @* QDM Watch Path — editable *@
-                <div class="settings-row settings-row--wrap settings-row--editable">
+                <div class="settings-row settings-row--field">
+                    <span class="settings-key">Export Directory</span>
+                    <MudTextField @bind-Value="_exportDirectory"
+                                  Placeholder="exports"
+                                  Variant="Variant.Outlined" Margin="Margin.Dense"
+                                  Class="settings-input monospace"
+                                  HelperText="Relative to app root" />
+                </div>
+                <div class="settings-row settings-row--field">
                     <span class="settings-key">QDM Watch Dir</span>
-                    @if (_editingQdmPath)
-                    {
-                        <div style="flex:1; display:flex; flex-direction:column; gap:6px;">
-                            <MudTextField @bind-Value="_qdmWatchDirectory"
-                                          Placeholder="(not configured)"
-                                          Variant="Variant.Outlined" Margin="Margin.Dense"
-                                          Style="font-size:0.8rem;" />
-                            <MudStack Row="true" Spacing="1">
-                                <MudButton Variant="Variant.Filled" Color="Color.Primary"
-                                           Size="MudBlazor.Size.Small" OnClick="SaveQdmWatchDirectory">Save</MudButton>
-                                <MudButton Variant="Variant.Text" Size="MudBlazor.Size.Small"
-                                           OnClick="CancelEditQdmPath">Cancel</MudButton>
-                            </MudStack>
-                        </div>
-                    }
-                    else
-                    {
-                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Style="flex:1;">
-                            <span class="settings-val monospace" style="flex:1; font-size:0.75rem; word-break:break-all;">
-                                @(string.IsNullOrEmpty(_qdmWatchDirectory) ? "(not configured)" : _qdmWatchDirectory)
-                            </span>
-                            <MudIconButton Icon="@Icons.Material.Outlined.Edit" Size="MudBlazor.Size.Small"
-                                           Style="opacity:0.4; padding:2px;" OnClick="EditQdmPath" />
-                        </MudStack>
-                    }
+                    <MudTextField @bind-Value="_qdmWatchDirectory"
+                                  Placeholder="(not configured)"
+                                  Variant="Variant.Outlined" Margin="Margin.Dense"
+                                  Class="settings-input monospace"
+                                  HelperText="Full path to QDM output folder" />
                 </div>
-
-                @* QDM Timezone — editable *@
-                <div class="settings-row settings-row--wrap settings-row--editable">
+                <div class="settings-row settings-row--field">
                     <span class="settings-key">QDM Timezone</span>
-                    @if (_editingQdmTimezone)
-                    {
-                        <div style="flex:1; display:flex; flex-direction:column; gap:6px;">
-                            <MudSelect T="string" @bind-Value="_qdmTimezoneId"
-                                       Variant="Variant.Outlined" Margin="Margin.Dense">
-                                <MudSelectItem Value="@("UTC")">UTC (recommended)</MudSelectItem>
-                                <MudSelectItem Value="@("Europe/London")">Europe/London (GMT/BST)</MudSelectItem>
-                                <MudSelectItem Value="@("America/New_York")">America/New_York (EST/EDT)</MudSelectItem>
-                                <MudSelectItem Value="@("America/Chicago")">America/Chicago (CST/CDT)</MudSelectItem>
-                                <MudSelectItem Value="@("Asia/Tokyo")">Asia/Tokyo (JST)</MudSelectItem>
-                                <MudSelectItem Value="@("Asia/Singapore")">Asia/Singapore (SGT)</MudSelectItem>
-                                <MudSelectItem Value="@("Europe/Berlin")">Europe/Berlin (CET/CEST)</MudSelectItem>
-                            </MudSelect>
-                            <MudStack Row="true" Spacing="1">
-                                <MudButton Variant="Variant.Filled" Color="Color.Primary"
-                                           Size="MudBlazor.Size.Small" OnClick="SaveQdmTimezone">Save</MudButton>
-                                <MudButton Variant="Variant.Text" Size="MudBlazor.Size.Small"
-                                           OnClick="CancelEditQdmTimezone">Cancel</MudButton>
-                            </MudStack>
-                        </div>
-                    }
-                    else
-                    {
-                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Style="flex:1;">
-                            <span class="settings-val monospace" style="flex:1;">@(_qdmTimezoneId ?? "UTC")</span>
-                            <MudIconButton Icon="@Icons.Material.Outlined.Edit" Size="MudBlazor.Size.Small"
-                                           Style="opacity:0.4; padding:2px;"
-                                           OnClick="@(() => _editingQdmTimezone = true)" />
-                        </MudStack>
-                    }
+                    <MudSelect T="string" @bind-Value="_qdmTimezoneId"
+                               Variant="Variant.Outlined" Margin="Margin.Dense"
+                               Class="settings-input">
+                        <MudSelectItem Value="@("UTC")">UTC (recommended)</MudSelectItem>
+                        <MudSelectItem Value="@("Europe/London")">Europe/London (GMT/BST)</MudSelectItem>
+                        <MudSelectItem Value="@("America/New_York")">America/New_York (EST/EDT)</MudSelectItem>
+                        <MudSelectItem Value="@("America/Chicago")">America/Chicago (CST/CDT)</MudSelectItem>
+                        <MudSelectItem Value="@("Asia/Tokyo")">Asia/Tokyo (JST)</MudSelectItem>
+                        <MudSelectItem Value="@("Asia/Singapore")">Asia/Singapore (SGT)</MudSelectItem>
+                        <MudSelectItem Value="@("Europe/Berlin")">Europe/Berlin (CET/CEST)</MudSelectItem>
+                    </MudSelect>
                 </div>
             </div>
-        </MudPaper>
-
-        @* Registered Strategies *@
-        <MudPaper Class="pa-4" Elevation="1" Style="border-radius:var(--tre-radius);">
-            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-3">
-                <MudIcon Icon="@Icons.Material.Outlined.Psychology" Style="color:var(--mud-palette-success); font-size:1.1rem;" />
-                <MudText Typo="Typo.subtitle2">Registered Strategies</MudText>
-                <MudChip T="string" Size="MudBlazor.Size.Small" Variant="Variant.Outlined"
-                         Style="height:18px; font-size:0.65rem;">@Registry.KnownNames.Count()</MudChip>
-            </MudStack>
-            <div style="display:flex; flex-wrap:wrap; gap:6px;">
-                @foreach (var name in Registry.KnownNames)
-                {
-                    <MudChip T="string" Size="MudBlazor.Size.Small" Variant="Variant.Outlined"
-                             Icon="@Icons.Material.Outlined.Code">@name</MudChip>
-                }
+            <div class="settings-actions">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                           Size="MudBlazor.Size.Small" StartIcon="@Icons.Material.Outlined.Save"
+                           OnClick="SaveStorage">Save</MudButton>
             </div>
         </MudPaper>
 
-    </MudItem>
-
-    @* ── About ── *@
-    <MudItem xs="12">
+        @* About *@
         <MudPaper Class="pa-4" Elevation="1" Style="border-radius:var(--tre-radius);">
             <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-3">
                 <MudIcon Icon="@Icons.Material.Outlined.Info" Style="font-size:1.1rem; opacity:0.5;" />
@@ -217,85 +262,150 @@
                     <MudText Typo="Typo.caption" Class="text-faint">Runtime</MudText>
                     <MudText Typo="Typo.body2" Class="monospace">.NET @Environment.Version</MudText>
                 </MudStack>
+                <MudStack Spacing="0">
+                    <MudText Typo="Typo.caption" Class="text-faint">CPU Cores</MudText>
+                    <MudText Typo="Typo.body2" Class="monospace">@Environment.ProcessorCount</MudText>
+                </MudStack>
             </MudStack>
         </MudPaper>
+
     </MudItem>
 
 </MudGrid>
 
 <style>
-    .settings-table { display: flex; flex-direction: column; gap: 2px; }
+    .settings-table { display: flex; flex-direction: column; gap: 10px; }
 
     .settings-row {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding: 7px 10px;
-        border-radius: 4px;
-        background: rgba(255,255,255,0.03);
         gap: 12px;
     }
 
-    .settings-row--wrap { align-items: flex-start; }
-    .settings-row--editable { flex-direction: column; align-items: stretch; }
+    .settings-row--field {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 4px;
+    }
 
     .settings-key {
         font-size: 0.78rem;
         opacity: 0.55;
-        flex-shrink: 0;
-        min-width: 130px;
+        padding-top: 2px;
     }
 
-    .settings-val {
-        font-size: 0.82rem;
-        font-weight: 500;
-        text-align: right;
+    .settings-input {
+        width: 100%;
+    }
+
+    .settings-actions {
+        display: flex;
+        justify-content: flex-end;
+        margin-top: 16px;
+        padding-top: 12px;
+        border-top: 1px solid rgba(255,255,255,0.06);
     }
 </style>
 
 @code {
 #nullable enable
+    private decimal _maxExposurePercent;
+    private int _mcSimCount;
+    private decimal _mcRuinThreshold;
+    private int _mcBlockSize;
+    private string _mcSeedText = "";
+    private int _sweepParallelism;
+    private int _reportingDecimals;
+    private string _dataDirectory = "";
+    private string _exportDirectory = "";
     private string? _qdmWatchDirectory;
-    private bool _editingQdmPath;
     private string _qdmTimezoneId = "UTC";
-    private bool _editingQdmTimezone;
+    private decimal _initialCash;
+    private decimal _riskFreeRatePct;
+    private string _sizingPolicy = "PercentEquity";
+    private ExecutionRealismProfile _realismProfile;
 
-    protected override void OnInitialized()
+    protected override void OnInitialized() => LoadFromSettings();
+
+    private void LoadFromSettings()
     {
-        var settings = SettingsService.Load();
-        _qdmWatchDirectory = settings.QdmWatchDirectory;
-        _qdmTimezoneId     = settings.QdmTimezoneId ?? "UTC";
+        var s = SettingsService.Load();
+        _maxExposurePercent  = s.MaxExposurePercent;
+        _mcSimCount          = s.MonteCarloSimulationCount;
+        _mcRuinThreshold     = s.MonteCarloRuinThreshold;
+        _mcBlockSize         = s.MonteCarloBlockSize;
+        _mcSeedText          = s.MonteCarloSeed?.ToString() ?? "";
+        _sweepParallelism    = s.SweepMaxParallelism;
+        _reportingDecimals   = s.ReportingDecimalPlaces;
+        _dataDirectory       = s.DataDirectory;
+        _exportDirectory     = s.ExportDirectory;
+        _qdmWatchDirectory   = s.QdmWatchDirectory;
+        _qdmTimezoneId       = s.QdmTimezoneId ?? "UTC";
+        _initialCash         = s.DefaultInitialCash;
+        _riskFreeRatePct     = s.DefaultRiskFreeRate * 100m;
+        _sizingPolicy        = s.DefaultSizingPolicy;
+        _realismProfile      = s.DefaultRealismProfile;
     }
 
-    private void EditQdmPath() => _editingQdmPath = true;
-
-    private void CancelEditQdmPath()
+    private void SaveRisk()
     {
-        _qdmWatchDirectory = SettingsService.Load().QdmWatchDirectory;
-        _editingQdmPath = false;
+        var s = SettingsService.Load() with { MaxExposurePercent = _maxExposurePercent };
+        SettingsService.Save(s);
+        Snackbar.Add("Risk defaults saved", Severity.Success);
     }
 
-    private void SaveQdmWatchDirectory()
+    private void SaveMonteCarlo()
     {
-        var updated = SettingsService.Load() with
+        int? seed = int.TryParse(_mcSeedText?.Trim(), out var parsed) ? parsed : null;
+        var s = SettingsService.Load() with
         {
-            QdmWatchDirectory = string.IsNullOrWhiteSpace(_qdmWatchDirectory) ? null : _qdmWatchDirectory.Trim()
+            MonteCarloSimulationCount = _mcSimCount,
+            MonteCarloRuinThreshold   = _mcRuinThreshold,
+            MonteCarloBlockSize       = _mcBlockSize,
+            MonteCarloSeed            = seed,
         };
-        SettingsService.Save(updated);
-        _qdmWatchDirectory = updated.QdmWatchDirectory;
-        _editingQdmPath = false;
+        SettingsService.Save(s);
+        Snackbar.Add("Monte Carlo defaults saved", Severity.Success);
     }
 
-    private void CancelEditQdmTimezone()
+    private void SaveSweep()
     {
-        _qdmTimezoneId = SettingsService.Load().QdmTimezoneId ?? "UTC";
-        _editingQdmTimezone = false;
+        var s = SettingsService.Load() with { SweepMaxParallelism = _sweepParallelism };
+        SettingsService.Save(s);
+        Snackbar.Add("Parameter sweep settings saved", Severity.Success);
     }
 
-    private void SaveQdmTimezone()
+    private void SaveReporting()
     {
-        var updated = SettingsService.Load() with { QdmTimezoneId = _qdmTimezoneId };
-        SettingsService.Save(updated);
-        _editingQdmTimezone = false;
+        var s = SettingsService.Load() with { ReportingDecimalPlaces = _reportingDecimals };
+        SettingsService.Save(s);
+        Snackbar.Add("Reporting settings saved", Severity.Success);
+    }
+
+    private void SaveBacktestDefaults()
+    {
+        var s = SettingsService.Load() with
+        {
+            DefaultInitialCash    = _initialCash,
+            DefaultRiskFreeRate   = _riskFreeRatePct / 100m,
+            DefaultSizingPolicy   = _sizingPolicy,
+            DefaultRealismProfile = _realismProfile,
+        };
+        SettingsService.Save(s);
+        Snackbar.Add("Backtest defaults saved", Severity.Success);
+    }
+
+    private void SaveStorage()
+    {
+        var s = SettingsService.Load() with
+        {
+            DataDirectory      = string.IsNullOrWhiteSpace(_dataDirectory)    ? "data"    : _dataDirectory.Trim(),
+            ExportDirectory    = string.IsNullOrWhiteSpace(_exportDirectory)  ? "exports" : _exportDirectory.Trim(),
+            QdmWatchDirectory  = string.IsNullOrWhiteSpace(_qdmWatchDirectory) ? null     : _qdmWatchDirectory.Trim(),
+            QdmTimezoneId      = _qdmTimezoneId,
+        };
+        SettingsService.Save(s);
+        Snackbar.Add("Storage paths saved", Severity.Success);
     }
 }

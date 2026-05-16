@@ -1,3 +1,4 @@
+using TradingResearchEngine.Application.Research;
 using TradingResearchEngine.Core.Results;
 
 namespace TradingResearchEngine.Application.Research.Results;
@@ -5,7 +6,9 @@ namespace TradingResearchEngine.Application.Research.Results;
 /// <summary>Result of a walk-forward analysis workflow.</summary>
 public sealed record WalkForwardResult(
     IReadOnlyList<WalkForwardWindow> Windows,
-    decimal? MeanEfficiencyRatio);
+    decimal? MeanEfficiencyRatio,
+    /// <summary>Enriched analytics including OOS profitability rate, concatenated equity curve, and parameter drift.</summary>
+    WalkForwardAnalytics? Analytics = null);
 
 /// <summary>A single in-sample / out-of-sample window in a walk-forward analysis.</summary>
 public sealed record WalkForwardWindow(
@@ -13,4 +16,6 @@ public sealed record WalkForwardWindow(
     BacktestResult InSampleResult,
     BacktestResult OutOfSampleResult,
     Dictionary<string, object> SelectedParameters,
-    decimal? EfficiencyRatio);
+    decimal? EfficiencyRatio,
+    decimal? OptimizationMetricValue = null,
+    OptimizationObjective UsedObjective = OptimizationObjective.Sharpe);

@@ -83,7 +83,7 @@ public class MonteCarloBlockSize1RegressionTests
             BacktestStatus.Completed,
             new List<EquityCurvePoint> { new(T0, 100_000m) },
             trades,
-            100_000m, 105_000m, 0.05m, 1.0m, 1.0m, null, null, 5, 0.6m, 1.5m, 200m, -50m, 10m, null, null, 3, 5, 50);
+            100_000m, 105_000m, 0.05m, 1.0m, 1.0m, null, null, null, null, null, null, 5, 0.6m, 1.5m, 200m, -50m, 10m, null, null, 3, 5, 50);
     }
 
     private static ClosedTrade MakeTrade(decimal netPnl) =>

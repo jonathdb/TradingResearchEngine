@@ -73,9 +73,9 @@ When `DefaultRiskLayer.ConvertSignal` receives a `SignalEvent` with `Direction.F
 
 ## Data Provider Resolution
 
-`RunScenarioUseCase` resolves the `IDataProvider` based on `ScenarioConfig.DataProviderType` at run time rather than pulling a single provider from DI. This allows each scenario to specify its own data source (e.g. `csv`, `http`, `dukascopy`) and pass provider-specific settings via `DataProviderOptions`.
+`RunScenarioUseCase` resolves the `IDataProvider` based on `ScenarioConfig.DataProviderType` at run time rather than pulling a single provider from DI. This allows each scenario to specify its own data source (e.g. `csv`, `http`, `dukascopy`) and pass provider-specific settings via `DataProviderOptions`. For typed access to these settings, use the `DataConfigExtensions` extension methods (e.g. `dataConfig.GetCsvOptions()`, `dataConfig.GetDukascopyOptions()`) rather than raw dictionary key lookups.
 
-> **V5:** Data provider settings can also be specified via the `DataConfig` sub-object on `ScenarioConfig`. When `ScenarioConfig.Data` is set, `EffectiveDataConfig` returns it directly; otherwise it falls back to the top-level `DataProviderType`, `DataProviderOptions`, `Timeframe`, and `BarsPerYear` fields. See "ScenarioConfig Sub-Object Decomposition" below.
+> **V5:** Data provider settings can also be specified via the `DataConfig` sub-object on `ScenarioConfig`. When `ScenarioConfig.Data` is set, `EffectiveDataConfig` returns it directly; otherwise it falls back to the top-level `DataProviderType`, `DataProviderOptions`, `Timeframe`, and `BarsPerYear` fields. See "ScenarioConfig Sub-Object Decomposition" below. For programmatic normalization of legacy configs to canonical V5+ form, use `ScenarioConfigNormalizer.Normalize(config)` (Application layer) which populates all sub-objects from flat fields in memory without modifying files on disk.
 
 ### CSV Relative Path Resolution
 
@@ -248,6 +248,47 @@ Each day's minute data is cached locally as a CSV file. On subsequent imports th
 
 `JobExecutor` is registered as a singleton in the Web host's `Program.cs`. After the app is built, `RecoverOrphanedJobsAsync` is called to reset any `Queued` or `Running` jobs left over from a previous process lifetime. Like market data import recovery, this runs inside a try/catch so failures don't prevent the app from starting.
 
+### JobWorkerService (Background Dispatch)
+
+`JobWorkerService` (`Application/Research/JobWorkerService.cs`) is a `BackgroundService` that polls for queued jobs and dispatches them to the appropriate workflow or use case. It resolves scoped services per-job via `IServiceScopeFactory`.
+
+**Configuration** (`JobWorkerOptions`):
+- `PollInterval` — how often to check for queued jobs (default 5s)
+- `MaxConcurrentJobs` — bounded concurrency via `SemaphoreSlim`
+- `RetryPolicy` — embedded `RetryPolicy` instance for transient failure handling
+
+**Dispatch table** (`DispatchAsync`):
+
+| JobType | Resolved Service | Result Persistence |
+|---|---|---|
+| `SingleRun` | `RunScenarioUseCase` | Result linked via `RunId` |
+| `MonteCarlo` | `MonteCarloWorkflow` | `StudyRecord` (type: MonteCarlo) |
+| `WalkForward` | `WalkForwardWorkflow` | `StudyRecord` (type: WalkForward) |
+| `ParameterSweep` | `ParameterSweepWorkflow` | `StudyRecord` (type: ParameterSweep) |
+| `BenchmarkComparison` | `BenchmarkComparisonWorkflow` | `StudyRecord` (type: BenchmarkComparison) |
+| `Variance` | `VarianceTestingWorkflow` | `StudyRecord` (type: Variance) |
+| `RandomisedOos` | `RandomizedOosWorkflow` | `StudyRecord` (type: RandomisedOos) |
+
+`SingleRun` uses `RunScenarioUseCase` directly and links the result via the run ID. All other job types dispatch to their respective workflow, then persist the result as a `StudyRecord` via `PersistStudyResultAsync` — which creates a new study record, serializes the workflow result to JSON, and returns the study ID for job completion linkage.
+
+Unsupported job types are immediately marked as failed with a descriptive message.
+
+### Job Retry Policy
+
+`RetryPolicy` (`Application/Research/RetryPolicy.cs`) provides configurable retry behavior for background job execution. It classifies exceptions as transient (retryable) or terminal (immediate failure) and computes exponential backoff delays between attempts.
+
+| Property | Default | Description |
+|---|---|---|
+| `MaxRetries` | 3 | Maximum retry attempts before transitioning to final failure |
+| `InitialBackoff` | 2 seconds | Delay before the first retry |
+| `BackoffMultiplier` | 2.0 | Exponential multiplier applied per attempt |
+
+Transient exceptions eligible for retry: `HttpRequestException`, `TimeoutException`, `IOException`. All other exceptions are treated as terminal failures and cause immediate job failure without retry.
+
+Backoff formula: `InitialBackoff × BackoffMultiplier^attempt` (zero-based attempt index). Example with defaults: 2s → 4s → 8s.
+
+Jobs in `Retrying` state are treated as active by `JobExecutor` — they appear alongside `Queued` and `Running` jobs in active job listings and are eligible for re-dispatch after their backoff period elapses.
+
 ### Integration Tests (`IntegrationTests/MarketData/MarketDataImportFlowTests.cs`)
 
 End-to-end tests that exercise the full import lifecycle using real `JsonMarketDataImportRepository` and `JsonDataFileRepository` instances against temp directories. Each test creates a fresh `MarketDataImportService` with mock providers and verifies the complete flow from `StartImportAsync` through to persisted records and output files.
@@ -298,6 +339,31 @@ All methods return `null` when inputs are insufficient (e.g. zero trades, fewer 
 
 Equity curve points are appended by `Portfolio.MarkToMarket`, not by `Portfolio.Update`. When the engine calls `MarkToMarket(symbol, price, timestamp)` on each bar, the portfolio recalculates unrealised P&L and appends an enriched `EquityCurvePoint` containing `TotalEquity`, `CashBalance`, `UnrealisedPnl`, `RealisedPnl`, and `OpenPositionCount`. `Portfolio.Update(FillEvent)` updates positions and cash but does not append to the equity curve — this separation ensures equity snapshots are driven by market prices rather than fill events.
 
+## Trade Anatomy (MAE/MFE/Duration)
+
+When `TraceOptions.EnableEventTrace` is active, the engine tracks intra-trade price extremes for every open position and attaches a `TradeAnatomy` record to each `ClosedTrade` on exit.
+
+### Components
+
+- `TradeAnatomy` (`Core/Portfolio/TradeAnatomy.cs`) — sealed record with `MaxAdverseExcursion`, `MaxFavorableExcursion` (both `decimal?`, expressed as fractions of entry value), and `Duration` (`TimeSpan`).
+- `TradeExcursionTracker` (`Core/Portfolio/TradeExcursionTracker.cs`) — mutable tracker created per position at entry. Updated on every `MarkToMarket` call with the current price. Builds the final `TradeAnatomy` at position close.
+- `ClosedTrade.Anatomy` — optional field, null when trace data is unavailable.
+
+### Lifecycle
+
+1. When a fill opens a new position and `enableTradeAnatomy` is true, `Portfolio` creates a `TradeExcursionTracker` keyed by symbol, seeded with the entry price, quantity, and direction.
+2. On each `MarkToMarket` call, the tracker's `UpdatePrice(currentPrice)` records new highs/lows relative to direction (for longs: favorable = price up, adverse = price down; for shorts: reversed).
+3. When the position is closed, `BuildAnatomy(entryTime, exitTime)` computes MAE and MFE as fractions of entry value and returns the `TradeAnatomy` record attached to the `ClosedTrade`.
+4. If no price updates occurred or entry price is zero, MAE and MFE are null (duration is still computed).
+
+### Activation
+
+Trade anatomy tracking is enabled when `ScenarioConfig.EnableEventTrace` is true. The `BacktestEngine` passes this flag to the `Portfolio` constructor. When disabled, no trackers are created and `ClosedTrade.Anatomy` is always null — zero overhead.
+
+### Downstream Use
+
+MAE/MFE data enables edge ratio analysis, R-multiple distributions, entry/exit quality scoring, and duration distribution analytics in research workflows.
+
 ## Benchmark Comparison Workflow
 
 `BenchmarkComparisonWorkflow` compares a strategy's equity curve against a buy-and-hold benchmark on the same data. It implements `IResearchWorkflow<BenchmarkOptions, BenchmarkComparisonResult>`.
@@ -342,20 +408,40 @@ Long-running research workflows report progress via `IProgress<ProgressUpdate>`.
 
 `IResearchWorkflow<TOptions, TResult>` exposes an overload that accepts `IProgress<ProgressUpdate>?`. The default implementation delegates to the progress-less overload, so existing callers are unaffected. Workflow implementations that support progress (parameter sweep, Monte Carlo, walk-forward, etc.) report updates as they complete each step.
 
-## IRepository\<T\> Interface
+## Concurrency Budget
 
-`IRepository<T>` (`Core/Persistence/`) is the generic persistence abstraction. Methods:
+`ConcurrencyBudget` (`Application/Research/ConcurrencyBudget.cs`) is a global concurrency limiter that prevents nested parallel workflows from oversubscribing CPU resources. It wraps a `SemaphoreSlim` and exposes an async acquire/release pattern.
 
-| Method | Description |
+### API
+
+| Member | Description |
 |---|---|
-| `SaveAsync(T entity, CancellationToken)` | Persists the entity, overwriting any existing record with the same id |
-| `GetByIdAsync(string id, CancellationToken)` | Returns the entity with the given id, or null if not found |
-| `ListAsync(CancellationToken)` | Returns all persisted entities |
-| `ListRecentAsync(int count, CancellationToken)` | Returns the most recent N entities ordered by creation time descending |
-| `ListByStatusAsync(string status, CancellationToken)` | Returns entities whose `Status` property matches the given value (case-insensitive) |
-| `DeleteAsync(string id, CancellationToken)` | Deletes the entity with the given id; no-op if not found |
+| `ConcurrencyBudget(IOptions<ConcurrencyOptions>)` | Production constructor; reads max concurrency from configuration |
+| `ConcurrencyBudget(int maxConcurrency)` | Testing constructor; explicit permit count |
+| `Available` | Number of permits currently available (`SemaphoreSlim.CurrentCount`) |
+| `AcquireAsync(CancellationToken)` | Asynchronously acquires a permit; returns `IDisposable` that releases on disposal |
 
-`ListByStatusAsync` is a default interface method. Its fallback implementation loads all entities via `ListAsync` and filters in-memory using reflection on the `Status` property. Implementations with indexed storage (e.g. `SqliteIndexRepository`) should override this with a query-level filter for O(log n) performance. Entities without a `Status` property return the full unfiltered list from the fallback.
+### Configuration — `ConcurrencyOptions`
+
+Bound from `appsettings.json:Concurrency` via `IOptions<ConcurrencyOptions>`.
+
+| Property | Default | Description |
+|---|---|---|
+| MaxGlobalConcurrency | `Environment.ProcessorCount` | Maximum number of concurrent permits available globally |
+
+### Registration
+
+`ConcurrencyBudget` is registered as a singleton in DI. All parallel research workflows (Monte Carlo, CPCV, parameter perturbation) share the same budget instance to prevent oversubscription when multiple workflows run concurrently.
+
+### Usage Pattern
+
+```csharp
+using var permit = await _concurrencyBudget.AcquireAsync(ct);
+// ... perform CPU-bound work ...
+// permit is released when disposed
+```
+
+Workflows acquire a permit from `ConcurrencyBudget` inside each `Parallel.ForEachAsync` iteration body. The semaphore is the sole concurrency gate — `MaxDegreeOfParallelism` is not set on `ParallelOptions`, avoiding a stale-snapshot race condition where a zero `Available` count would cause `ArgumentOutOfRangeException`. This ensures the total concurrent work across all active workflows never exceeds the configured budget.
 
 ## ScenarioConfig Persistence
 
@@ -369,7 +455,7 @@ Long-running research workflows report progress via `IProgress<ProgressUpdate>`.
 
 V5 adds three new repository registrations in `Infrastructure/ServiceCollectionExtensions.cs`, following the same `JsonFileRepository<T>` pattern used for `BacktestResult`, `ScenarioConfig`, and `FirmRuleSet`:
 
-- `IRepository<BacktestJob>` → `JsonFileRepository<BacktestJob>` — persists async job records (lifecycle: Queued → Running → Completed/Failed/Cancelled). `BacktestJob` implements `IHasId` via `JobId`.
+- `IRepository<BacktestJob>` → `JsonFileRepository<BacktestJob>` — persists async job records (lifecycle: Queued → Running → Completed/Failed/Cancelled, with transient failures cycling through Retrying). `BacktestJob` implements `IHasId` via `JobId`.
 - `IRepository<ConfigDraft>` → `JsonFileRepository<ConfigDraft>` — persists in-progress builder sessions. `ConfigDraft` implements `IHasId` via `DraftId`. Drafts are deleted on promotion to `StrategyVersion`.
 - `IRepository<ConfigPreset>` → `JsonFileRepository<ConfigPreset>` — persists custom config presets alongside the four built-in presets. `ConfigPreset` implements `IHasId` via `PresetId`.
 
@@ -425,6 +511,18 @@ CREATE INDEX IF NOT EXISTS idx_br_date ON BacktestResultIndex(RunDate);
 
 The Web host's `Program.cs` resolves `IBacktestResultRepository` from DI and, if the instance is `SqliteIndexRepository`, calls `InitializeAsync` to build or verify the SQLite index. This runs inside a try/catch — if initialization fails (e.g. disk permissions, corrupted DB), the app logs a warning and continues without the index. The pattern mirrors market data import recovery and job executor recovery: startup failures are non-fatal.
 
+### ConsistencyReconciler (Startup Reconciliation)
+
+`ConsistencyReconciler` (`Infrastructure/Persistence/`) is an `IHostedService` that runs once at application startup before the host accepts requests. It verifies consistency between the SQLite index and the JSON file store for `BacktestResult` entities.
+
+- **JSON store is the source of truth.** If a JSON file exists without a corresponding index row, the reconciler deserializes the file and upserts the missing row. If an index row exists without a corresponding JSON file, the orphaned row is deleted.
+- Logs structured diagnostics for every corrective action: entries added, orphans removed, and any deserialization failures (skipped with a warning).
+- Gracefully handles missing directories or missing index databases (skips reconciliation when either is absent).
+- Errors during reconciliation are caught and logged — they do not prevent the application from starting.
+- Registered as a singleton `IHostedService` in DI, so it runs automatically via the generic host lifecycle.
+
+This complements `SqliteIndexRepository.InitializeAsync` (which builds the index from scratch when the DB is missing or corrupted) by handling the incremental drift case: e.g. a JSON file was manually added/removed, or a crash occurred between the JSON write and the index upsert in `SaveAsync`.
+
 ### Consumer Changes
 
 `ResearchChecklistService.GetVersionAsync` uses `IBacktestResultRepository.ListByVersionAsync` instead of the previous O(n×m) full-scan loop. `StrategyDetail.razor` also uses the indexed query for loading version-specific results.
@@ -435,13 +533,34 @@ Uses `Microsoft.Data.Sqlite` NuGet package (Infrastructure project only).
 
 `MonteCarloWorkflow` bootstrap-resamples the closed-trade return sequence to produce a distribution of outcomes. It implements `IResearchWorkflow<MonteCarloOptions, MonteCarloResult>`.
 
+### Construction
+
+`MonteCarloWorkflow` accepts an optional `ConcurrencyBudget` via constructor injection:
+
+- `MonteCarloWorkflow(RunScenarioUseCase, ConcurrencyBudget)` — production constructor; enables parallel simulation dispatch.
+- `MonteCarloWorkflow(RunScenarioUseCase)` — testing constructor; runs all simulations sequentially.
+
+When a `ConcurrencyBudget` is available, the workflow-entry overloads (`RunAsync` with `ScenarioConfig`) use parallel execution. The direct `BacktestResult` overloads (`RunFromResultAsync`) always execute sequentially regardless of budget availability.
+
 ### Process
 
 1. Runs the base scenario via `RunScenarioUseCase` (or accepts a pre-computed `BacktestResult`).
-2. Extracts the `NetPnl` from each closed trade as the return sequence.
-3. For each simulation: shuffles the return sequence (with replacement), walks the equity forward from `StartEquity`, and tracks peak, drawdown, ruin, and consecutive win/loss streaks.
+2. Extracts `ReturnOnRisk` from each closed trade as the return sequence.
+3. For each simulation: resamples the return sequence using block bootstrap (with replacement), walks the equity forward multiplicatively from `StartEquity`, and tracks peak, drawdown, ruin, and consecutive win/loss streaks.
 4. Records the full equity path per simulation (`MonteCarloPath`) and collects per-step equity values across all simulations.
 5. After all simulations complete, computes P10/P50/P90 percentile bands at each trade step.
+
+### Parallel Execution
+
+When a `ConcurrencyBudget` is injected, the workflow parallelises simulations with deterministic seeding:
+
+1. **Seed pre-generation** — Per-iteration seeds are generated sequentially from the master RNG (either from `MonteCarloOptions.Seed` or a random seed). This ensures the seed sequence is identical regardless of execution order.
+2. **Parallel dispatch** — Simulations are dispatched via `Parallel.ForEachAsync`. Each iteration acquires a permit from `ConcurrencyBudget` before executing — the semaphore is the sole concurrency gate (no `MaxDegreeOfParallelism` on `ParallelOptions`).
+3. **Per-iteration RNG** — Each simulation creates its own `Random` instance seeded from the pre-generated seed array. No shared mutable state between iterations.
+4. **Indexed result collection** — Results are written into pre-allocated arrays at the simulation's index. No locking required since each simulation writes to its own slot.
+5. **Aggregation** — After all simulations complete, percentile bands and summary statistics are computed from the indexed arrays. Order-independence is guaranteed by the indexed storage.
+
+This design ensures that parallel execution produces identical results to sequential execution given the same seed.
 
 ### Output — `MonteCarloResult`
 
@@ -465,17 +584,19 @@ Uses `Microsoft.Data.Sqlite` NuGet package (Infrastructure project only).
 
 ### Configuration — `MonteCarloOptions`
 
-| Property | Description |
-|---|---|
-| SimulationCount | Number of bootstrap simulations (must be ≥ 1) |
-| Seed | Optional RNG seed for reproducibility |
-| RuinThresholdPercent | Drawdown fraction at which a simulation is marked as ruined |
+| Property | Default | Description |
+|---|---|---|
+| SimulationCount | `MonteCarloDefaults.DefaultSimulationCount` | Number of bootstrap simulations (must be ≥ 1) |
+| Seed | null | Optional RNG seed for reproducibility |
+| RuinThresholdPercent | 0.5 | Equity drawdown fraction at which a simulation is marked as ruined |
+| BlockSize | 1 | Block size for block bootstrap resampling. 1 = IID bootstrap. Values > 1 sample contiguous blocks to preserve serial autocorrelation. Recommended for trend-following strategies: set to approximate average holding period in trades. Clamped to trade count when it exceeds the number of available trades |
 
 ### Edge Cases
 
 - Zero trades: returns a degenerate result with the source end equity as P10/P50/P90, empty paths, and empty bands.
 - `SimulationCount < 1`: throws `ArgumentException`.
 - Base scenario failure: throws `InvalidOperationException` with the validation errors.
+- `BlockSize` exceeding trade count: clamped to trade count (no error).
 
 ## Fill Mode and Annualisation
 
@@ -743,6 +864,34 @@ The concrete Web host is responsible for actually running studies on background 
 
 `IReportExporter` (`Application/Export/`) — exports a `BacktestResult` to various formats. Methods: `ExportMarkdownAsync`, `ExportTradeCsvAsync`, `ExportEquityCsvAsync`, `ExportJsonAsync`. Each returns the file path of the exported file.
 
+### ExportValidator (Application/Export/)
+
+`ExportValidator` validates generated Pine Script and MQL exports for structural correctness before presenting exported code to the user. It uses structural and syntax heuristics to detect common issues.
+
+**Public API:**
+
+| Method | Parameters | Returns |
+|---|---|---|
+| `Validate` | `string code`, `ExportFormat format` | `ExportValidationResult` |
+
+**ExportFormat enum:**
+
+| Value | Description |
+|---|---|
+| `MQL4` | MetaTrader 4 Expert Advisor (.mq4) |
+| `MQL5` | MetaTrader 5 Expert Advisor (.mq5) |
+| `PineScript` | TradingView Pine Script v6 (.pine) |
+
+**Validation checks by format:**
+
+- **All formats:** Brace matching (tracks depth, detects unclosed and unmatched braces, respects string literals and line comments)
+- **PineScript:** Requires `//@version=N` directive (N in 1–6) and a `strategy()` declaration
+- **MQL4/MQL5:** Requires `OnInit()` and `OnTick()` function definitions
+
+**ExportValidationResult** — sealed record with `IsValid` (bool) and `Errors` (`IReadOnlyList<ExportValidationError>`). Factory methods: `Success()` and `Failure(errors)`.
+
+**ExportValidationError** — sealed record with `Line` (int?, null if not line-specific), `Section` (string, e.g. "braces", "version directive", "OnInit"), and `Message` (human-readable description).
+
 ## V4 Migration Service
 
 `MigrationService` (`Infrastructure/Persistence/`) runs once on startup to migrate orphaned V2/V2.1 `BacktestResult` records into the V4 strategy model. Non-destructive: original files are untouched.
@@ -787,7 +936,7 @@ When both a sub-object and the corresponding top-level properties are present, t
 
 ### Direction.Short — V6 Full Short Execution
 
-V5 added `Direction.Short` to the enum (`{ Long, Short, Flat }`) for exhaustive switch coverage. V6 removes the `LongOnlyGuard` and enables full short-selling execution:
+V6 enables full bidirectional execution for all three `Direction` values (`Long`, `Short`, `Flat`):
 
 - `SimulatedExecutionHandler` fills short orders with `fillPrice = basePrice - slippageAmount` (favorable to seller). For tick data, short fills at Bid.
 - `Portfolio` tracks short positions in a separate `_shortPositions` dictionary. Short unrealised PnL: `(entryPrice - currentPrice) × |qty|`. Short close PnL: `(entryPrice - exitPrice) × |qty|`.
@@ -843,7 +992,7 @@ V5 introduces a typed parameter schema system so that the builder UI and validat
 
 ### Job-Based Async Execution
 
-- `BacktestJob` (`Application/Research/`) — async execution unit with lifecycle: Queued → Running → Completed/Failed/Cancelled.
+- `BacktestJob` (`Application/Research/`) — async execution unit with lifecycle: Queued → Running → Completed/Failed/Cancelled (transient failures transition through Retrying before re-entering Running or final Failed).
 - `JobExecutor` (`Application/Research/`) — manages active jobs via `ConcurrentDictionary<string, CancellationTokenSource>`. Methods: `SubmitAsync`, `GetJob`, `Cancel`, `ListJobs`, `RecoverOrphanedJobsAsync`.
 - `ProgressSnapshot` (`Application/Research/`) — richer progress reporting with `Current`, `Total`, `Percentage`, `Stage`, `CurrentItemLabel`, `ElapsedTime`, and `Warnings`.
 
@@ -851,7 +1000,7 @@ V5 introduces a typed parameter schema system so that the builder UI and validat
 
 - Gap detection and gap-adjusted fill prices in `SimulatedExecutionHandler` — detects overnight/weekend gaps (> 2× ATR) and fills at gap bar Open price.
 - Volume constraint enforcement — caps fill at `MaxFillPercentOfVolume × Volume` when set; logs warning when fill > 10% of bar volume.
-- `PortfolioConstraints` extended with `MaxExposurePerSymbol`, `MaxExposurePerSector`, `MaxCorrelatedExposure` (sector and correlation fields defined but not enforced until V5.1).
+- `PortfolioConstraints` extended with `MaxExposurePerSymbol`, `MaxExposurePerSector`, `MaxCorrelatedExposure`. Pairwise correlation enforcement is handled by `CorrelationConstraintEnforcer`; sector exposure enforcement is planned but not yet active.
 - `Portfolio.GetExposureBySymbol()` and `MaxExposurePerSymbol` enforcement in `DefaultRiskLayer`.
 - `ResearchChecklistService` extended with `NextRecommendedAction` and `TrialBudgetStatus` (Green/Amber/Red) for over-optimization detection.
 - `BenchmarkComparisonWorkflow` extended with auto buy-and-hold baseline and excess metrics (excess return, information ratio, tracking error, max relative drawdown).

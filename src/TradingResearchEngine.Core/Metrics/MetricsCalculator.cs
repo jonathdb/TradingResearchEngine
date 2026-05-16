@@ -306,7 +306,9 @@ public static class MetricsCalculator
     public static decimal? ComputeOmegaRatio(
         IReadOnlyList<EquityCurvePoint> curve, decimal threshold = 0m)
     {
+        if (curve.Count < 2) return null;
         var returns = GetPeriodReturns(curve);
+        if (returns.Count == 0) return null;
         decimal gains = returns.Where(r => r > threshold).Sum(r => r - threshold);
         decimal losses = returns.Where(r => r <= threshold).Sum(r => threshold - r);
         return losses == 0m ? null : gains / losses;
@@ -344,6 +346,43 @@ public static class MetricsCalculator
             if (barGap > maxGap) maxGap = barGap;
         }
         return maxGap;
+    }
+
+    /// <summary>
+    /// Computes duration distribution statistics from closed trades.
+    /// Returns null when no trades are available.
+    /// </summary>
+    public static DurationDistribution? ComputeDurationDistribution(IReadOnlyList<ClosedTrade> trades)
+    {
+        if (trades.Count == 0)
+            return null;
+
+        var durations = trades
+            .Select(t => t.Anatomy?.Duration ?? (t.ExitTime - t.EntryTime))
+            .OrderBy(d => d)
+            .ToList();
+
+        double meanTicks = durations.Average(d => d.Ticks);
+        var meanDuration = TimeSpan.FromTicks((long)meanTicks);
+
+        TimeSpan medianDuration;
+        int mid = durations.Count / 2;
+        if (durations.Count % 2 == 0)
+            medianDuration = TimeSpan.FromTicks((durations[mid - 1].Ticks + durations[mid].Ticks) / 2);
+        else
+            medianDuration = durations[mid];
+
+        var minDuration = durations[0];
+        var maxDuration = durations[^1];
+
+        // Standard deviation of durations
+        double varianceTicks = durations.Count < 2
+            ? 0.0
+            : durations.Sum(d => Math.Pow(d.Ticks - meanTicks, 2)) / (durations.Count - 1);
+        var stdDev = TimeSpan.FromTicks((long)Math.Sqrt(varianceTicks));
+
+        return new DurationDistribution(
+            meanDuration, medianDuration, minDuration, maxDuration, stdDev, trades.Count);
     }
 
     private static decimal StdDev(IEnumerable<decimal> values)

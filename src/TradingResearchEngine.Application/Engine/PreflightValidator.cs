@@ -1,4 +1,6 @@
+using System.Globalization;
 using TradingResearchEngine.Application.Configuration;
+using TradingResearchEngine.Application.Research;
 using TradingResearchEngine.Application.Strategies;
 using TradingResearchEngine.Core.Configuration;
 
@@ -518,6 +520,71 @@ public sealed class PreflightValidator
                 PreflightSeverity.Error,
                 "RANGE_VIOLATION"));
         return findings;
+    }
+
+    /// <summary>
+    /// Validates that a walk-forward configuration can produce valid windows given the available data range.
+    /// Checks that at least one complete IS+OOS window pair fits, reports expected window count,
+    /// and warns when fewer than 2 windows limits statistical significance.
+    /// </summary>
+    /// <param name="config">The scenario configuration providing the data range.</param>
+    /// <param name="options">Walk-forward options defining window sizes and step.</param>
+    /// <returns>A <see cref="WalkForwardValidation"/> indicating validity, window count, and any warnings or errors.</returns>
+    public static WalkForwardValidation ValidateWalkForward(ScenarioConfig config, WalkForwardOptions options)
+    {
+        // Parse data range from config
+        var dataOpts = config.EffectiveDataConfig.DataProviderOptions;
+        var dataFrom = dataOpts.TryGetValue("From", out var f) && f is DateTimeOffset df
+            ? df : DateTimeOffset.MinValue;
+        var dataTo = dataOpts.TryGetValue("To", out var t) && t is DateTimeOffset dt
+            ? dt : DateTimeOffset.MaxValue;
+
+        return ValidateWalkForward(options, dataFrom, dataTo);
+    }
+
+    /// <summary>
+    /// Validates that a walk-forward configuration can produce valid windows given explicit data boundaries.
+    /// Checks that at least one complete IS+OOS window pair fits, reports expected window count,
+    /// and warns when fewer than 2 windows limits statistical significance.
+    /// </summary>
+    /// <param name="options">Walk-forward options defining window sizes and step.</param>
+    /// <param name="dataFrom">Start of the available data range.</param>
+    /// <param name="dataTo">End of the available data range.</param>
+    /// <returns>A <see cref="WalkForwardValidation"/> indicating validity, window count, and any warnings or errors.</returns>
+    public static WalkForwardValidation ValidateWalkForward(
+        WalkForwardOptions options, DateTimeOffset dataFrom, DateTimeOffset dataTo)
+    {
+        var dataLength = dataTo - dataFrom;
+        var minRequired = options.InSampleLength + options.OutOfSampleLength;
+
+        if (dataLength < minRequired)
+        {
+            return WalkForwardValidation.Fail(string.Format(CultureInfo.InvariantCulture,
+                "Data range ({0:F1} days) insufficient. " +
+                "Minimum required: {1:F1} days " +
+                "(InSampleLength: {2:F1} days + OutOfSampleLength: {3:F1} days).",
+                dataLength.TotalDays, minRequired.TotalDays,
+                options.InSampleLength.TotalDays, options.OutOfSampleLength.TotalDays));
+        }
+
+        var windowSpecs = WalkForwardWorkflow.PrecomputeWindows(options, dataFrom, dataTo);
+        int windowCount = windowSpecs.Count;
+
+        if (windowCount == 0)
+        {
+            return WalkForwardValidation.Fail(string.Format(CultureInfo.InvariantCulture,
+                "Data range ({0:F1} days) insufficient for any complete window. " +
+                "Minimum required: {1:F1} days.",
+                dataLength.TotalDays, minRequired.TotalDays));
+        }
+
+        if (windowCount < 2)
+        {
+            return WalkForwardValidation.Warn(windowCount,
+                "Fewer than 2 windows limits statistical significance.");
+        }
+
+        return WalkForwardValidation.Ok(windowCount);
     }
 
     /// <summary>

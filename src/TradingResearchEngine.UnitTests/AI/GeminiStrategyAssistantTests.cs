@@ -189,19 +189,31 @@ public sealed class GeminiStrategyAssistantTests : IDisposable
     }
 
     [Fact]
-    public void Constructor_EmptyApiKey_ThrowsInvalidOperationException()
+    public async Task GenerateStrategyAsync_EmptyApiKey_ReturnsGracefulFailure()
     {
-        // Act & Assert
-        var ex = Assert.Throws<InvalidOperationException>(() => CreateAssistant(apiKey: ""));
-        Assert.Contains("API key", ex.Message);
+        // Arrange
+        var assistant = CreateAssistant(apiKey: "");
+
+        // Act
+        var result = await assistant.GenerateStrategyAsync("test prompt", CancellationToken.None);
+
+        // Assert
+        Assert.Equal("Unavailable", result.StrategyName);
+        Assert.Contains(result.Caveats, c => c.Contains("not configured"));
     }
 
     [Fact]
-    public void Constructor_NullApiKey_ThrowsInvalidOperationException()
+    public async Task GenerateStrategyAsync_NullApiKey_ReturnsGracefulFailure()
     {
-        // Act & Assert
-        var ex = Assert.Throws<InvalidOperationException>(() => CreateAssistant(apiKey: null));
-        Assert.Contains("API key", ex.Message);
+        // Arrange
+        var assistant = CreateAssistant(apiKey: null);
+
+        // Act
+        var result = await assistant.GenerateStrategyAsync("test prompt", CancellationToken.None);
+
+        // Assert
+        Assert.Equal("Unavailable", result.StrategyName);
+        Assert.Contains(result.Caveats, c => c.Contains("not configured"));
     }
 
     [Fact]
@@ -241,6 +253,7 @@ public sealed class GeminiStrategyAssistantTests : IDisposable
                     msg.Contains("Max Drawdown") &&
                     msg.Contains("Win Rate") &&
                     msg.Contains("Trade Count") &&
+                    msg.Contains("K-Ratio") &&
                     msg.Contains("Deflated Sharpe")),
                 It.IsAny<CancellationToken>()),
             Times.Once);
@@ -280,7 +293,7 @@ public sealed class GeminiStrategyAssistantTests : IDisposable
             new List<Core.Portfolio.EquityCurvePoint>(),
             new List<Core.Portfolio.ClosedTrade>(),
             100_000m, 110_000m, 0.05m,
-            1.5m, 2.0m, 1.2m, 2.0m, 50,
+            1.5m, 2.0m, 1.2m, null, null, null, null, 2.0m, 50,
             0.6m, 1.8m, 500m, -300m, 100m,
             TimeSpan.FromDays(5), 0.95m, 3, 7, 1000,
             DeflatedSharpeRatio: 1.2m);

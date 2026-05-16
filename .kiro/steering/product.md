@@ -11,7 +11,7 @@ Its primary output is a structured `BacktestResult` that feeds into research wor
 - Pluggable strategy, risk, slippage, and commission components
 - Research workflows: parameter sweep, variance testing, Monte Carlo, walk-forward
 - Prop-firm challenge and instant-funding economics modelling
-- CLI host (argument-driven + interactive) and ASP.NET Core minimal API host
+- CLI host (argument-driven + interactive) and ASP.NET Core minimal API host (removed — now Web-only)
 - CSV and HTTP REST data providers
 - JSON file persistence
 - Console and Markdown reporting
@@ -35,9 +35,10 @@ It operates in USD only.
 Concrete implementations of Core/Application interfaces only.
 No domain logic. No direct references to engine internals beyond the interfaces defined in Core.
 
-### Hosts (Cli, Api)
-Composition roots only. Wire DI, parse input, invoke use cases, render output.
-No business logic in hosts.
+### Web (Composition Root)
+Sole application entry point. Blazor Server UI host.
+Wires DI, hosts UI components, invokes Application use cases.
+No business logic in the host.
 
 ## Out of Scope for V1
 
@@ -53,7 +54,7 @@ V2 is engine-only. UI rework is V3.
 - Eliminated look-ahead bias: pending-order queue with 4-step per-bar processing (BUG-01)
 - Sharpe/Sortino computed from equity curve period returns with configurable BarsPerYear (BUG-02)
 - Continuous mark-to-market on every bar with enriched EquityCurvePoint (BUG-03)
-- Direction.Short removed; long-only V2 scope (BUG-04) — V5 re-adds `Direction.Short` for exhaustive switch coverage with `LongOnlyGuard` runtime guard; short execution deferred to V6
+- Direction.Short removed; long-only V2 scope (BUG-04) — V5 re-adds `Direction.Short` for exhaustive switch coverage; V6 implements full bidirectional execution
 - Monte Carlo resamples normalised ReturnOnRisk, multiplicative path reconstruction (BUG-05)
 - O(1) rolling SMA in all strategies (IMP-01)
 - ADF stationarity test cached with recheck interval (IMP-02)
@@ -113,7 +114,7 @@ V3 transforms the engine into a user-facing research product. Single-user, local
 
 V6 delivers four tracks of improvements:
 
-- Full long/short execution replacing the V5 `LongOnlyGuard` — bidirectional strategies, short position tracking, signed quantity sizing
+- Full long/short execution with bidirectional strategies, short position tracking, signed quantity sizing
 - SQLite index persistence over JSON files for O(log n) lookups; parallel walk-forward and parameter sweep execution via `Parallel.ForEachAsync` with `SemaphoreSlim` concurrency control
 - Plotly.Blazor interactive charting: equity curve, monthly returns heatmap, trade PnL histogram, holding period histogram, Monte Carlo fan chart, walk-forward composite chart, parameter sweep heatmap
 - Quant depth: CPCV (Combinatorial Purged Cross-Validation) implementation, prop-firm evaluation persistence wiring, IPropFirmPackLoader DI service, benchmark excess Sharpe wiring, timeframe-aware MinBTL recommendations, 9-item research checklist with updated confidence thresholds

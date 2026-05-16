@@ -130,4 +130,30 @@ public sealed class CsvDataProvider : IDataProvider
                 yield return tick;
         }
     }
+
+    /// <summary>
+    /// Estimates bar count by counting lines in the CSV file (minus header).
+    /// Lightweight — reads only line endings, does not parse fields.
+    /// Returns <c>null</c> if the file does not exist.
+    /// </summary>
+    public ValueTask<int?> EstimateBarCountAsync(CancellationToken ct = default)
+    {
+        if (!File.Exists(_filePath))
+            return new((int?)null);
+
+        // Count lines minus header — fast I/O without full CSV parsing
+        int lineCount = 0;
+        using (var reader = new StreamReader(_filePath))
+        {
+            while (reader.ReadLine() is not null)
+            {
+                ct.ThrowIfCancellationRequested();
+                lineCount++;
+            }
+        }
+
+        // Subtract 1 for header row
+        int estimate = Math.Max(0, lineCount - 1);
+        return new(estimate > 0 ? estimate : null);
+    }
 }

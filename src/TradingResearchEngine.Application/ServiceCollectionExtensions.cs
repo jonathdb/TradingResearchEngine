@@ -39,6 +39,15 @@ public static class ServiceCollectionExtensions
         services.Configure<RepositoryOptions>(configuration.GetSection("Repository"));
         services.Configure<SweepOptions>(configuration.GetSection("Sweep"));
         services.Configure<WalkForwardOptions>(configuration.GetSection("WalkForward"));
+        services.Configure<ConcurrencyOptions>(configuration.GetSection("Concurrency"));
+
+        // Typed data provider configuration — bound from appsettings.json:DataProviders:{Provider}
+        services.Configure<CsvDataProviderOptions>(configuration.GetSection("DataProviders:Csv"));
+        services.Configure<HttpDataProviderOptions>(configuration.GetSection("DataProviders:Http"));
+        services.Configure<DukascopyDataProviderOptions>(configuration.GetSection("DataProviders:Dukascopy"));
+
+        // Global concurrency budget — singleton shared across all parallel workflows
+        services.AddSingleton<ConcurrencyBudget>();
 
         // V8: Bind GeminiOptions from configuration
         services.Configure<GeminiOptions>(configuration.GetSection("Gemini"));
@@ -84,6 +93,9 @@ public static class ServiceCollectionExtensions
         // Benchmark comparison
         services.AddScoped<BenchmarkComparisonWorkflow>();
 
+        // Realism sensitivity
+        services.AddScoped<RealismSensitivityWorkflow>();
+
         // V6: CPCV study handler
         services.AddScoped<CpcvStudyHandler>();
 
@@ -100,6 +112,7 @@ public static class ServiceCollectionExtensions
 
         // V4: Sealed test set guard with audit logging
         services.AddScoped<SealedTestSetGuard>();
+        services.AddScoped<ITestSetGuard, StrategyVersionTestSetGuard>();
 
         // V5: Preflight validation and resolved config
         services.AddScoped<PreflightValidator>();
@@ -118,11 +131,21 @@ public static class ServiceCollectionExtensions
         // V8: Result export service for browser file downloads
         services.AddSingleton<IResultExportService, ResultExportService>();
 
+        // Comparison report generation — bound from appsettings.json:Reports:Comparison
+        services.Configure<ComparisonReportOptions>(configuration.GetSection("Reports:Comparison"));
+        services.AddScoped<ComparisonReportGenerator>();
+
         // V8: BarDataPool singleton for hot-path allocation reduction
         services.AddSingleton<BarDataPool>();
 
         // Register all Skender catalog indicators in the Core IndicatorRegistry
         SkenderIndicatorCatalog.RegisterInIndicatorRegistry();
+
+        // Startup validation: iterates all catalog entries and logs warnings for failures
+        services.AddHostedService<IndicatorCatalogValidationService>();
+
+        // Startup verification: attempts instantiation of all registered strategies
+        services.AddHostedService<StrategyRegistryValidationService>();
 
         // V8: AI Strategy Assistant — conditionally registered based on API key availability
         services.AddSingleton<IAIStrategyAssistant>(sp =>

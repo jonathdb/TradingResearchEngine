@@ -1,5 +1,6 @@
 @page "/strategies/builder"
 @page "/strategies/builder/{DraftId}"
+@page "/strategies/new"
 @using System.Text.Json
 @using TradingResearchEngine.Web.Components.Builder
 @using TradingResearchEngine.Application.AI
@@ -283,6 +284,13 @@
         _vm.Timeframe = tpl.RecommendedTimeframe;
         _vm.Hypothesis ??= tpl.Descriptor?.Hypothesis;
         _vm.IsDirty = true;
+
+        // In beginner mode, apply the template's default realism profile to ensure
+        // realistic execution assumptions. Never default to FastResearch in beginner mode.
+        if (_vm.IsBeginnerMode)
+        {
+            _vm.RealismProfile = tpl.DefaultRealismProfile;
+        }
 
         _presetParameters = new Dictionary<string, object>(tpl.DefaultParameters);
         LoadSchemaForCurrentStrategy();

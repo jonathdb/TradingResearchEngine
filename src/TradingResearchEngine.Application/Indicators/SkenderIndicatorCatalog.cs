@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Skender.Stock.Indicators;
 using TradingResearchEngine.Core.Indicators;
 
@@ -32,14 +33,94 @@ public sealed record SkenderCatalogEntry(
 public static class SkenderIndicatorCatalog
 {
     private static readonly List<SkenderCatalogEntry> _entries = BuildCatalog();
+    private static List<SkenderCatalogEntry>? _functionalEntries;
     private static bool _registered;
+    private static bool _validated;
 
     /// <summary>All registered indicator catalog entries.</summary>
     public static IReadOnlyList<SkenderCatalogEntry> All => _entries;
 
+    /// <summary>
+    /// Only entries whose invoker produces a non-null result with default parameters
+    /// and sufficient sample data. Use this property in UI components to ensure users
+    /// only see functional indicators.
+    /// </summary>
+    public static IReadOnlyList<SkenderCatalogEntry> FunctionalEntries
+    {
+        get
+        {
+            if (_functionalEntries is null)
+            {
+                _functionalEntries = _entries.Where(e => IsEntryFunctional(e)).ToList();
+            }
+            return _functionalEntries;
+        }
+    }
+
     /// <summary>Gets a catalog entry by key, or null if not found.</summary>
     public static SkenderCatalogEntry? Get(string key) =>
         _entries.FirstOrDefault(e => string.Equals(e.Key, key, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// Validates all catalog entries by invoking each factory with default parameters
+    /// and sample data. Logs warnings for any entries that fail or return null.
+    /// Should be called at application startup.
+    /// </summary>
+    /// <param name="logger">Logger instance for reporting validation results.</param>
+    /// <returns>The list of entries that failed validation.</returns>
+    public static IReadOnlyList<SkenderCatalogEntry> ValidateAll(ILogger logger)
+    {
+        if (_validated)
+            return _entries.Where(e => !IsEntryFunctional(e)).ToList();
+
+        _validated = true;
+        var sampleQuotes = GenerateSampleQuotes(100);
+        var failures = new List<SkenderCatalogEntry>();
+
+        foreach (var entry in _entries)
+        {
+            var defaultParams = entry.Parameters.ToDictionary(
+                p => p.Name,
+                p => p.DefaultValue);
+
+            try
+            {
+                var result = entry.Invoker(sampleQuotes, defaultParams, entry.PrimaryOutputField);
+                if (result is null)
+                {
+                    logger.LogWarning(
+                        "Indicator catalog validation: entry '{Key}' ({DisplayName}) returned null with default parameters and {BarCount} sample bars",
+                        entry.Key, entry.DisplayName, sampleQuotes.Count);
+                    failures.Add(entry);
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex,
+                    "Indicator catalog validation: entry '{Key}' ({DisplayName}) threw an exception with default parameters",
+                    entry.Key, entry.DisplayName);
+                failures.Add(entry);
+            }
+        }
+
+        if (failures.Count == 0)
+        {
+            logger.LogInformation(
+                "Indicator catalog validation: all {Count} entries validated successfully",
+                _entries.Count);
+        }
+        else
+        {
+            logger.LogWarning(
+                "Indicator catalog validation: {FailureCount} of {TotalCount} entries failed validation",
+                failures.Count, _entries.Count);
+        }
+
+        // Rebuild functional entries cache after validation
+        _functionalEntries = _entries.Where(e => IsEntryFunctional(e)).ToList();
+
+        return failures;
+    }
 
     /// <summary>
     /// Registers all catalog indicators in <see cref="IndicatorRegistry.All"/>.
@@ -306,11 +387,6 @@ public static class SkenderIndicatorCatalog
             }),
 
         // Statistical
-        Entry("correlation", "Correlation", "Pearson correlation between price and a benchmark.", "Statistical",
-            new[] { Param("period", typeof(int), 20, 2, 500, "Lookback period") },
-            "Correlation", new[] { "Correlation" },
-            (quotes, p, field) => null), // Requires two series — placeholder
-
         Entry("slope", "Slope (Linear Regression)", "Linear regression slope.", "Statistical",
             new[] { Param("period", typeof(int), 20, 2, 500, "Lookback period") },
             "Slope", new[] { "Slope", "Intercept", "RSquared" },
@@ -437,4 +513,58 @@ public static class SkenderIndicatorCatalog
 
     private static double GetDouble(Dictionary<string, object> p, string key) =>
         p.TryGetValue(key, out var v) ? Convert.ToDouble(v) : 0.0;
+
+    /// <summary>
+    /// Tests whether a catalog entry produces a non-null result with default parameters
+    /// and sufficient sample data.
+    /// </summary>
+    private static bool IsEntryFunctional(SkenderCatalogEntry entry)
+    {
+        var sampleQuotes = GenerateSampleQuotes(100);
+        var defaultParams = entry.Parameters.ToDictionary(
+            p => p.Name,
+            p => p.DefaultValue);
+
+        try
+        {
+            var result = entry.Invoker(sampleQuotes, defaultParams, entry.PrimaryOutputField);
+            return result is not null;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Generates synthetic OHLCV quote data for validation purposes.
+    /// Produces a simple uptrending series with realistic price relationships.
+    /// </summary>
+    private static IReadOnlyList<Quote> GenerateSampleQuotes(int count)
+    {
+        var quotes = new List<Quote>(count);
+        var basePrice = 100m;
+        var date = new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        for (int i = 0; i < count; i++)
+        {
+            var open = basePrice + (i * 0.5m);
+            var close = open + (i % 3 == 0 ? -0.3m : 0.4m);
+            var high = Math.Max(open, close) + 0.5m;
+            var low = Math.Min(open, close) - 0.5m;
+            var volume = 1000000m + (i * 10000m);
+
+            quotes.Add(new Quote
+            {
+                Date = date.AddDays(i),
+                Open = open,
+                High = high,
+                Low = low,
+                Close = close,
+                Volume = volume
+            });
+        }
+
+        return quotes;
+    }
 }

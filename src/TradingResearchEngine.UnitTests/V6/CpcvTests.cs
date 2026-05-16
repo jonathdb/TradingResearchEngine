@@ -58,7 +58,7 @@ public class CpcvTests
     public async Task Validate_NumPathsLessThan3_Throws()
     {
         var options = new CpcvOptions(NumPaths: 2, TestFolds: 1);
-        var handler = new CpcvStudyHandler(null!);
+        var handler = new CpcvStudyHandler(null!, new ConcurrencyBudget(4));
 
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(
             () => handler.RunAsync(
@@ -70,7 +70,7 @@ public class CpcvTests
     public async Task Validate_TestFoldsZero_Throws()
     {
         var options = new CpcvOptions(NumPaths: 3, TestFolds: 0);
-        var handler = new CpcvStudyHandler(null!);
+        var handler = new CpcvStudyHandler(null!, new ConcurrencyBudget(4));
 
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(
             () => handler.RunAsync(
@@ -82,7 +82,7 @@ public class CpcvTests
     public async Task Validate_TestFoldsGreaterOrEqualNumPaths_Throws()
     {
         var options = new CpcvOptions(NumPaths: 3, TestFolds: 3);
-        var handler = new CpcvStudyHandler(null!);
+        var handler = new CpcvStudyHandler(null!, new ConcurrencyBudget(4));
 
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(
             () => handler.RunAsync(

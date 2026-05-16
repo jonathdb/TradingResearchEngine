@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TradingResearchEngine.Application.Configuration;
+using TradingResearchEngine.Core.Configuration;
 using TradingResearchEngine.Core.Events;
 using TradingResearchEngine.Core.Risk;
 
@@ -9,12 +10,15 @@ namespace TradingResearchEngine.Application.Risk;
 /// <summary>
 /// Default risk layer. Delegates position sizing to <see cref="IPositionSizingPolicy"/>
 /// and enforces MaxExposurePercent plus optional <see cref="PortfolioConstraints"/>.
+/// Evaluates correlation constraints via <see cref="CorrelationConstraintEnforcer"/> when configured.
 /// </summary>
 public sealed class DefaultRiskLayer : IRiskLayer
 {
     private readonly RiskOptions _options;
     private readonly PortfolioConstraints? _constraints;
     private readonly IPositionSizingPolicy _sizingPolicy;
+    private readonly CorrelationConstraintEnforcer? _correlationEnforcer;
+    private readonly PortfolioRiskConfig? _portfolioRiskConfig;
     private readonly ILogger<DefaultRiskLayer> _logger;
     private MarketDataEvent? _lastMarket;
 
@@ -23,12 +27,16 @@ public sealed class DefaultRiskLayer : IRiskLayer
         IOptions<RiskOptions> options,
         ILogger<DefaultRiskLayer> logger,
         IPositionSizingPolicy? sizingPolicy = null,
-        PortfolioConstraints? constraints = null)
+        PortfolioConstraints? constraints = null,
+        CorrelationConstraintEnforcer? correlationEnforcer = null,
+        PortfolioRiskConfig? portfolioRiskConfig = null)
     {
         _options = options.Value;
         _logger = logger;
         _sizingPolicy = sizingPolicy ?? new PercentEquitySizingPolicy(0.02m);
         _constraints = constraints;
+        _correlationEnforcer = correlationEnforcer;
+        _portfolioRiskConfig = portfolioRiskConfig;
     }
 
     /// <summary>Updates the last market event for sizing policy context.</summary>
@@ -176,6 +184,38 @@ public sealed class DefaultRiskLayer : IRiskLayer
                         order.Symbol, newSymbolExposure, maxPerSymbolExposure);
                     return null;
                 }
+            }
+        }
+
+        // Correlation constraint enforcement
+        if (_correlationEnforcer is not null &&
+            _portfolioRiskConfig?.MaxPairwiseCorrelation is not null &&
+            (order.Direction == Direction.Long || order.Direction == Direction.Short))
+        {
+            var existingPositions = snapshot.Positions;
+            if (snapshot.ShortPositions is not null && snapshot.ShortPositions.Count > 0)
+            {
+                // Merge long and short positions for correlation check
+                var merged = new Dictionary<string, Core.Portfolio.Position>(existingPositions);
+                foreach (var (symbol, pos) in snapshot.ShortPositions)
+                {
+                    merged.TryAdd(symbol, pos);
+                }
+                existingPositions = merged;
+            }
+
+            var correlationResult = _correlationEnforcer.Evaluate(
+                order.Symbol,
+                existingPositions,
+                _portfolioRiskConfig.MaxPairwiseCorrelation.Value,
+                _portfolioRiskConfig.CorrelationLookbackBars);
+
+            if (!correlationResult.IsAllowed)
+            {
+                _logger.LogWarning(
+                    "RiskRejection: {Symbol} — correlation constraint violated. {Reason}",
+                    order.Symbol, correlationResult.Reason);
+                return null;
             }
         }
 

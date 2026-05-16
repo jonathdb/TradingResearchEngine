@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using TradingResearchEngine.Core.Configuration;
 using TradingResearchEngine.Core.DataHandling;
 using TradingResearchEngine.Core.Events;
+using TradingResearchEngine.Core.Exceptions;
 using TradingResearchEngine.Core.Execution;
 using TradingResearchEngine.Core.Metrics;
 using TradingResearchEngine.Core.Portfolio;
@@ -27,6 +28,7 @@ public sealed class BacktestEngine : IBacktestEngine
     private readonly IExecutionHandler _executionHandler;
     private readonly ISessionCalendar? _sessionCalendar;
     private readonly BarDataPool? _barDataPool;
+    private readonly IDataProviderFactory? _dataProviderFactory;
     private readonly ILogger<BacktestEngine> _logger;
     private readonly ILoggerFactory _loggerFactory;
 
@@ -39,7 +41,8 @@ public sealed class BacktestEngine : IBacktestEngine
         ILogger<BacktestEngine> logger,
         ILoggerFactory loggerFactory,
         ISessionCalendar? sessionCalendar = null,
-        BarDataPool? barDataPool = null)
+        BarDataPool? barDataPool = null,
+        IDataProviderFactory? dataProviderFactory = null)
     {
         _dataProvider = dataProvider;
         _strategyFactory = strategyFactory;
@@ -49,6 +52,7 @@ public sealed class BacktestEngine : IBacktestEngine
         _loggerFactory = loggerFactory;
         _sessionCalendar = sessionCalendar;
         _barDataPool = barDataPool;
+        _dataProviderFactory = dataProviderFactory;
     }
 
     /// <summary>
@@ -63,9 +67,10 @@ public sealed class BacktestEngine : IBacktestEngine
         ILogger<BacktestEngine> logger,
         ILoggerFactory? loggerFactory = null,
         ISessionCalendar? sessionCalendar = null,
-        BarDataPool? barDataPool = null)
+        BarDataPool? barDataPool = null,
+        IDataProviderFactory? dataProviderFactory = null)
         : this(dataProvider, new SingletonStrategyFactory(strategy), riskLayer, executionHandler, logger,
-            loggerFactory ?? Microsoft.Extensions.Logging.Abstractions.NullLoggerFactory.Instance, sessionCalendar, barDataPool)
+            loggerFactory ?? Microsoft.Extensions.Logging.Abstractions.NullLoggerFactory.Instance, sessionCalendar, barDataPool, dataProviderFactory)
     {
     }
 
@@ -74,7 +79,8 @@ public sealed class BacktestEngine : IBacktestEngine
     {
         var sw = Stopwatch.StartNew();
         var portfolio = new Portfolio.Portfolio(config.InitialCash,
-            _loggerFactory.CreateLogger<Portfolio.Portfolio>());
+            _loggerFactory.CreateLogger<Portfolio.Portfolio>(),
+            enableTradeAnatomy: config.EnableEventTrace);
         var queue = new EventQueue();
         var dataHandler = new DataHandler(_dataProvider, config, _loggerFactory.CreateLogger<DataHandler>(), _barDataPool);
         var state = new RunState(config.EffectiveFillMode, config.EnableEventTrace,
@@ -86,10 +92,37 @@ public sealed class BacktestEngine : IBacktestEngine
         // Initialize the strategy with its configuration before the event loop
         strategy.Initialize(config.EffectiveStrategyConfig);
 
+        // Multi-timeframe support: validate and initialize secondary timeframe data sources
+        MultiTimeframeDataHandler? multiTfHandler = null;
+        var multiTfStrategy = strategy as IMultiTimeframeStrategy;
+
+        if (config.SecondaryTimeframes is { Count: > 0 })
+        {
+            if (_dataProviderFactory is null)
+                throw new ConfigurationException("Multi-timeframe execution requires an IDataProviderFactory but none was provided.");
+
+            multiTfHandler = new MultiTimeframeDataHandler(
+                _dataProviderFactory,
+                _loggerFactory.CreateLogger<MultiTimeframeDataHandler>());
+
+            // Validate all secondary data sources are available before execution (Requirement 32.4, 32.5)
+            var validationErrors = multiTfHandler.ValidateDataSources(config.SecondaryTimeframes);
+            if (validationErrors.Count > 0)
+            {
+                throw new ConfigurationException(
+                    $"Multi-timeframe validation failed: {string.Join("; ", validationErrors)}");
+            }
+
+            await multiTfHandler.InitializeAsync(
+                config.SecondaryTimeframes,
+                config.DataProviderOptions,
+                ct);
+        }
+
         int barsProcessed = 0;
-        // Estimate ~100 progress updates per run using Math.Max(1, estimatedTotalBars / 100).
-        // Since totalBars is unknown from streaming data, estimate from BarsPerYear * 5 (typical 5-year run).
-        int estimatedTotalBars = config.BarsPerYear * 5;
+        // Use provider-aware progress estimation (Requirement 13.1–13.4)
+        await dataHandler.InitializeEstimateAsync(ct);
+        int estimatedTotalBars = dataHandler.EstimatedTotalBars;
         int progressInterval = Math.Max(1, estimatedTotalBars / 100);
 
         try
@@ -102,12 +135,30 @@ public sealed class BacktestEngine : IBacktestEngine
                 {
                     if (evt is MarketDataEvent mde)
                     {
+                        // Deliver secondary timeframe bars before the primary bar (Requirement 32.2)
+                        if (multiTfHandler is not null && multiTfStrategy is not null)
+                        {
+                            var secondaryBars = await multiTfHandler.GetSecondaryBarsBeforeAsync(mde.Timestamp, ct);
+                            foreach (var (timeframe, bar) in secondaryBars)
+                            {
+                                multiTfStrategy.OnSecondaryBar(timeframe, bar);
+                            }
+                        }
+
                         ProcessBar(mde, queue, portfolio, state, strategy);
                         barsProcessed++;
+                        dataHandler.NotifyBarConsumed();
 
                         if (progress is not null && barsProcessed % progressInterval == 0)
                         {
-                            progress.Report(new ProgressUpdate(barsProcessed, 0, "Processing bars..."));
+                            // Use refined estimate from DataHandler as bars are consumed
+                            int currentEstimate = dataHandler.EstimatedTotalBars;
+                            if (currentEstimate != estimatedTotalBars)
+                            {
+                                estimatedTotalBars = currentEstimate;
+                                progressInterval = Math.Max(1, estimatedTotalBars / 100);
+                            }
+                            progress.Report(new ProgressUpdate(barsProcessed, estimatedTotalBars, "Processing bars..."));
                         }
                     }
                     else
@@ -558,6 +609,10 @@ public sealed class BacktestEngine : IBacktestEngine
             SharpeRatio: MetricsCalculator.ComputeSharpeRatio(curve, config.AnnualRiskFreeRate, config.BarsPerYear),
             SortinoRatio: MetricsCalculator.ComputeSortinoRatio(curve, config.AnnualRiskFreeRate, config.BarsPerYear),
             CalmarRatio: MetricsCalculator.ComputeCalmarRatio(curve, startEq, endEq, config.BarsPerYear),
+            VaR95: MetricsCalculator.ComputeHistoricalVaR(curve, 0.95m),
+            CVaR95: MetricsCalculator.ComputeHistoricalCVaR(curve, 0.95m),
+            OmegaRatio: MetricsCalculator.ComputeOmegaRatio(curve),
+            UlcerIndex: MetricsCalculator.ComputeUlcerIndex(curve),
             ReturnOnMaxDrawdown: MetricsCalculator.ComputeReturnOnMaxDrawdown(curve, startEq, endEq),
             TotalTrades: trades.Count,
             WinRate: MetricsCalculator.ComputeWinRate(trades),

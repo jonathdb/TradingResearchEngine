@@ -86,6 +86,18 @@ V5 decomposes `ScenarioConfig` into five typed sub-objects: `Data`, `Strategy`, 
 
 Engine code always reads from `Effective*` computed properties, so both formats produce identical execution behavior.
 
+### Programmatic Normalization
+
+For code that needs to ensure a config is in canonical V5+ form (all sub-objects populated), use `ScenarioConfigNormalizer`:
+
+```csharp
+using TradingResearchEngine.Application.Configuration;
+
+var canonical = ScenarioConfigNormalizer.Normalize(rawConfig);
+```
+
+This transforms legacy flat fields into the canonical sub-object shape in memory without modifying the source file on disk. Canonical shape is persisted only on explicit save. This provides a single validation path for all downstream code regardless of the original config format.
+
 ---
 
 ## New Fields on Existing Records

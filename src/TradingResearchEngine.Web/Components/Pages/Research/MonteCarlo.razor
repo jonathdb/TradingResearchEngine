@@ -1,6 +1,8 @@
 @page "/research/montecarlo"
 @inject TradingResearchEngine.Application.Research.MonteCarloWorkflow McWorkflow
+@inject TradingResearchEngine.Application.Research.IBacktestResultRepository ResultRepo
 @inject ISnackbar Snackbar
+@implements IDisposable
 
 <PageTitle>Monte Carlo — Research Engine</PageTitle>
 
@@ -11,6 +13,18 @@
     </div>
 </div>
 
+@if (!_hasResults)
+{
+    <MudPaper Class="pa-8 d-flex flex-column align-center justify-center" Elevation="0" Style="text-align:center; border: 1px dashed var(--mud-palette-divider);">
+        <MudIcon Icon="@Icons.Material.Outlined.QueryStats" Style="font-size:3rem;" Class="text-muted mb-3" />
+        <MudText Typo="Typo.h6" Class="mb-1">No backtest results available</MudText>
+        <MudText Typo="Typo.body2" Class="text-muted mb-4">You need to run a backtest first before using Monte Carlo simulation.</MudText>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="/strategies/builder"
+                   StartIcon="@Icons.Material.Filled.PlayArrow">Run a Backtest First</MudButton>
+    </MudPaper>
+}
+else
+{
 <MudGrid>
     <MudItem xs="12" md="5">
         <MudPaper Class="pa-4" Elevation="2">
@@ -73,13 +87,24 @@
         }
     </MudItem>
 </MudGrid>
+}
 
 @code {
+    private readonly CancellationTokenSource _cts = new();
     private BacktestResult? _selectedResult;
     private int _simCount = 1000;
     private decimal _ruinThreshold = 0.50m;
     private int? _seed;
+    private bool _hasResults = true;
     private TradingResearchEngine.Application.Research.Results.MonteCarloResult? _mcResult;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var results = await ResultRepo.ListAsync(_cts.Token);
+        _hasResults = results.Any(r => r.Status == BacktestStatus.Completed);
+    }
+
+    public void Dispose() { _cts.Cancel(); _cts.Dispose(); }
 
     private void OnResultSelected(BacktestResult? result) => _selectedResult = result;
 

@@ -32,26 +32,17 @@ public sealed record GeminiOptions
     public string SystemPromptFilePath { get; init; } = "Prompts/strategy-assistant-system.md";
 
     /// <summary>
-    /// Base delay in seconds for the adaptive exponential backoff strategy.
-    /// Used as the starting delay for retry calculations when the server does not provide
-    /// a <c>Retry-After</c> header, or when the computed backoff exceeds the header value.
-    /// Default: 5.0 seconds.
+    /// Maximum time allowed for a single outbound AI API call before it is cancelled.
+    /// The timeout applies per-call (each retry attempt gets its own timeout window).
+    /// Default: 60 seconds.
     /// </summary>
-    public double BaseRetryDelaySeconds { get; init; } = 5.0;
+    public TimeSpan CallTimeout { get; init; } = TimeSpan.FromSeconds(60);
 
     /// <summary>
-    /// Number of consecutive HTTP 429 responses required to open the circuit breaker.
-    /// Once the threshold is reached, subsequent requests fail immediately with a
-    /// <c>RateLimitExceededException</c> until the circuit resets.
-    /// Default: 3.
+    /// Maximum combined character length of the system prompt and user message
+    /// allowed before an API call is made. When exceeded, a descriptive error is
+    /// returned rather than an opaque API failure.
+    /// Default: 30000 characters.
     /// </summary>
-    public int CircuitBreakerThreshold { get; init; } = 3;
-
-    /// <summary>
-    /// Duration in seconds that the circuit breaker remains open after being tripped.
-    /// After this period elapses, the circuit transitions to half-open and allows a
-    /// single probe request to determine if the rate limit has lifted.
-    /// Default: 60.0 seconds.
-    /// </summary>
-    public double CircuitBreakerDurationSeconds { get; init; } = 60.0;
+    public int MaxPromptLength { get; init; } = 30_000;
 }

@@ -32,12 +32,13 @@ public sealed class StrategySchemaProvider : IStrategySchemaProvider
     private static StrategyParameterSchema BuildSchema(ParameterInfo param, int index)
     {
         var meta = param.GetCustomAttribute<ParameterMetaAttribute>();
+        var defaultValue = ResolveDefault(param, meta);
         return new StrategyParameterSchema(
             Name: param.Name ?? "",
             DisplayName: meta?.DisplayName ?? FormatName(param.Name ?? ""),
             Type: MapType(param.ParameterType),
-            DefaultValue: param.HasDefaultValue ? param.DefaultValue! : GetTypeDefault(param.ParameterType),
-            IsRequired: !param.HasDefaultValue,
+            DefaultValue: defaultValue,
+            IsRequired: !param.HasDefaultValue && (meta is null || !meta.HasDefault),
             Min: meta?.Min,
             Max: meta?.Max,
             EnumChoices: param.ParameterType.IsEnum ? Enum.GetNames(param.ParameterType) : null,
@@ -46,6 +47,35 @@ public sealed class StrategySchemaProvider : IStrategySchemaProvider
             Group: meta?.Group ?? "Signal",
             IsAdvanced: meta?.IsAdvanced ?? false,
             DisplayOrder: meta?.DisplayOrder ?? index);
+    }
+
+    /// <summary>
+    /// Resolves the default value for a parameter using the following precedence:
+    /// 1. C# constructor default value (highest priority — language-level contract)
+    /// 2. <see cref="ParameterMetaAttribute.Default"/> (schema-driven, attribute-based)
+    /// 3. Type-based fallback (last resort for backward compatibility)
+    /// </summary>
+    private static object ResolveDefault(ParameterInfo param, ParameterMetaAttribute? meta)
+    {
+        // 1. Constructor default takes highest priority
+        if (param.HasDefaultValue && param.DefaultValue is not null)
+            return param.DefaultValue;
+
+        // 2. Attribute-based schema default
+        if (meta is { HasDefault: true, Default: not null })
+        {
+            try
+            {
+                return Convert.ChangeType(meta.Default, param.ParameterType);
+            }
+            catch
+            {
+                return meta.Default;
+            }
+        }
+
+        // 3. Last-resort type-based fallback
+        return GetTypeDefault(param.ParameterType);
     }
 
     private static string FormatName(string camelCase) =>
@@ -61,6 +91,10 @@ public sealed class StrategySchemaProvider : IStrategySchemaProvider
         return type.Name.ToLowerInvariant();
     }
 
+    /// <summary>
+    /// Last-resort fallback: returns a sensible zero/empty value for the given type.
+    /// Prefer constructor defaults or <see cref="ParameterMetaAttribute.Default"/> over this method.
+    /// </summary>
     private static object GetTypeDefault(Type type)
     {
         if (type == typeof(int)) return 0;

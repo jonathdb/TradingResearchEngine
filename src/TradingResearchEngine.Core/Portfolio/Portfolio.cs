@@ -7,22 +7,36 @@ namespace TradingResearchEngine.Core.Portfolio;
 /// <summary>
 /// Tracks open positions, cash balance, and equity curve by consuming <see cref="FillEvent"/> instances.
 /// V6: Adds ShortPositions dictionary for short position tracking with correct mark-to-market.
+/// V7: Cached position snapshots and O(1) OpenPositionCount for hot-path optimization.
+/// V8: Tracks intra-trade price extremes for MAE/MFE computation when event tracing is enabled.
 /// </summary>
 public sealed class Portfolio
 {
     private readonly ILogger<Portfolio> _logger;
+    private readonly bool _enableTradeAnatomy;
     private readonly Dictionary<string, PositionState> _positions = new();
     private readonly Dictionary<string, ShortPositionState> _shortPositions = new();
     private readonly List<EquityCurvePoint> _equityCurve = new();
     private readonly List<ClosedTrade> _closedTrades = new();
 
+    // Intra-trade price tracking for MAE/MFE (only populated when _enableTradeAnatomy is true)
+    private readonly Dictionary<string, TradeExcursionTracker> _longExcursionTrackers = new();
+    private readonly Dictionary<string, TradeExcursionTracker> _shortExcursionTrackers = new();
+
+    // Cached snapshots — rebuilt lazily only on state change
+    private IReadOnlyDictionary<string, Position>? _cachedPositions;
+    private IReadOnlyDictionary<string, Position>? _cachedShortPositions;
+    private int _openPositionCount;
+    private bool _snapshotDirty = true;
+
     /// <summary>Initialises the portfolio with a starting cash balance.</summary>
-    public Portfolio(decimal initialCash, ILogger<Portfolio> logger)
+    public Portfolio(decimal initialCash, ILogger<Portfolio> logger, bool enableTradeAnatomy = false)
     {
         CashBalance = initialCash;
         StartEquity = initialCash;
         TotalEquity = initialCash;
         _logger = logger;
+        _enableTradeAnatomy = enableTradeAnatomy;
     }
 
     /// <summary>The initial cash balance at the start of the simulation.</summary>
@@ -35,12 +49,24 @@ public sealed class Portfolio
     public decimal TotalEquity { get; private set; }
 
     /// <summary>Open long positions keyed by symbol.</summary>
-    public IReadOnlyDictionary<string, Position> Positions =>
-        _positions.ToDictionary(kv => kv.Key, kv => kv.Value.ToPosition());
+    public IReadOnlyDictionary<string, Position> Positions
+    {
+        get
+        {
+            if (_snapshotDirty) RebuildSnapshots();
+            return _cachedPositions!;
+        }
+    }
 
     /// <summary>V6: Open short positions keyed by symbol.</summary>
-    public IReadOnlyDictionary<string, Position> ShortPositions =>
-        _shortPositions.ToDictionary(kv => kv.Key, kv => kv.Value.ToPosition());
+    public IReadOnlyDictionary<string, Position> ShortPositions
+    {
+        get
+        {
+            if (_snapshotDirty) RebuildSnapshots();
+            return _cachedShortPositions!;
+        }
+    }
 
     /// <summary>Time-ordered equity snapshots, one per fill.</summary>
     public IReadOnlyList<EquityCurvePoint> EquityCurve => _equityCurve;
@@ -48,10 +74,15 @@ public sealed class Portfolio
     /// <summary>All completed round-trip trades.</summary>
     public IReadOnlyList<ClosedTrade> ClosedTrades => _closedTrades;
 
-    /// <summary>Count of all open positions (long + short).</summary>
-    public int OpenPositionCount =>
-        _positions.Count(p => p.Value.Quantity > 0m) +
-        _shortPositions.Count(p => p.Value.Quantity > 0m);
+    /// <summary>Count of all open positions (long + short). O(1) access via cached field.</summary>
+    public int OpenPositionCount
+    {
+        get
+        {
+            if (_snapshotDirty) RebuildSnapshots();
+            return _openPositionCount;
+        }
+    }
 
     /// <summary>Returns an immutable snapshot of current portfolio state for the RiskLayer.</summary>
     public PortfolioSnapshot TakeSnapshot() =>
@@ -140,6 +171,20 @@ public sealed class Portfolio
 
         MarkToMarketFromFill(fill);
         RecalculateTotalEquity();
+        InvalidateSnapshots();
+    }
+
+    /// <summary>Marks cached snapshots as stale. Called after any position state change.</summary>
+    private void InvalidateSnapshots() => _snapshotDirty = true;
+
+    /// <summary>Rebuilds cached position snapshots from current internal state.</summary>
+    private void RebuildSnapshots()
+    {
+        _cachedPositions = _positions.ToDictionary(kv => kv.Key, kv => kv.Value.ToPosition());
+        _cachedShortPositions = _shortPositions.ToDictionary(kv => kv.Key, kv => kv.Value.ToPosition());
+        _openPositionCount = _positions.Count(p => p.Value.Quantity > 0m) +
+                             _shortPositions.Count(p => p.Value.Quantity > 0m);
+        _snapshotDirty = false;
     }
 
     private void ApplyBuyFill(FillEvent fill)
@@ -150,6 +195,13 @@ public sealed class Portfolio
             _positions[fill.Symbol] = state;
         }
         state.AddBuy(fill.Quantity, fill.FillPrice, fill.Timestamp);
+
+        // Start excursion tracking for new long positions
+        if (_enableTradeAnatomy && !_longExcursionTrackers.ContainsKey(fill.Symbol))
+        {
+            _longExcursionTrackers[fill.Symbol] = new TradeExcursionTracker(
+                state.AverageEntryPrice, state.Quantity, Direction.Long);
+        }
     }
 
     private void ApplySellFill(FillEvent fill)
@@ -161,6 +213,12 @@ public sealed class Portfolio
         decimal grossPnl = (fill.FillPrice - state.AverageEntryPrice) * closedQty;
         decimal netPnl = grossPnl - fill.Commission;
 
+        TradeAnatomy? anatomy = null;
+        if (_enableTradeAnatomy && _longExcursionTrackers.TryGetValue(fill.Symbol, out var tracker))
+        {
+            anatomy = tracker.BuildAnatomy(state.EntryTime, fill.Timestamp);
+        }
+
         _closedTrades.Add(new ClosedTrade(
             fill.Symbol,
             state.EntryTime,
@@ -171,10 +229,15 @@ public sealed class Portfolio
             Direction.Long,
             grossPnl,
             fill.Commission,
-            netPnl));
+            netPnl,
+            anatomy));
 
         state.ReducePosition(closedQty, netPnl);
-        if (state.Quantity == 0m) _positions.Remove(fill.Symbol);
+        if (state.Quantity == 0m)
+        {
+            _positions.Remove(fill.Symbol);
+            _longExcursionTrackers.Remove(fill.Symbol);
+        }
     }
 
     private void OpenShortPosition(FillEvent fill)
@@ -185,6 +248,13 @@ public sealed class Portfolio
             _shortPositions[fill.Symbol] = state;
         }
         state.AddShort(fill.Quantity, fill.FillPrice, fill.Timestamp);
+
+        // Start excursion tracking for new short positions
+        if (_enableTradeAnatomy && !_shortExcursionTrackers.ContainsKey(fill.Symbol))
+        {
+            _shortExcursionTrackers[fill.Symbol] = new TradeExcursionTracker(
+                state.AverageEntryPrice, state.Quantity, Direction.Short);
+        }
     }
 
     private void CloseShortPosition(FillEvent fill)
@@ -197,6 +267,12 @@ public sealed class Portfolio
         decimal grossPnl = (state.AverageEntryPrice - fill.FillPrice) * closedQty;
         decimal netPnl = grossPnl - fill.Commission;
 
+        TradeAnatomy? anatomy = null;
+        if (_enableTradeAnatomy && _shortExcursionTrackers.TryGetValue(fill.Symbol, out var tracker))
+        {
+            anatomy = tracker.BuildAnatomy(state.EntryTime, fill.Timestamp);
+        }
+
         _closedTrades.Add(new ClosedTrade(
             fill.Symbol,
             state.EntryTime,
@@ -207,10 +283,15 @@ public sealed class Portfolio
             Direction.Short,
             grossPnl,
             fill.Commission,
-            netPnl));
+            netPnl,
+            anatomy));
 
         state.ReducePosition(closedQty, netPnl);
-        if (state.Quantity == 0m) _shortPositions.Remove(fill.Symbol);
+        if (state.Quantity == 0m)
+        {
+            _shortPositions.Remove(fill.Symbol);
+            _shortExcursionTrackers.Remove(fill.Symbol);
+        }
     }
 
     private void RecalculateTotalEquity()
@@ -237,15 +318,25 @@ public sealed class Portfolio
     /// Updates unrealised P&amp;L for open positions and appends an <see cref="EquityCurvePoint"/>.
     /// Called by the engine on every bar, after pending fills are processed and before the strategy is invoked.
     /// V6: Updates both long and short unrealised PnL.
+    /// V8: Feeds price data to excursion trackers for MAE/MFE computation.
     /// </summary>
     public void MarkToMarket(string symbol, decimal price, DateTimeOffset timestamp)
     {
         if (_positions.TryGetValue(symbol, out var longState))
+        {
             longState.UpdateUnrealisedPnl(price);
+            if (_enableTradeAnatomy && _longExcursionTrackers.TryGetValue(symbol, out var longTracker))
+                longTracker.UpdatePrice(price);
+        }
 
         if (_shortPositions.TryGetValue(symbol, out var shortState))
+        {
             shortState.UpdateUnrealisedPnl(price);
+            if (_enableTradeAnatomy && _shortExcursionTrackers.TryGetValue(symbol, out var shortTracker))
+                shortTracker.UpdatePrice(price);
+        }
 
+        InvalidateSnapshots();
         RecalculateTotalEquity();
         AppendEquityCurvePoint(timestamp);
     }

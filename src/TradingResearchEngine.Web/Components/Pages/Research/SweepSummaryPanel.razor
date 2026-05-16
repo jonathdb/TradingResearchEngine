@@ -1,0 +1,32 @@
+@using TradingResearchEngine.Application.Research.Results
+
+<MudText Typo="Typo.h6" Class="mb-2">
+    @Result.Results.Count results — Best Sharpe: @(Result.RankedBySharpe.FirstOrDefault()?.SharpeRatio?.ToString("F2") ?? "N/A")
+</MudText>
+
+@if (Result.Results.Count > 0)
+{
+    <MudGrid Class="mb-3">
+        <MudItem xs="6" sm="3">
+            <MudText Typo="Typo.caption">Best Sharpe</MudText>
+            <MudText Typo="Typo.body1">@(Result.RankedBySharpe.FirstOrDefault()?.SharpeRatio?.ToString("F3") ?? "N/A")</MudText>
+        </MudItem>
+        <MudItem xs="6" sm="3">
+            <MudText Typo="Typo.caption">Best Max DD</MudText>
+            <MudText Typo="Typo.body1">@(Result.Results.Min(r => r.MaxDrawdown).ToString("P2"))</MudText>
+        </MudItem>
+        <MudItem xs="6" sm="3">
+            <MudText Typo="Typo.caption">Avg Sharpe</MudText>
+            <MudText Typo="Typo.body1">@(Result.Results.Where(r => r.SharpeRatio.HasValue).Select(r => r.SharpeRatio!.Value).DefaultIfEmpty(0).Average().ToString("F3"))</MudText>
+        </MudItem>
+        <MudItem xs="6" sm="3">
+            <MudText Typo="Typo.caption">Total Combinations</MudText>
+            <MudText Typo="Typo.body1">@Result.Results.Count</MudText>
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    /// <summary>The sweep result to display summary statistics for.</summary>
+    [Parameter, EditorRequired] public SweepResult Result { get; set; } = null!;
+}

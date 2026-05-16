@@ -27,7 +27,7 @@ public interface IAIStrategyAssistant
 
     /// <summary>
     /// Refines an existing draft using backtest results and user feedback.
-    /// Key metrics (Sharpe, MaxDrawdown, WinRate, TradeCount, DSR) from the
+    /// Key metrics (Sharpe, MaxDrawdown, WinRate, TradeCount, K-Ratio, DSR) from the
     /// backtest result are included in the refinement context.
     /// </summary>
     /// <param name="current">The current strategy draft to refine.</param>

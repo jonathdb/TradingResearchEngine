@@ -27,9 +27,9 @@ public sealed class PortfolioConstraints
     /// <summary>V5: Maximum exposure to a single symbol as a percentage of equity.</summary>
     public decimal? MaxExposurePerSymbol { get; set; }
 
-    /// <summary>V5.1 roadmap: Maximum exposure to a single sector as a percentage of equity. Defined but not yet enforced.</summary>
+    /// <summary>PLANNED: Maximum exposure to a single sector as a percentage of equity. Defined but not yet enforced.</summary>
     public decimal? MaxExposurePerSector { get; set; }
 
-    /// <summary>V5.1 roadmap: Maximum correlated exposure as a percentage of equity. Defined but not yet enforced.</summary>
+    /// <summary>PLANNED: Maximum correlated exposure as a percentage of equity. Defined but not yet enforced — see CorrelationConstraintEnforcer for pairwise correlation enforcement.</summary>
     public decimal? MaxCorrelatedExposure { get; set; }
 }

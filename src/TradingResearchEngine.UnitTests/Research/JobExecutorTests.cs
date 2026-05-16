@@ -417,4 +417,126 @@ public class JobExecutorTests
         Assert.Equal("Out of memory.", persisted.ErrorMessage);
         Assert.NotNull(persisted.CompletedAt);
     }
+
+    // ─── MarkRetryingAsync ───────────────────────────────────────────────────
+
+    [Fact]
+    public async Task MarkRetryingAsync_TransitionsJobToRetrying_WithRetryCount()
+    {
+        // Arrange
+        var job = new BacktestJob(
+            JobId: "job-retry-1",
+            JobType: JobType.MonteCarlo,
+            Status: JobStatus.Running,
+            SubmittedAt: DateTimeOffset.UtcNow,
+            StartedAt: DateTimeOffset.UtcNow);
+
+        _repoMock.Setup(r => r.GetByIdAsync("job-retry-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(job);
+        _repoMock.Setup(r => r.SaveAsync(It.IsAny<BacktestJob>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        // Act
+        await _sut.MarkRetryingAsync("job-retry-1", 2);
+
+        // Assert
+        _repoMock.Verify(r => r.SaveAsync(
+            It.Is<BacktestJob>(j =>
+                j.JobId == "job-retry-1" &&
+                j.Status == JobStatus.Retrying &&
+                j.RetryCount == 2 &&
+                j.FailureType == JobFailureType.Transient),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    // ─── MarkFailedWithTypeAsync ─────────────────────────────────────────────
+
+    [Fact]
+    public async Task MarkFailedWithTypeAsync_TransitionsToFailed_WithFailureTypeAndRetryCount()
+    {
+        // Arrange
+        var job = new BacktestJob(
+            JobId: "job-fail-type",
+            JobType: JobType.SingleRun,
+            Status: JobStatus.Running,
+            SubmittedAt: DateTimeOffset.UtcNow,
+            StartedAt: DateTimeOffset.UtcNow);
+
+        _repoMock.Setup(r => r.GetByIdAsync("job-fail-type", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(job);
+        _repoMock.Setup(r => r.SaveAsync(It.IsAny<BacktestJob>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        // Act
+        await _sut.MarkFailedWithTypeAsync("job-fail-type", "Network error after retries.", JobFailureType.Transient, 3);
+
+        // Assert
+        _repoMock.Verify(r => r.SaveAsync(
+            It.Is<BacktestJob>(j =>
+                j.JobId == "job-fail-type" &&
+                j.Status == JobStatus.Failed &&
+                j.ErrorMessage == "Network error after retries." &&
+                j.FailureType == JobFailureType.Transient &&
+                j.RetryCount == 3 &&
+                j.CompletedAt != null),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task MarkFailedWithTypeAsync_TerminalFailure_SetsTerminalType()
+    {
+        // Arrange
+        var job = new BacktestJob(
+            JobId: "job-terminal",
+            JobType: JobType.SingleRun,
+            Status: JobStatus.Running,
+            SubmittedAt: DateTimeOffset.UtcNow,
+            StartedAt: DateTimeOffset.UtcNow);
+
+        _repoMock.Setup(r => r.GetByIdAsync("job-terminal", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(job);
+        _repoMock.Setup(r => r.SaveAsync(It.IsAny<BacktestJob>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        // Act
+        await _sut.MarkFailedWithTypeAsync("job-terminal", "Invalid configuration.", JobFailureType.Terminal, 0);
+
+        // Assert
+        _repoMock.Verify(r => r.SaveAsync(
+            It.Is<BacktestJob>(j =>
+                j.FailureType == JobFailureType.Terminal &&
+                j.RetryCount == 0),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    // ─── RecoverOrphanedJobsAsync with Retrying status ───────────────────────
+
+    [Fact]
+    public async Task RecoverOrphanedJobsAsync_RecoversRetryingJobs()
+    {
+        // Arrange
+        var retryingJob = new BacktestJob(
+            JobId: "job-retrying",
+            JobType: JobType.MonteCarlo,
+            Status: JobStatus.Retrying,
+            SubmittedAt: DateTimeOffset.UtcNow,
+            RetryCount: 2,
+            FailureType: JobFailureType.Transient);
+
+        _repoMock.Setup(r => r.ListAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<BacktestJob> { retryingJob });
+        _repoMock.Setup(r => r.SaveAsync(It.IsAny<BacktestJob>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        // Act
+        await _sut.RecoverOrphanedJobsAsync();
+
+        // Assert — retrying jobs are recovered to Failed
+        _repoMock.Verify(r => r.SaveAsync(
+            It.Is<BacktestJob>(j =>
+                j.JobId == "job-retrying" &&
+                j.Status == JobStatus.Failed &&
+                j.ErrorMessage == "Process restarted; job was not completed."),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
 }

@@ -124,15 +124,15 @@ The engine does not simulate order book dynamics, queue priority, or partial fil
 
 ---
 
-## Long-Only Scope and Short-Selling Roadmap
+## Bidirectional Execution (V6+)
 
-### V6: Full Short-Selling Execution
+### Full Short-Selling Execution
 
-V6 removes the `LongOnlyGuard` and enables full bidirectional execution. `SimulatedExecutionHandler` fills short orders with `fillPrice = basePrice - slippageAmount`. `Portfolio` tracks short positions separately with correct mark-to-market (`(entryPrice - currentPrice) × |qty|`). Four strategies (`DonchianBreakoutStrategy`, `VolatilityScaledTrendStrategy`, `ZScoreMeanReversionStrategy`, `StationaryMeanReversionStrategy`) support bidirectional signals. `DonchianBreakoutStrategy` and `VolatilityScaledTrendStrategy` use a `DirectionMode` parameter (Long / Short / Both); `ZScoreMeanReversionStrategy` always emits bidirectional signals without a `DirectionMode` parameter. `BaselineBuyAndHoldStrategy` and `MacroRegimeRotationStrategy` remain long-only.
+V6 implemented full bidirectional execution. `SimulatedExecutionHandler` fills short orders with `fillPrice = basePrice - slippageAmount`. `Portfolio` tracks short positions separately with correct mark-to-market (`(entryPrice - currentPrice) × |qty|`). Four strategies (`DonchianBreakoutStrategy`, `VolatilityScaledTrendStrategy`, `ZScoreMeanReversionStrategy`, `StationaryMeanReversionStrategy`) support bidirectional signals. `DonchianBreakoutStrategy` and `VolatilityScaledTrendStrategy` use a `DirectionMode` parameter (Long / Short / Both); `ZScoreMeanReversionStrategy` always emits bidirectional signals without a `DirectionMode` parameter. `BaselineBuyAndHoldStrategy` and `MacroRegimeRotationStrategy` remain long-only.
 
-### V6 Roadmap (Completed)
+### Implementation Status (Completed)
 
-- ~~Remove `LongOnlyGuard` calls~~ ✓
+- ~~Remove obsolete long-only guard~~ ✓
 - ~~Implement short-selling execution logic in `SimulatedExecutionHandler`~~ ✓
 - ~~Add short-specific slippage and margin models~~ ✓ (slippage direction reversed for shorts; `AllowReversals` flag on `ExecutionConfig`)
 - ~~Update `Portfolio` for short position tracking and margin requirements~~ ✓

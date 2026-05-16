@@ -128,9 +128,9 @@ public class ShortSellingTests
     }
 
     [Fact]
-    public void LongOnlyGuard_DirectionShort_NoLongerThrowsInExecution()
+    public void SimulatedExecutionHandler_DirectionShort_FillsSuccessfully()
     {
-        // Verify SimulatedExecutionHandler no longer throws on Direction.Short
+        // V6+ bidirectional execution: Direction.Short is fully supported
         var slippage = new Mock<ISlippageModel>();
         slippage.Setup(s => s.ComputeAdjustment(It.IsAny<OrderEvent>(), It.IsAny<MarketDataEvent>()))
             .Returns(0m);

@@ -31,4 +31,18 @@ public sealed class ParameterMetaAttribute : Attribute
 
     /// <summary>Maximum allowed value (numeric parameters only).</summary>
     public object? Max { get; set; }
+
+    /// <summary>
+    /// Schema-driven default value for this parameter. When set, this value is used
+    /// instead of runtime type-based inference (e.g., <c>typeof(int) → 0</c>).
+    /// Takes precedence over type-based defaults but is overridden by the C# constructor
+    /// default value when present.
+    /// </summary>
+    public object? Default { get; set; }
+
+    /// <summary>
+    /// Indicates whether <see cref="Default"/> was explicitly set.
+    /// Required because <c>null</c> may be a valid explicit default.
+    /// </summary>
+    public bool HasDefault { get; set; }
 }

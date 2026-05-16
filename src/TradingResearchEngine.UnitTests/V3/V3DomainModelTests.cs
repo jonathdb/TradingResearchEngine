@@ -142,7 +142,7 @@ public class V3DomainModelTests
             new List<EquityCurvePoint>(),
             new List<ClosedTrade>(),
             100_000m, endEquity, maxDrawdown,
-            null, null, null, null, totalTrades,
+            null, null, null, null, null, null, null, null, totalTrades,
             null, null, null, null, null, null, null, 0, 0, 100);
     }
 }

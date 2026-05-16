@@ -14,15 +14,13 @@
 | `FsCheck.Xunit` | UnitTests |
 | `xunit` + `xunit.runner.visualstudio` | UnitTests, IntegrationTests |
 | `Moq` | UnitTests |
-| `System.CommandLine` | Cli |
-| `Microsoft.AspNetCore.OpenApi` | Api |
 | `CsvHelper` | Infrastructure |
 | `Microsoft.Extensions.Options` | Application, Infrastructure |
 | `Microsoft.Extensions.DependencyInjection` | Application, Infrastructure |
 | `Microsoft.Extensions.Http` | Infrastructure |
 | `Polly` | Infrastructure |
 | `Microsoft.Extensions.Logging.Abstractions` | Core, Application |
-| `Microsoft.Extensions.Logging` | Infrastructure, Cli, Api |
+| `Microsoft.Extensions.Logging` | Infrastructure, Web |
 | `Microsoft.Data.Sqlite` | Infrastructure |
 | `Plotly.Blazor` | Web |
 | `Microsoft.Extensions.ObjectPool` | Core |
@@ -62,7 +60,7 @@ Named constant classes: `MonteCarloDefaults`, `RiskDefaults`, `ReportingDefaults
 ## XML Doc Comments
 
 All `public` types and members in Core and Application carry XML doc comments (`/// <summary>`).
-Infrastructure, Cli, and Api public members are documented where non-obvious.
+Infrastructure and Web public members are documented where non-obvious.
 
 ## Annualisation
 

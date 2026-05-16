@@ -13,7 +13,12 @@ public sealed record ClosedTrade(
     Direction Direction,
     decimal GrossPnl,
     decimal Commission,
-    decimal NetPnl)
+    decimal NetPnl,
+    /// <summary>
+    /// Intra-trade analytics (MAE, MFE, Duration). Null when trace data is unavailable
+    /// (i.e., <c>TraceOptions.EnableEventTrace</c> is false).
+    /// </summary>
+    TradeAnatomy? Anatomy = null)
 {
     /// <summary>
     /// Return on risk: <c>NetPnl / (EntryPrice * Quantity)</c>.

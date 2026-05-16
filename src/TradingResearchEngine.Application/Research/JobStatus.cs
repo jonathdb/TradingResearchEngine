@@ -18,5 +18,8 @@ public enum JobStatus
     Failed,
 
     /// <summary>Job was cancelled by the user.</summary>
-    Cancelled
+    Cancelled,
+
+    /// <summary>Job encountered a transient failure and is awaiting retry with backoff.</summary>
+    Retrying
 }
