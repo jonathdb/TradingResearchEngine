@@ -9,6 +9,7 @@ namespace TradingResearchEngine.Core.Portfolio;
 /// V6: Adds ShortPositions dictionary for short position tracking with correct mark-to-market.
 /// V7: Cached position snapshots and O(1) OpenPositionCount for hot-path optimization.
 /// V8: Tracks intra-trade price extremes for MAE/MFE computation when event tracing is enabled.
+/// V9: Always tracks unrealised PnL watermarks (MAE/MFE) on ClosedTrade regardless of trace mode.
 /// </summary>
 public sealed class Portfolio
 {
@@ -22,6 +23,10 @@ public sealed class Portfolio
     // Intra-trade price tracking for MAE/MFE (only populated when _enableTradeAnatomy is true)
     private readonly Dictionary<string, TradeExcursionTracker> _longExcursionTrackers = new();
     private readonly Dictionary<string, TradeExcursionTracker> _shortExcursionTrackers = new();
+
+    // Always-on unrealised PnL watermark tracking for ClosedTrade.MaxAdverseExcursion/MaxFavorableExcursion
+    private readonly Dictionary<string, PnlWatermarkTracker> _longPnlWatermarks = new();
+    private readonly Dictionary<string, PnlWatermarkTracker> _shortPnlWatermarks = new();
 
     // Cached snapshots — rebuilt lazily only on state change
     private IReadOnlyDictionary<string, Position>? _cachedPositions;
@@ -196,6 +201,12 @@ public sealed class Portfolio
         }
         state.AddBuy(fill.Quantity, fill.FillPrice, fill.Timestamp);
 
+        // Always start PnL watermark tracking for new long positions
+        if (!_longPnlWatermarks.ContainsKey(fill.Symbol))
+        {
+            _longPnlWatermarks[fill.Symbol] = new PnlWatermarkTracker();
+        }
+
         // Start excursion tracking for new long positions
         if (_enableTradeAnatomy && !_longExcursionTrackers.ContainsKey(fill.Symbol))
         {
@@ -219,6 +230,15 @@ public sealed class Portfolio
             anatomy = tracker.BuildAnatomy(state.EntryTime, fill.Timestamp);
         }
 
+        // Harvest always-on PnL watermarks
+        decimal mae = 0m;
+        decimal mfe = 0m;
+        if (_longPnlWatermarks.TryGetValue(fill.Symbol, out var pnlTracker))
+        {
+            mae = pnlTracker.MinPnl;
+            mfe = pnlTracker.MaxPnl;
+        }
+
         _closedTrades.Add(new ClosedTrade(
             fill.Symbol,
             state.EntryTime,
@@ -230,6 +250,8 @@ public sealed class Portfolio
             grossPnl,
             fill.Commission,
             netPnl,
+            mae,
+            mfe,
             anatomy));
 
         state.ReducePosition(closedQty, netPnl);
@@ -237,6 +259,7 @@ public sealed class Portfolio
         {
             _positions.Remove(fill.Symbol);
             _longExcursionTrackers.Remove(fill.Symbol);
+            _longPnlWatermarks.Remove(fill.Symbol);
         }
     }
 
@@ -248,6 +271,12 @@ public sealed class Portfolio
             _shortPositions[fill.Symbol] = state;
         }
         state.AddShort(fill.Quantity, fill.FillPrice, fill.Timestamp);
+
+        // Always start PnL watermark tracking for new short positions
+        if (!_shortPnlWatermarks.ContainsKey(fill.Symbol))
+        {
+            _shortPnlWatermarks[fill.Symbol] = new PnlWatermarkTracker();
+        }
 
         // Start excursion tracking for new short positions
         if (_enableTradeAnatomy && !_shortExcursionTrackers.ContainsKey(fill.Symbol))
@@ -273,6 +302,15 @@ public sealed class Portfolio
             anatomy = tracker.BuildAnatomy(state.EntryTime, fill.Timestamp);
         }
 
+        // Harvest always-on PnL watermarks
+        decimal mae = 0m;
+        decimal mfe = 0m;
+        if (_shortPnlWatermarks.TryGetValue(fill.Symbol, out var pnlTracker))
+        {
+            mae = pnlTracker.MinPnl;
+            mfe = pnlTracker.MaxPnl;
+        }
+
         _closedTrades.Add(new ClosedTrade(
             fill.Symbol,
             state.EntryTime,
@@ -284,6 +322,8 @@ public sealed class Portfolio
             grossPnl,
             fill.Commission,
             netPnl,
+            mae,
+            mfe,
             anatomy));
 
         state.ReducePosition(closedQty, netPnl);
@@ -291,6 +331,7 @@ public sealed class Portfolio
         {
             _shortPositions.Remove(fill.Symbol);
             _shortExcursionTrackers.Remove(fill.Symbol);
+            _shortPnlWatermarks.Remove(fill.Symbol);
         }
     }
 
@@ -319,12 +360,18 @@ public sealed class Portfolio
     /// Called by the engine on every bar, after pending fills are processed and before the strategy is invoked.
     /// V6: Updates both long and short unrealised PnL.
     /// V8: Feeds price data to excursion trackers for MAE/MFE computation.
+    /// V9: Always updates PnL watermark trackers for ClosedTrade MAE/MFE fields.
     /// </summary>
     public void MarkToMarket(string symbol, decimal price, DateTimeOffset timestamp)
     {
         if (_positions.TryGetValue(symbol, out var longState))
         {
             longState.UpdateUnrealisedPnl(price);
+
+            // Always update PnL watermark tracker
+            if (_longPnlWatermarks.TryGetValue(symbol, out var longPnlTracker))
+                longPnlTracker.Update(longState.UnrealisedPnl);
+
             if (_enableTradeAnatomy && _longExcursionTrackers.TryGetValue(symbol, out var longTracker))
                 longTracker.UpdatePrice(price);
         }
@@ -332,6 +379,11 @@ public sealed class Portfolio
         if (_shortPositions.TryGetValue(symbol, out var shortState))
         {
             shortState.UpdateUnrealisedPnl(price);
+
+            // Always update PnL watermark tracker
+            if (_shortPnlWatermarks.TryGetValue(symbol, out var shortPnlTracker))
+                shortPnlTracker.Update(shortState.UnrealisedPnl);
+
             if (_enableTradeAnatomy && _shortExcursionTrackers.TryGetValue(symbol, out var shortTracker))
                 shortTracker.UpdatePrice(price);
         }

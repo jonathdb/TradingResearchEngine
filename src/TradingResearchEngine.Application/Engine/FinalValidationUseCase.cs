@@ -163,6 +163,7 @@ public sealed class FinalValidationUseCase
             return ScenarioRunResult.Failure(new[] { "The configured date range is not marked as sealed." });
 
         // Build config scoped to the sealed date range
+#pragma warning disable CS0618 // Legacy dictionary access for backward compatibility
         var config = version.BaseScenarioConfig with
         {
             DataProviderOptions = new Dictionary<string, object>(version.BaseScenarioConfig.DataProviderOptions)
@@ -170,6 +171,7 @@ public sealed class FinalValidationUseCase
                 ["From"] = sealed_.Start,
                 ["To"] = sealed_.End
             }
+#pragma warning restore CS0618
         };
 
         // Run the backtest (bypasses sealed-set guard — this IS the final validation)

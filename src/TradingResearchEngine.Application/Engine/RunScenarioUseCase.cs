@@ -129,7 +129,11 @@ public sealed class RunScenarioUseCase
         }
         var effectiveData = config.EffectiveDataConfig;
         var dataProviderFactory = _services.GetRequiredService<IDataProviderFactory>();
-        var dataProvider = dataProviderFactory.Create(effectiveData.DataProviderType, effectiveData.DataProviderOptions);
+        var dataProvider = effectiveData.TypedProviderConfig is not null
+            ? dataProviderFactory.Create(effectiveData.TypedProviderConfig)
+#pragma warning disable CS0618 // Legacy dictionary path for backward compatibility
+            : dataProviderFactory.Create(effectiveData.DataProviderType, effectiveData.DataProviderOptions);
+#pragma warning restore CS0618
 
         // Create a per-run service scope to isolate stateful services (IRiskLayer, IExecutionHandler)
         using var scope = _services.CreateScope();
@@ -512,7 +516,9 @@ public sealed class RunScenarioUseCase
 
     private static Core.Results.ExperimentMetadata BuildMetadata(ScenarioConfig config)
     {
+#pragma warning disable CS0618 // Legacy dictionary access for backward compatibility
         var dataOpts = config.DataProviderOptions;
+#pragma warning restore CS0618
         var from = dataOpts.TryGetValue("From", out var f) && f is DateTimeOffset df ? df : DateTimeOffset.MinValue;
         var to = dataOpts.TryGetValue("To", out var t) && t is DateTimeOffset dt ? dt : DateTimeOffset.MaxValue;
 
@@ -545,7 +551,9 @@ public sealed class RunScenarioUseCase
 
         try
         {
+#pragma warning disable CS0618 // Legacy dictionary access for backward compatibility
             var dataOpts = config.DataProviderOptions;
+#pragma warning restore CS0618
             string symbol = dataOpts.TryGetValue("Symbol", out var s) ? s?.ToString() ?? "" : "";
             string interval = dataOpts.TryGetValue("Interval", out var iv) ? iv?.ToString() ?? "1D" : "1D";
             var from = dataOpts.TryGetValue("From", out var f) && f is DateTimeOffset df ? df : strategyCurve[0].Timestamp;

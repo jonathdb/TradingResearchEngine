@@ -416,51 +416,51 @@ This implementation plan covers 35+ requirements across 10 sequential PR gates f
   - Ensure all tests pass, ask the user if questions arise.
 
 
-- [ ] 21. PR Gate 10 — Research Depth & Developer Experience
-  - [ ] 21.1 Add MAE/MFE fields to ClosedTrade and wire engine tracking
+- [x] 21. PR Gate 10 — Research Depth & Developer Experience
+  - [x] 21.1 Add MAE/MFE fields to ClosedTrade and wire engine tracking
     - Add `decimal MaxAdverseExcursion` and `decimal MaxFavorableExcursion` to `ClosedTrade`
     - Track running high-water mark and low-water mark of unrealised P&L between entry and exit
     - Enable edge ratio, R-multiple distribution, entry/exit quality scoring downstream
     - _Review: Bug 4, Opp 1_
-  - [ ] 21.2 Add concatenated OOS equity curve to WalkForwardResult
+  - [x] 21.2 Add concatenated OOS equity curve to WalkForwardResult
     - Add `IReadOnlyList<EquityCurvePoint> ConcatenatedOosEquityCurve` computed property
     - Stitch OOS curves by appending each window's OOS equity curve in window index order
     - _Review: Opp 2_
-  - [ ] 21.3 Add OOS profitability rate to WalkForwardSummary
+  - [x] 21.3 Add OOS profitability rate to WalkForwardSummary
     - Compute `decimal OosProfitabilityRate` as profitable OOS windows / total windows
     - High IS Sharpe + low OOS profitability rate = strong overfitting signal
     - _Review: Opp 3_
-  - [ ] 21.4 Add multi-criteria ranking to ScenarioComparisonUseCase
+  - [x] 21.4 Add multi-criteria ranking to ScenarioComparisonUseCase
     - Create `ComparisonFilter` record with `MinWinRate`, `MinTrades`, `MaxDrawdown`
     - Add optional sort key (Calmar, Sharpe, etc.) for filtered survivors
     - Preserve existing single-metric best-of logic as default
     - _Review: Opp 4_
-  - [ ] 21.5 Implement strategy version side-by-side comparison
+  - [x] 21.5 Implement strategy version side-by-side comparison
     - Enable comparing two `StrategyVersion` IDs with metric deltas
     - Pin results to specific strategy versions (distinct from arbitrary BacktestResult comparison)
     - Display deltas in all metrics across both versions
     - _Review: Opp 5_
-  - [ ] 21.6 Migrate DataProviderOptions to discriminated union type
+  - [x] 21.6 Migrate DataProviderOptions to discriminated union type
     - Replace `Dictionary<string, object>` in `ScenarioConfig.DataProviderOptions` with sealed discriminated union
     - `CsvDataProviderConfig | HttpDataProviderConfig | DukascopyDataProviderConfig`
     - Eliminate all remaining string key usage; make malformed configs a compile-time error
     - Maintain JSON backward compatibility at deserialization boundary
     - _Review: Opp 7_
-  - [ ] 21.7 Add end-to-end integration test for walk-forward → OOS → persist cycle
+  - [x] 21.7 Add end-to-end integration test for walk-forward → OOS → persist cycle
     - Run `WalkForwardWorkflow` against sample CSV data
     - Verify OOS windows are populated and result is persisted and retrievable
     - _Review: Opp 11_
-  - [ ] 21.8 Add observable job queue depth metrics
+  - [x] 21.8 Add observable job queue depth metrics
     - Create `IJobQueueMetrics` interface with `PendingCount`, `RunningCount`, `FailedCount`
     - Source from `JobExecutor` progress cache and repository queries
     - Expose via health check endpoint or structured log
     - _Review: Opp 12_
-  - [ ] 21.9 Add architecture dependency enforcement test
+  - [x] 21.9 Add architecture dependency enforcement test
     - Create `ArchitectureDependencyTests.cs` using `NetArchTest.Rules` or equivalent
     - Enforce Core ← Application ← Infrastructure ← Web dependency rule in CI
     - Complement the IDE-only `.kiro/hooks/architecture-check.md` hook
     - _Review: Opp 13_
-  - [ ] 21.10 Update CHANGELOG.md to reflect PR gate implementation
+  - [x] 21.10 Update CHANGELOG.md to reflect PR gate implementation
     - Document all eight gates under a new version entry
     - Include `BacktestResult.Notes` and `Tags` additions
     - Document V9 additions visible in the record

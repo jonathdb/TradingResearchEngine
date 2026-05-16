@@ -39,7 +39,9 @@ public sealed class CpcvStudyHandler : IResearchWorkflow<CpcvOptions, CpcvResult
         ValidateOptions(options);
 
         // Parse data range from config using typed property access
+#pragma warning disable CS0618 // Legacy dictionary access for backward compatibility
         var dataOpts = baseConfig.DataProviderOptions;
+#pragma warning restore CS0618
         var dataFrom = dataOpts.GetFrom();
         var dataTo = dataOpts.GetTo();
         if (dataFrom == DateTimeOffset.MinValue)
@@ -196,6 +198,7 @@ public sealed class CpcvStudyHandler : IResearchWorkflow<CpcvOptions, CpcvResult
         var from = selectedFolds.First().Start;
         var to = selectedFolds.Last().End;
 
+#pragma warning disable CS0618 // Legacy dictionary access for backward compatibility
         var newOpts = new Dictionary<string, object>(baseConfig.DataProviderOptions)
         {
             ["From"] = from,
@@ -203,6 +206,7 @@ public sealed class CpcvStudyHandler : IResearchWorkflow<CpcvOptions, CpcvResult
         };
 
         return baseConfig with { DataProviderOptions = newOpts };
+#pragma warning restore CS0618
     }
 
     /// <summary>Computes the median of a list of decimal values.</summary>

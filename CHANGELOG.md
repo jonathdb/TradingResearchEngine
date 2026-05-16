@@ -231,9 +231,79 @@ All notable changes to TradingResearchEngine are documented in this file, organi
 
 ---
 
-## PR Gate Implementation — Gates 1–5
+## PR Gate Implementation — Gates 1–10
 
-**Scope: Walk-forward correctness, indicator fixes, performance & concurrency, configuration canonicalization, persistence & resilience.**
+**Scope: Walk-forward correctness, indicator fixes, performance & concurrency, configuration canonicalization, persistence & resilience, repository cleanup, research analytics expansion, engine capability expansion, code quality & async correctness, research depth & developer experience.**
+
+### Added
+
+- `OptimizationObjective` enum (Sharpe, CAGR, MAR) and `ParameterGrid`/`ParameterRange` records
+- `GridOptimizer` with objective-based ranking and structured `ExcludedCandidate` explanations
+- Walk-forward in-sample grid optimization in `WalkForwardWorkflow`
+- Walk-forward pre-run validation in `PreflightValidator` (minimum data range, window count, statistical significance warning)
+- `ConcurrencyBudget` with `SemaphoreSlim` and `IOptions<ConcurrencyOptions>` (global concurrency control)
+- Provider-aware progress estimation via `IDataProvider.EstimateBarCountAsync`
+- `ScenarioConfigNormalizer` for legacy-to-canonical config transformation (no disk modification on load)
+- Typed provider configuration (`CsvDataProviderOptions`, `HttpDataProviderOptions`, `DukascopyDataProviderOptions`) via `IOptions<T>`
+- AI call timeout and cancellation in `GeminiClient` with linked `CancellationTokenSource`
+- Job retry policy with configurable backoff, `Retrying` status, and terminal failure handling
+- `ConsistencyReconciler` for SQLite/JSON reconciliation (JSON as source of truth)
+- Configurable paper-trading polling via `IOptionsMonitor<PaperTradingOptions>` with hot-reload
+- `MonteCarloSimulationMode` enum with `TradeResample`, `BlockBootstrap`, `ReturnSeries` modes
+- `WalkForwardAnalytics` record: OOS profitability rate, concatenated OOS equity curve, parameter drift score
+- `TradeAnatomy` record with MAE/MFE/Duration on `ClosedTrade`
+- `MaxAdverseExcursion` and `MaxFavorableExcursion` fields on `ClosedTrade` for edge ratio and R-multiple analysis
+- Correlation-aware portfolio constraints via `CorrelationConstraintEnforcer` integrated into `DefaultRiskLayer`
+- `ComparisonReportGenerator` for persistent Markdown (and optional HTML) comparison reports
+- AI refinement loop with backtest context in `GeminiStrategyAssistant.RefineStrategyAsync`
+- Large sweep result virtualization via Blazor `Virtualize` component
+- Multi-timeframe strategy support: `IMultiTimeframeStrategy`, `SecondaryTimeframeConfig`, `MultiTimeframeDataHandler`
+- `ExportValidator` for Pine Script and MQL structural correctness validation
+- Expression compiler negative test coverage (malformed inputs produce descriptive `ExpressionCompileError`)
+- `MaxPromptLength` guard on `GeminiStrategyAssistant` (default 30000 chars)
+- `ExportComparisonMarkdownAsync` on `IReportExporter` for persisting comparison reports
+- Multi-criteria ranking in `ScenarioComparisonUseCase` with `ComparisonFilter` (MinWinRate, MinTrades, MaxDrawdown, sort key)
+- Strategy version side-by-side comparison with metric deltas
+- `DataProviderConfig` discriminated union (`CsvDataProviderConfig | HttpDataProviderConfig | DukascopyDataProviderConfig`) replacing `Dictionary<string, object>`
+- End-to-end integration test for walk-forward → OOS → persist cycle
+- Observable job queue depth metrics via `IJobQueueMetrics` (PendingCount, RunningCount, FailedCount)
+- Architecture dependency enforcement test using `NetArchTest.Rules`
+- `BacktestResult.Tags` — user-assigned tags for filtering and annotation (V9)
+- `BacktestResult.Notes` — free-text user notes attached to runs (V9)
+- `BacktestResult.CreatedAt` — explicit creation timestamp replacing RunId prefix parsing (V9)
+- `BacktestResult.CompletedAt` — timestamp when the run completed or failed (V9)
+- Concatenated OOS equity curve as computed property on `WalkForwardResult`
+- OOS profitability rate on `WalkForwardSummary`
+
+### Changed
+
+- Walk-forward workflow now performs real in-sample parameter optimization with grid support
+- Research checklist surfaced as active workflow guide with navigation paths and low-confidence explanations
+- Final validation requires explicit user confirmation before consuming the test set
+- Portfolio hot-path optimized with cached snapshots and O(1) `OpenPositionCount`
+- Monte Carlo workflow parallelized with deterministic seeding and bounded concurrency
+- CPCV workflow parallelized with fold isolation and order-independent aggregation
+- Parameter Perturbation workflow parallelized with deterministic jitter
+- Strategy construction unified through `StrategyRegistry` with startup `VerifyAll()`
+- `OptimizationObjective.CAGR` renamed/corrected to compute true annualised CAGR (was total return)
+- `ReportExporter` file I/O replaced with async `File.WriteAllTextAsync` throughout
+- `StrategyRegistry` default parameter inference migrated from reflection to attribute-based schema
+- Comparison page consolidated to single canonical route
+- Indicator catalog audited for completeness with startup validation
+- Beginner-mode strategy builder defaults to `StandardBacktest` realism profile
+
+### Fixed
+
+- `GridOptimizer.ComputeCagr` now computes true annualised CAGR instead of total return
+- Synchronous `File.WriteAllText` calls in `ReportExporter` replaced with async equivalents
+- `ComparisonReportGenerator` output now persisted via `IReportExporter` (was generated but never saved)
+- Commented-out metrics (VaR95, CVaR95, OmegaRatio, UlcerIndex) resolved — restored in `MetricsCalculator`
+
+### Deprecated
+
+- `LongOnlyGuard` marked `[Obsolete]` — V6+ supports full bidirectional execution via `Direction` enum
+
+---
 
 ### Gate 1 — Walk-Forward Correctness
 - `OptimizationObjective` enum (Sharpe, CAGR, MAR) and `ParameterGrid`/`ParameterRange` records
@@ -267,7 +337,43 @@ All notable changes to TradingResearchEngine are documented in this file, organi
 - `ConsistencyReconciler` for SQLite/JSON reconciliation (JSON as source of truth)
 - Configurable paper-trading polling via `IOptionsMonitor<PaperTradingOptions>` with hot-reload
 
-### Gate 6 — Repository Cleanup (in progress)
+### Gate 6 — Repository Cleanup
 - Prompt directory audit: archival artifacts relocated, production prompts retained
 - Obsolete CLI/API transition leftovers removed
 - Documentation and spec alignment with implemented reality
+
+### Gate 7 — Research Analytics Expansion
+- `MonteCarloSimulationMode` enum with `TradeResample`, `BlockBootstrap`, `ReturnSeries` modes
+- `WalkForwardAnalytics` record: OOS profitability rate, concatenated OOS equity curve, parameter drift score
+- `TradeAnatomy` record with MAE/MFE/Duration on `ClosedTrade`
+- Correlation-aware portfolio constraints via `CorrelationConstraintEnforcer` in `DefaultRiskLayer`
+- `ComparisonReportGenerator` for persistent Markdown and optional HTML comparison reports
+
+### Gate 8 — Engine Capability Expansion
+- AI refinement loop with backtest context in `GeminiStrategyAssistant.RefineStrategyAsync`
+- Large sweep result virtualization via Blazor `Virtualize` component
+- Consolidated comparison page (single canonical route)
+- Multi-timeframe strategy support: `IMultiTimeframeStrategy`, `SecondaryTimeframeConfig`, `MultiTimeframeDataHandler`
+- `ExportValidator` for Pine Script and MQL structural correctness validation
+- Expression compiler negative test coverage (malformed inputs → descriptive `ExpressionCompileError`)
+- Reference multi-timeframe strategy implementation
+
+### Gate 9 — Code Quality & Async Correctness
+- `OptimizationObjective.CAGR` corrected to compute true annualised CAGR
+- `ReportExporter` migrated to async file I/O (`File.WriteAllTextAsync`)
+- `MaxPromptLength` guard on `GeminiStrategyAssistant` (default 30000 chars)
+- Commented-out metrics (VaR95, CVaR95, OmegaRatio, UlcerIndex) resolved in `MetricsCalculator`
+- `ExportComparisonMarkdownAsync` added to `IReportExporter`
+- `StrategyRegistry` parameter inference migrated to attribute-based schema
+
+### Gate 10 — Research Depth & Developer Experience
+- `MaxAdverseExcursion` and `MaxFavorableExcursion` on `ClosedTrade` with engine tracking
+- Concatenated OOS equity curve on `WalkForwardResult`
+- OOS profitability rate on `WalkForwardSummary`
+- Multi-criteria ranking in `ScenarioComparisonUseCase` with `ComparisonFilter`
+- Strategy version side-by-side comparison with metric deltas
+- `DataProviderConfig` discriminated union replacing `Dictionary<string, object>`
+- End-to-end walk-forward integration test
+- Observable job queue depth metrics (`IJobQueueMetrics`)
+- Architecture dependency enforcement test (`NetArchTest.Rules`)
+- `BacktestResult.Tags`, `BacktestResult.Notes`, `BacktestResult.CreatedAt`, `BacktestResult.CompletedAt` (V9 additions)

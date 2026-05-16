@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TradingResearchEngine.Application.Configuration;
+using TradingResearchEngine.Core.Configuration;
 using TradingResearchEngine.Core.DataHandling;
 
 namespace TradingResearchEngine.Infrastructure.DataProviders;
@@ -53,6 +54,18 @@ public sealed class DataProviderFactory : IDataProviderFactory
             "dukascopy" => CreateDukascopyProvider(options),
             _ => throw new InvalidOperationException($"Unknown data provider type: '{providerType}'. " +
                 $"Supported: csv, http, memory, dukascopy")
+        };
+    }
+
+    /// <inheritdoc/>
+    public IDataProvider Create(DataProviderConfig config)
+    {
+        return config switch
+        {
+            CsvDataProviderConfig csv => CreateCsvProviderFromTyped(csv),
+            HttpDataProviderConfig http => CreateHttpProviderFromTyped(http),
+            DukascopyDataProviderConfig dukascopy => CreateDukascopyProviderFromTyped(dukascopy),
+            _ => Create(config.ProviderType, DataProviderConfigAdapter.ToDictionary(config))
         };
     }
 
@@ -113,6 +126,50 @@ public sealed class DataProviderFactory : IDataProviderFactory
         // Fall back to IOptions<T> defaults when dictionary doesn't specify a value
         var cacheDir = typed.CacheDirectory != "data/dukascopy-cache"
             ? typed.CacheDirectory
+            : _dukascopyDefaults.CacheDirectory;
+
+        var client = _httpClientFactory?.CreateClient("Dukascopy") ?? new HttpClient();
+        return new DukascopyDataProvider(client, _loggerFactory.CreateLogger<DukascopyDataProvider>(), cacheDir: cacheDir);
+    }
+
+    private CsvDataProvider CreateCsvProviderFromTyped(CsvDataProviderConfig config)
+    {
+        var filePath = !string.IsNullOrEmpty(config.FilePath)
+            ? config.FilePath
+            : (!string.IsNullOrEmpty(_csvDefaults.FilePath) ? _csvDefaults.FilePath : "data.csv");
+
+        if (!Path.IsPathRooted(filePath) && !File.Exists(filePath))
+        {
+            var candidate = FindFileUpwards(filePath);
+            if (candidate is not null) filePath = candidate;
+        }
+        return new CsvDataProvider(filePath, _loggerFactory.CreateLogger<CsvDataProvider>());
+    }
+
+    private HttpRestDataProvider CreateHttpProviderFromTyped(HttpDataProviderConfig config)
+    {
+        var baseUrl = !string.IsNullOrEmpty(config.BaseUrl)
+            ? config.BaseUrl
+            : _httpDefaults.BaseUrl;
+
+        if (string.IsNullOrWhiteSpace(baseUrl))
+            throw new InvalidOperationException("HttpRestDataProvider requires a 'BaseUrl' in DataProviderConfig.");
+
+        var client = _httpClientFactory?.CreateClient("DataProvider") ?? new HttpClient();
+
+        var timeout = config.TimeoutSeconds != 30
+            ? TimeSpan.FromSeconds(config.TimeoutSeconds)
+            : _httpDefaults.Timeout;
+        if (timeout > TimeSpan.Zero)
+            client.Timeout = timeout;
+
+        return new HttpRestDataProvider(client, baseUrl);
+    }
+
+    private DukascopyDataProvider CreateDukascopyProviderFromTyped(DukascopyDataProviderConfig config)
+    {
+        var cacheDir = config.CacheDirectory != "data/dukascopy-cache"
+            ? config.CacheDirectory
             : _dukascopyDefaults.CacheDirectory;
 
         var client = _httpClientFactory?.CreateClient("Dukascopy") ?? new HttpClient();

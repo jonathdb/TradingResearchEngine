@@ -15,6 +15,20 @@ public sealed record ClosedTrade(
     decimal Commission,
     decimal NetPnl,
     /// <summary>
+    /// Maximum Adverse Excursion: the worst (most negative) unrealised P&amp;L observed
+    /// between entry and exit, expressed in absolute currency terms.
+    /// Always tracked regardless of trace mode. Enables edge ratio, R-multiple distribution,
+    /// and entry/exit quality scoring downstream.
+    /// </summary>
+    decimal MaxAdverseExcursion = 0m,
+    /// <summary>
+    /// Maximum Favorable Excursion: the best (most positive) unrealised P&amp;L observed
+    /// between entry and exit, expressed in absolute currency terms.
+    /// Always tracked regardless of trace mode. Enables edge ratio, R-multiple distribution,
+    /// and entry/exit quality scoring downstream.
+    /// </summary>
+    decimal MaxFavorableExcursion = 0m,
+    /// <summary>
     /// Intra-trade analytics (MAE, MFE, Duration). Null when trace data is unavailable
     /// (i.e., <c>TraceOptions.EnableEventTrace</c> is false).
     /// </summary>

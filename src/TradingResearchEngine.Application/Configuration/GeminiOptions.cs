@@ -45,4 +45,26 @@ public sealed record GeminiOptions
     /// Default: 30000 characters.
     /// </summary>
     public int MaxPromptLength { get; init; } = 30_000;
+
+    /// <summary>
+    /// Number of consecutive rate limit (HTTP 429) failures before the circuit breaker opens
+    /// and subsequent calls fail fast without hitting the API.
+    /// Default: 3.
+    /// </summary>
+    public int CircuitBreakerThreshold { get; init; } = 3;
+
+    /// <summary>
+    /// Duration in seconds that the circuit breaker remains open after being tripped.
+    /// During this period, all calls fail immediately with <see cref="Infrastructure.AI.RateLimitExceededException"/>.
+    /// Default: 60 seconds.
+    /// </summary>
+    public double CircuitBreakerDurationSeconds { get; init; } = 60;
+
+    /// <summary>
+    /// Base delay in seconds for the first retry attempt. Subsequent retries use exponential
+    /// backoff (base × 2^attempt). Used to configure the Mscc.GenerativeAI library's built-in
+    /// retry mechanism.
+    /// Default: 2 seconds.
+    /// </summary>
+    public double BaseRetryDelaySeconds { get; init; } = 2;
 }

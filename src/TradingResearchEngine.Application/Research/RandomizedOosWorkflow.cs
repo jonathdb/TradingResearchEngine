@@ -76,7 +76,9 @@ public sealed class RandomizedOosWorkflow
             throw new ArgumentException("Iterations must be >= 1.", nameof(options));
 
         // Load all bars into memory for partitioning using typed property access
+#pragma warning disable CS0618 // Legacy dictionary access for backward compatibility
         var dataOpts = baseConfig.DataProviderOptions;
+#pragma warning restore CS0618
         string symbol = dataOpts.GetSymbol();
         string interval = dataOpts.GetInterval();
         var from = dataOpts.GetFrom();
@@ -118,6 +120,7 @@ public sealed class RandomizedOosWorkflow
                                        .Concat(oosBars).ToList();
 
             // Create in-memory data provider configs with filtered bars
+#pragma warning disable CS0618 // Legacy dictionary access for backward compatibility
             var isConfig = baseConfig.DeepClone() with
             {
                 DataProviderType = "memory",
@@ -129,6 +132,7 @@ public sealed class RandomizedOosWorkflow
                 DataProviderOptions = WithBarIndices(baseConfig.DataProviderOptions, oosWithWarmup,
                     warmupBars: oosStart - warmupStart)
             };
+#pragma warning restore CS0618
 
             var isResult = await _runScenario.RunAsync(isConfig, ct, autoSave: false);
             var oosResult = await _runScenario.RunAsync(oosConfig, ct, autoSave: false);

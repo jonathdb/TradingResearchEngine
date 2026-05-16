@@ -133,7 +133,9 @@ public sealed class PortfolioBacktestRunner
             Description: $"Portfolio backtest symbol {symbolIndex}",
             ReplayMode: Core.Engine.ReplayMode.Bar,
             DataProviderType: dataConfig.DataProviderType,
+#pragma warning disable CS0618 // Legacy dictionary access for backward compatibility
             DataProviderOptions: dataConfig.DataProviderOptions,
+#pragma warning restore CS0618
             StrategyType: strategyConfig.StrategyType,
             StrategyParameters: strategyConfig.StrategyParameters,
             RiskParameters: new Dictionary<string, object>(),
@@ -414,8 +416,10 @@ public sealed class PortfolioBacktestRunner
             return result.Trades[0].Symbol;
 
         // Try from data provider options
+#pragma warning disable CS0618 // Legacy dictionary access for backward compatibility
         if (result.ScenarioConfig.DataProviderOptions.TryGetValue("Symbol", out var sym) && sym is string s)
             return s;
+#pragma warning restore CS0618
 
         return $"Symbol_{index}";
     }

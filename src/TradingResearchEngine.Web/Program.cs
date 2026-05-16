@@ -28,6 +28,8 @@ builder.Services.AddSingleton<TradingResearchEngine.Application.Research.IRobust
 
 // V5: Register JobExecutor as singleton for async job lifecycle management
 builder.Services.AddSingleton<TradingResearchEngine.Application.Research.JobExecutor>();
+builder.Services.AddSingleton<TradingResearchEngine.Application.Research.IJobQueueMetrics>(
+    sp => sp.GetRequiredService<TradingResearchEngine.Application.Research.JobExecutor>());
 
 // V8: Keyboard shortcut service
 builder.Services.AddScoped<TradingResearchEngine.Web.Services.KeyboardShortcutService>();
@@ -108,6 +110,15 @@ app.UseAntiforgery();
 
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
+
+// Health check endpoint: job queue depth metrics
+app.MapGet("/health/jobs", async (TradingResearchEngine.Application.Research.JobExecutor jobExecutor, CancellationToken ct) =>
+{
+    var snapshot = await jobExecutor.GetSnapshotAsync(ct);
+    return Results.Ok(snapshot);
+})
+.WithName("GetJobQueueMetrics")
+.WithTags("Health");
 
 app.Run();
 

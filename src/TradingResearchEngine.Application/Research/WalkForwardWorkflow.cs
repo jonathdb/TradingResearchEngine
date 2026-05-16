@@ -54,7 +54,9 @@ public sealed class WalkForwardWorkflow : IResearchWorkflow<WalkForwardOptions, 
             throw new ArgumentException("StepSize must be positive.", nameof(options));
 
         // Parse data range from config using typed extension methods
+#pragma warning disable CS0618 // Legacy dictionary access for backward compatibility
         var dataOpts = baseConfig.DataProviderOptions;
+#pragma warning restore CS0618
         var dataFrom = dataOpts.GetFrom();
         var dataTo = dataOpts.GetTo();
         var dataLength = dataTo - dataFrom;
@@ -143,10 +145,12 @@ public sealed class WalkForwardWorkflow : IResearchWorkflow<WalkForwardOptions, 
         IStrategyFactory factory, CancellationToken ct)
     {
         // Build in-sample config with restricted date range
+#pragma warning disable CS0618 // Legacy dictionary access for backward compatibility
         var isConfig = baseConfig with
         {
             DataProviderOptions = WithDateRange(baseConfig.DataProviderOptions, spec.IsStart, spec.IsEnd)
         };
+#pragma warning restore CS0618
 
         Dictionary<string, object> bestParams;
         decimal? optimizationMetricValue;
@@ -178,11 +182,13 @@ public sealed class WalkForwardWorkflow : IResearchWorkflow<WalkForwardOptions, 
         }
 
         // Run engine on out-of-sample with best params — creates its own EventQueue
+#pragma warning disable CS0618 // Legacy dictionary access for backward compatibility
         var oosConfig = baseConfig with
         {
             StrategyParameters = new Dictionary<string, object>(bestParams),
             DataProviderOptions = WithDateRange(baseConfig.DataProviderOptions, spec.OosStart, spec.OosEnd)
         };
+#pragma warning restore CS0618
 
         // Create an isolated strategy instance for this OOS iteration via factory
         var oosStrategyConfig = oosConfig.EffectiveStrategyConfig;
@@ -408,9 +414,10 @@ public sealed class WalkForwardWorkflow : IResearchWorkflow<WalkForwardOptions, 
             .DefaultIfEmpty(0m)
             .Max();
         var drift = ComputeParameterDrift(windows);
+        var oosProfitabilityRate = ComputeOosProfitabilityRate(windows);
 
         return new WalkForwardSummary(
-            windows, composite, avgOosSharpe, worstDd, drift, result.MeanEfficiencyRatio);
+            windows, composite, avgOosSharpe, worstDd, drift, result.MeanEfficiencyRatio, oosProfitabilityRate);
     }
 
     /// <summary>

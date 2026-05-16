@@ -66,6 +66,7 @@ public static class ExecutionWindowEditor
             return new EditResult(false, errors, null);
 
         // Build updated config
+#pragma warning disable CS0618 // Legacy dictionary access for backward compatibility
         var newOpts = new Dictionary<string, object>(version.BaseScenarioConfig.DataProviderOptions);
         if (startDate.HasValue) newOpts["From"] = startDate.Value;
         else newOpts.Remove("From");
@@ -78,6 +79,7 @@ public static class ExecutionWindowEditor
             Timeframe = timeframe,
             BarsPerYear = barsPerYear ?? version.BaseScenarioConfig.BarsPerYear
         };
+#pragma warning restore CS0618
 
         var updatedVersion = version with { BaseScenarioConfig = updatedConfig };
 
@@ -108,10 +110,12 @@ public static class ExecutionWindowEditor
         }
 
         DateTimeOffset? start = null, end = null;
+#pragma warning disable CS0618 // Legacy dictionary access for backward compatibility
         if (config.DataProviderOptions.TryGetValue("From", out var f) && f is DateTimeOffset df)
             start = df;
         if (config.DataProviderOptions.TryGetValue("To", out var t) && t is DateTimeOffset dt)
             end = dt;
+#pragma warning restore CS0618
 
         return (timeframe, start, end);
     }

@@ -339,30 +339,41 @@ All methods return `null` when inputs are insufficient (e.g. zero trades, fewer 
 
 Equity curve points are appended by `Portfolio.MarkToMarket`, not by `Portfolio.Update`. When the engine calls `MarkToMarket(symbol, price, timestamp)` on each bar, the portfolio recalculates unrealised P&L and appends an enriched `EquityCurvePoint` containing `TotalEquity`, `CashBalance`, `UnrealisedPnl`, `RealisedPnl`, and `OpenPositionCount`. `Portfolio.Update(FillEvent)` updates positions and cash but does not append to the equity curve — this separation ensures equity snapshots are driven by market prices rather than fill events.
 
-## Trade Anatomy (MAE/MFE/Duration)
+## Trade Excursion Tracking (MAE/MFE)
 
-When `TraceOptions.EnableEventTrace` is active, the engine tracks intra-trade price extremes for every open position and attaches a `TradeAnatomy` record to each `ClosedTrade` on exit.
+`ClosedTrade` carries two levels of MAE/MFE data:
 
-### Components
+### Always-Tracked Fields (on ClosedTrade directly)
+
+- `MaxAdverseExcursion` (decimal, default 0) — the worst (most negative) unrealised P&L observed between entry and exit, in absolute currency terms.
+- `MaxFavorableExcursion` (decimal, default 0) — the best (most positive) unrealised P&L observed between entry and exit, in absolute currency terms.
+
+These fields are always populated regardless of trace mode. They enable edge ratio, R-multiple distribution, and entry/exit quality scoring downstream without requiring the full event trace overhead.
+
+### Trace-Only Anatomy (TradeAnatomy record)
+
+When `TraceOptions.EnableEventTrace` is active, the engine additionally attaches a `TradeAnatomy` record to each `ClosedTrade` on exit with richer intra-trade analytics.
+
+#### Components
 
 - `TradeAnatomy` (`Core/Portfolio/TradeAnatomy.cs`) — sealed record with `MaxAdverseExcursion`, `MaxFavorableExcursion` (both `decimal?`, expressed as fractions of entry value), and `Duration` (`TimeSpan`).
 - `TradeExcursionTracker` (`Core/Portfolio/TradeExcursionTracker.cs`) — mutable tracker created per position at entry. Updated on every `MarkToMarket` call with the current price. Builds the final `TradeAnatomy` at position close.
 - `ClosedTrade.Anatomy` — optional field, null when trace data is unavailable.
 
-### Lifecycle
+#### Lifecycle
 
 1. When a fill opens a new position and `enableTradeAnatomy` is true, `Portfolio` creates a `TradeExcursionTracker` keyed by symbol, seeded with the entry price, quantity, and direction.
 2. On each `MarkToMarket` call, the tracker's `UpdatePrice(currentPrice)` records new highs/lows relative to direction (for longs: favorable = price up, adverse = price down; for shorts: reversed).
 3. When the position is closed, `BuildAnatomy(entryTime, exitTime)` computes MAE and MFE as fractions of entry value and returns the `TradeAnatomy` record attached to the `ClosedTrade`.
 4. If no price updates occurred or entry price is zero, MAE and MFE are null (duration is still computed).
 
-### Activation
+#### Activation
 
 Trade anatomy tracking is enabled when `ScenarioConfig.EnableEventTrace` is true. The `BacktestEngine` passes this flag to the `Portfolio` constructor. When disabled, no trackers are created and `ClosedTrade.Anatomy` is always null — zero overhead.
 
 ### Downstream Use
 
-MAE/MFE data enables edge ratio analysis, R-multiple distributions, entry/exit quality scoring, and duration distribution analytics in research workflows.
+MAE/MFE data (both the always-tracked currency fields and the trace-only fractional anatomy) enables edge ratio analysis, R-multiple distributions, entry/exit quality scoring, and duration distribution analytics in research workflows.
 
 ## Benchmark Comparison Workflow
 

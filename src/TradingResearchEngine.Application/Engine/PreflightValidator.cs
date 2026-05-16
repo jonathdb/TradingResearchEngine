@@ -218,7 +218,9 @@ public sealed class PreflightValidator
             findings.Add(new PreflightFinding("BarsPerYear", "BarsPerYear must be greater than zero.", PreflightSeverity.Error, "RANGE_VIOLATION"));
 
         // Validate date range if present
+#pragma warning disable CS0618 // Legacy dictionary access for backward compatibility
         var opts = data.DataProviderOptions;
+#pragma warning restore CS0618
         DateTimeOffset? from = opts.TryGetValue("From", out var f) && f is DateTimeOffset df ? df : null;
         DateTimeOffset? to = opts.TryGetValue("To", out var t) && t is DateTimeOffset dt ? dt : null;
 
@@ -246,7 +248,9 @@ public sealed class PreflightValidator
     private static void ValidateDataSufficiency(ScenarioConfig config, List<PreflightFinding> findings)
     {
         var data = config.EffectiveDataConfig;
+#pragma warning disable CS0618 // Legacy dictionary access for backward compatibility
         var opts = data.DataProviderOptions;
+#pragma warning restore CS0618
 
         DateTimeOffset? from = opts.TryGetValue("From", out var f) && f is DateTimeOffset df ? df : null;
         DateTimeOffset? to = opts.TryGetValue("To", out var t) && t is DateTimeOffset dt ? dt : null;
@@ -286,7 +290,9 @@ public sealed class PreflightValidator
 
         // Check BarsPerYear vs Interval in DataProviderOptions
         var data = config.EffectiveDataConfig;
+#pragma warning disable CS0618 // Legacy dictionary access for backward compatibility
         var opts = data.DataProviderOptions;
+#pragma warning restore CS0618
         if (opts.TryGetValue("Interval", out var intervalObj) && intervalObj is string interval
             && !string.IsNullOrWhiteSpace(interval))
         {
@@ -533,7 +539,9 @@ public sealed class PreflightValidator
     public static WalkForwardValidation ValidateWalkForward(ScenarioConfig config, WalkForwardOptions options)
     {
         // Parse data range from config
+#pragma warning disable CS0618 // Legacy dictionary access for backward compatibility
         var dataOpts = config.EffectiveDataConfig.DataProviderOptions;
+#pragma warning restore CS0618
         var dataFrom = dataOpts.TryGetValue("From", out var f) && f is DateTimeOffset df
             ? df : DateTimeOffset.MinValue;
         var dataTo = dataOpts.TryGetValue("To", out var t) && t is DateTimeOffset dt

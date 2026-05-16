@@ -13,6 +13,7 @@ public sealed record ScenarioConfig(
     string Description,
     ReplayMode ReplayMode,
     string DataProviderType,
+    [property: Obsolete("Use DataConfig.TypedProviderConfig for compile-time safety. Dictionary retained for JSON backward compatibility.")]
     Dictionary<string, object> DataProviderOptions,
     string StrategyType,
     Dictionary<string, object> StrategyParameters,
@@ -52,8 +53,10 @@ public sealed record ScenarioConfig(
     public string Id => ScenarioId;
 
     /// <summary>Effective data config: sub-object wins, falls back to top-level fields.</summary>
+#pragma warning disable CS0618 // Accessing obsolete DataProviderOptions for backward compatibility fallback
     public DataConfig EffectiveDataConfig => Data ?? new DataConfig(
         DataProviderType, DataProviderOptions, Timeframe, BarsPerYear);
+#pragma warning restore CS0618
 
     /// <summary>Effective strategy config: sub-object wins, falls back to top-level fields.</summary>
     public StrategyConfig EffectiveStrategyConfig => Strategy ?? new StrategyConfig(

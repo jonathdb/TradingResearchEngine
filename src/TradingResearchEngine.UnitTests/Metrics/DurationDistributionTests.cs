@@ -12,7 +12,7 @@ public class DurationDistributionTests
     {
         return new ClosedTrade(
             "SPY", T0, T0 + duration, 100m, 105m, 10m,
-            Direction.Long, 50m, 5m, 45m, null);
+            Direction.Long, 50m, 5m, 45m, Anatomy: null);
     }
 
     [Fact]
@@ -84,7 +84,7 @@ public class DurationDistributionTests
         // Trade entry/exit times differ from anatomy duration
         var trade = new ClosedTrade(
             "SPY", T0, T0 + TimeSpan.FromHours(12), 100m, 105m, 10m,
-            Direction.Long, 50m, 5m, 45m, anatomy);
+            Direction.Long, 50m, 5m, 45m, Anatomy: anatomy);
 
         var result = MetricsCalculator.ComputeDurationDistribution(new[] { trade });
 
@@ -99,7 +99,7 @@ public class DurationDistributionTests
         var expectedDuration = TimeSpan.FromHours(6);
         var trade = new ClosedTrade(
             "SPY", T0, T0 + expectedDuration, 100m, 105m, 10m,
-            Direction.Long, 50m, 5m, 45m, null);
+            Direction.Long, 50m, 5m, 45m, Anatomy: null);
 
         var result = MetricsCalculator.ComputeDurationDistribution(new[] { trade });
 

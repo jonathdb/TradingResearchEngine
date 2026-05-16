@@ -55,8 +55,13 @@ $env:Gemini__ApiKey = "your-api-key-here"
 | Setting | Default | Description |
 |---|---|---|
 | `ApiKey` | — | Google Gemini API key (required for AI features) |
-| `ModelName` | `gemini-2.0-flash` | Gemini model identifier |
+| `ModelName` | `gemini-2.5-flash` | Gemini model identifier |
+| `MaxRetries` | 5 | Retry attempts for transient failures (6 total including initial) |
 | `CallTimeout` | `00:01:00` (60s) | Maximum time per outbound AI API call before cancellation |
+| `MaxPromptLength` | 30000 | Max combined system prompt + user message characters |
+| `CircuitBreakerThreshold` | 3 | Consecutive 429 failures before circuit opens |
+| `CircuitBreakerDurationSeconds` | 60 | Seconds the circuit breaker stays open |
+| `BaseRetryDelaySeconds` | 2 | Base delay for exponential backoff between retries |
 
 If the key is not set, AI assistant features are disabled gracefully without crashing the application.
 

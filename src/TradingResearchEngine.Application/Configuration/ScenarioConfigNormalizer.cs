@@ -53,7 +53,9 @@ public static class ScenarioConfigNormalizer
         && config.Research is not null;
 
     private static DataConfig BuildDataConfig(ScenarioConfig raw) =>
+#pragma warning disable CS0618 // Accessing obsolete DataProviderOptions for backward compatibility
         new(raw.DataProviderType, raw.DataProviderOptions, raw.Timeframe, raw.BarsPerYear);
+#pragma warning restore CS0618
 
     private static StrategyConfig BuildStrategyConfig(ScenarioConfig raw) =>
         new(raw.StrategyType, raw.StrategyParameters);

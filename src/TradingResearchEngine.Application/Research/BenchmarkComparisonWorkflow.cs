@@ -50,10 +50,12 @@ public sealed class BenchmarkComparisonWorkflow
             throw new InvalidOperationException("Strategy run failed.");
 
         // Build buy-and-hold benchmark equity curve from raw bar data
+#pragma warning disable CS0618 // Legacy dictionary access for backward compatibility
         var provider = _dataProviderFactory.Create(
             baseConfig.DataProviderType, baseConfig.DataProviderOptions);
 
         var dataOpts = baseConfig.DataProviderOptions;
+#pragma warning restore CS0618
         string symbol = dataOpts.GetSymbol();
         string interval = dataOpts.GetInterval();
         var from = dataOpts.GetFrom();

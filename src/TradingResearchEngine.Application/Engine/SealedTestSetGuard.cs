@@ -47,7 +47,9 @@ public sealed class SealedTestSetGuard
     /// </summary>
     public static void ValidateConfig(StrategyVersion version, ScenarioConfig config)
     {
+#pragma warning disable CS0618 // Legacy dictionary access for backward compatibility
         var dataOpts = config.DataProviderOptions;
+#pragma warning restore CS0618
         var from = dataOpts.TryGetValue("From", out var f) && f is DateTimeOffset df
             ? df : DateTimeOffset.MinValue;
         var to = dataOpts.TryGetValue("To", out var t) && t is DateTimeOffset dt

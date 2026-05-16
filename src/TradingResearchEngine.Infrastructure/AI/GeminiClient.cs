@@ -133,7 +133,12 @@ public sealed class GeminiClient : IGeminiClient
             }
             catch (HttpRequestException ex) when (attempt < maxAttempts && IsTransientOrRateLimited(ex))
             {
-                throw;
+                var delay = TimeSpan.FromSeconds(_options.BaseRetryDelaySeconds * Math.Pow(2, attempt - 1));
+                _logger.LogWarning(
+                    "Transient HTTP error on attempt {Attempt}/{MaxAttempts}. Retrying after {Delay:F1}s. Status: {Status}",
+                    attempt, maxAttempts, delay.TotalSeconds, ex.StatusCode);
+                await Task.Delay(delay, ct);
+                continue;
             }
             catch (Exception ex) when (IsRateLimitException(ex))
             {
@@ -160,6 +165,10 @@ public sealed class GeminiClient : IGeminiClient
                     ex.InnerException?.Message ?? "none");
                 throw;
             }
+        }
+
+            // All retry attempts exhausted — should not reach here due to throws in catch blocks
+            throw new InvalidOperationException("All retry attempts exhausted without a result.");
         }
         finally
         {
@@ -215,7 +224,7 @@ public sealed class GeminiClient : IGeminiClient
             }
         }
 
-        Console.WriteLine($"[GeminiClient] StreamGenerateAsync completed successfully. Total chunks: {chunkCount}");
+        Console.WriteLine("[GeminiClient] StreamGenerateAsync completed successfully.");
     }
 
     /// <summary>
@@ -245,6 +254,20 @@ public sealed class GeminiClient : IGeminiClient
         };
 
         return new RequestOptions(retry: retry);
+    }
+
+    /// <summary>
+    /// Determines whether an <see cref="HttpRequestException"/> represents a transient failure
+    /// or a rate limit response (HTTP 429, 500, 502, 503, 504) that should be retried.
+    /// </summary>
+    private static bool IsTransientOrRateLimited(HttpRequestException ex)
+    {
+        return ex.StatusCode is
+            System.Net.HttpStatusCode.TooManyRequests or
+            System.Net.HttpStatusCode.InternalServerError or
+            System.Net.HttpStatusCode.BadGateway or
+            System.Net.HttpStatusCode.ServiceUnavailable or
+            System.Net.HttpStatusCode.GatewayTimeout;
     }
 
     /// <summary>

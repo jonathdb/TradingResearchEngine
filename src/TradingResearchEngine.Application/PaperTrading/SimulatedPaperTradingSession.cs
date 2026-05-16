@@ -227,9 +227,11 @@ public sealed class SimulatedPaperTradingSession : IPaperTradingSession, IDispos
         try
         {
             var dataConfig = _config!.EffectiveDataConfig;
+#pragma warning disable CS0618 // Legacy dictionary access for backward compatibility
             var symbol = dataConfig.DataProviderOptions.TryGetValue("Symbol", out var sym)
                 ? sym?.ToString() ?? "UNKNOWN"
                 : "UNKNOWN";
+#pragma warning restore CS0618
             var interval = dataConfig.Timeframe ?? "1d";
 
             await foreach (var bar in _streamingDataProvider.StreamAsync(symbol, interval, ct))

@@ -23,13 +23,16 @@ namespace TradingResearchEngine.Application.Research;
 /// <c>Status = Failed</c> with <c>ErrorMessage = "Process restarted; job was not completed."</c>.
 /// No replay or re-execution is attempted.</para>
 /// </remarks>
-public sealed class JobExecutor : IDisposable
+public sealed class JobExecutor : IJobQueueMetrics, IDisposable
 {
     /// <summary>Number of hours after completion before a job is eligible for cleanup.</summary>
     private const int JobRetentionHours = 24;
 
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _active = new();
     private readonly ConcurrentDictionary<string, ProgressSnapshot> _progressCache = new();
+
+    // Cached metrics snapshot for IJobQueueMetrics property access
+    private volatile JobQueueMetricsSnapshot? _cachedMetrics;
     private readonly IRepository<BacktestJob> _jobRepo;
     private readonly ILogger<JobExecutor> _logger;
 
@@ -447,6 +450,53 @@ public sealed class JobExecutor : IDisposable
 
         return expired.Count;
     }
+
+    #region IJobQueueMetrics
+
+    /// <inheritdoc/>
+    public int PendingCount => _cachedMetrics?.PendingCount ?? 0;
+
+    /// <inheritdoc/>
+    public int RunningCount => _cachedMetrics?.RunningCount ?? 0;
+
+    /// <inheritdoc/>
+    public int FailedCount => _cachedMetrics?.FailedCount ?? 0;
+
+    /// <inheritdoc/>
+    public int CompletedCount => _cachedMetrics?.CompletedCount ?? 0;
+
+    /// <inheritdoc/>
+    public async Task<JobQueueMetricsSnapshot> GetSnapshotAsync(CancellationToken ct = default)
+    {
+        var allJobs = await _jobRepo.ListAsync(ct);
+
+        int pending = 0, running = 0, failed = 0, completed = 0;
+        foreach (var job in allJobs)
+        {
+            switch (job.Status)
+            {
+                case JobStatus.Queued:
+                    pending++;
+                    break;
+                case JobStatus.Running:
+                case JobStatus.Retrying:
+                    running++;
+                    break;
+                case JobStatus.Failed:
+                    failed++;
+                    break;
+                case JobStatus.Completed:
+                    completed++;
+                    break;
+            }
+        }
+
+        var snapshot = new JobQueueMetricsSnapshot(pending, running, failed, completed, DateTimeOffset.UtcNow);
+        _cachedMetrics = snapshot;
+        return snapshot;
+    }
+
+    #endregion
 
     /// <inheritdoc/>
     public void Dispose()
